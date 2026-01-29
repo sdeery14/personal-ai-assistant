@@ -10,18 +10,15 @@ dependencies = [
     "uvicorn[standard]>=0.27.0",
     "pydantic>=2.10.0",
     "pydantic-settings>=2.1.0",
-
     # OpenAI Agents SDK
     "openai-agents>=0.0.1",
-
     # Logging
     "structlog>=24.1.0",
-
     # Development
     "python-dotenv>=1.0.0",
-
     # Evaluation Framework (Feature 002)
     "mlflow>=3.8.1",
+    "litellm>=1.81.5",
 ]
 
 [project.optional-dependencies]

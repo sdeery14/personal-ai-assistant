@@ -119,11 +119,15 @@ def run_evaluation(
     # Prepare data for mlflow.genai.evaluate()
     eval_data = _prepare_eval_data(dataset)
 
+    # Capture API key in closure for MLflow predict_fn
+    # MLflow doesn't pass environment variables, so we must explicitly capture them
+    api_key = settings.openai_api_key
+
     # Create predict function that wraps assistant
     # Note: Parameter name must match the key in inputs dict
     def predict_fn(question: str) -> str:
         """Predict function for mlflow.genai.evaluate."""
-        response = get_response(question, model=actual_model)
+        response = get_response(question, model=actual_model, api_key=api_key)
         return response
 
     # Create judge

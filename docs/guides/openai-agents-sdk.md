@@ -1754,6 +1754,165 @@ finally:
 
 ---
 
+## Using Non-OpenAI Models with LiteLLM
+
+**Status**: Beta (may have issues with some providers)
+**Requirement**: `pip install "openai-agents[litellm]"` or `pip install litellm`
+
+The Agents SDK supports using 100+ AI models from different providers (Anthropic, Cohere, Google, etc.) through [LiteLLM](https://docs.litellm.ai/docs/) integration. This allows you to:
+
+- Use Anthropic Claude models for agents
+- Test with local models (Ollama, LM Studio)
+- Integrate with custom/enterprise LLM endpoints
+- Compare performance across providers
+
+### Installation
+
+```bash
+# Option 1: Install with agents SDK
+pip install "openai-agents[litellm]"
+
+# Option 2: Install standalone (if agents already installed)
+pip install litellm
+```
+
+### Basic Usage
+
+```python
+from agents import Agent, Runner
+from agents.extensions.models.litellm_model import LitellmModel
+
+# Use Anthropic Claude
+agent = Agent(
+    name="Assistant",
+    instructions="You are a helpful assistant.",
+    model=LitellmModel(
+        model="anthropic/claude-3-5-sonnet-20240620",
+        api_key="your-anthropic-api-key"
+    ),
+)
+
+result = await Runner.run(agent, "What's the capital of France?")
+print(result.final_output)
+```
+
+### Supported Providers
+
+LiteLLM supports 100+ models. Common examples:
+
+| Provider   | Model Format                          | Requires                |
+| ---------- | ------------------------------------- | ----------------------- |
+| OpenAI     | `openai/gpt-4.1`                      | `OPENAI_API_KEY`        |
+| Anthropic  | `anthropic/claude-3-5-sonnet-YYYYMMDD`| `ANTHROPIC_API_KEY`     |
+| Google     | `google/gemini-pro`                   | `GOOGLE_API_KEY`        |
+| Cohere     | `cohere/command-r-plus`               | `COHERE_API_KEY`        |
+| Azure      | `azure/deployment-name`               | Azure credentials       |
+| Ollama     | `ollama/llama2`                       | Local Ollama server     |
+| Together   | `together_ai/meta-llama/...`          | `TOGETHERAI_API_KEY`    |
+
+**Full list**: [LiteLLM Providers Docs](https://docs.litellm.ai/docs/providers)
+
+### Usage Tracking
+
+To enable token/request usage metrics (like OpenAI models):
+
+```python
+from agents import Agent, ModelSettings
+from agents.extensions.models.litellm_model import LitellmModel
+
+agent = Agent(
+    name="Assistant",
+    model=LitellmModel(model="anthropic/claude-3-5-sonnet-20240620", api_key="..."),
+    model_settings=ModelSettings(include_usage=True),  # Enable usage tracking
+)
+
+result = await Runner.run(agent, "Hello")
+print(result.context_wrapper.usage)  # Access token counts
+```
+
+### Environment Variable Pattern (Recommended)
+
+For production, avoid hardcoding API keys:
+
+```python
+import os
+from agents import Agent, Runner
+from agents.extensions.models.litellm_model import LitellmModel
+
+# API key from environment (more secure)
+agent = Agent(
+    name="Assistant",
+    model=LitellmModel(
+        model="anthropic/claude-3-5-sonnet-20240620",
+        api_key=os.environ.get("ANTHROPIC_API_KEY")
+    ),
+)
+```
+
+### Troubleshooting
+
+**Pydantic Serializer Warnings**
+
+If you see warnings from LiteLLM responses, enable the compatibility patch:
+
+```bash
+export OPENAI_AGENTS_ENABLE_LITELLM_SERIALIZER_PATCH=true
+```
+
+Or in Python:
+
+```python
+import os
+os.environ["OPENAI_AGENTS_ENABLE_LITELLM_SERIALIZER_PATCH"] = "true"
+```
+
+**Model Not Found**
+
+Ensure the provider format is correct:
+- ✅ `anthropic/claude-3-5-sonnet-20240620`
+- ❌ `claude-3-5-sonnet` (missing provider prefix)
+
+**API Key Issues**
+
+LiteLLM expects environment variables for most providers:
+- `ANTHROPIC_API_KEY` for Anthropic
+- `GOOGLE_API_KEY` for Google
+- `COHERE_API_KEY` for Cohere
+
+Or pass explicitly via `api_key` parameter.
+
+### When to Use LiteLLM
+
+**Use LiteLLM when:**
+- Testing across multiple providers for cost/performance comparison
+- Migrating from OpenAI to another provider
+- Using local/custom models during development
+- Compliance requires specific providers
+
+**Stick with OpenAI models when:**
+- You only use OpenAI (simpler, no extra dependency)
+- You need cutting-edge features (may not be in LiteLLM yet)
+- Maximum stability is critical (LiteLLM is beta)
+
+### MLflow Integration Note
+
+**Important**: When using LiteLLM models in MLflow judge evaluation (e.g., `make_judge(model="openai:/gpt-4.1")`), you MUST install `litellm`:
+
+```bash
+pip install litellm
+```
+
+MLflow uses the `openai:/` URI format which requires LiteLLM as an adapter, even for OpenAI models. Without it, you'll see:
+
+```
+SCORER_ERROR: No suitable adapter found for model_uri='openai:/gpt-4.1'.
+Please install it with: `pip install litellm`
+```
+
+This is a requirement of MLflow 3.x's judge framework, not the Agents SDK directly.
+
+---
+
 ## Resources
 
 - [OpenAI Agents SDK GitHub](https://github.com/openai/openai-agents-python)
@@ -1767,11 +1926,12 @@ finally:
 
 ## Changelog
 
-| Date       | Change                                               |
-| ---------- | ---------------------------------------------------- |
-| 2026-01-28 | Add Tracing section with OpenAI & MLflow integration |
-| 2026-01-28 | Add Guardrails section for security & validation     |
-| 2026-01-28 | Add Handoffs, Context, Modular Architecture sections |
-| 2026-01-28 | Add MCP Servers section with patterns & gotchas      |
-| 2026-01-28 | Add Function Tools section with patterns & gotchas   |
-| 2026-01-28 | Initial guide created from Feature 001 learnings     |
+| Date       | Change                                                     |
+| ---------- | ---------------------------------------------------------- |
+| 2026-01-29 | Add LiteLLM integration section for non-OpenAI models      |
+| 2026-01-28 | Add Tracing section with OpenAI & MLflow integration       |
+| 2026-01-28 | Add Guardrails section for security & validation           |
+| 2026-01-28 | Add Handoffs, Context, Modular Architecture sections       |
+| 2026-01-28 | Add MCP Servers section with patterns & gotchas            |
+| 2026-01-28 | Add Function Tools section with patterns & gotchas         |
+| 2026-01-28 | Initial guide created from Feature 001 learnings           |

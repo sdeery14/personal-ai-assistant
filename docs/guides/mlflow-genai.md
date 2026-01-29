@@ -216,7 +216,7 @@ def predict_fn(inputs: dict) -> str:
     return get_assistant_response(question)
 
 # This will fail with:
-# "The `inputs` column must be a dictionary with the parameter names 
+# "The `inputs` column must be a dictionary with the parameter names
 #  of the `predict_fn` as keys"
 ```
 
