@@ -203,12 +203,12 @@ def _prepare_eval_data(dataset: GoldenDataset) -> list[dict[str, Any]]:
 
     Converts GoldenDataset to the format expected by MLflow 3.x:
     - inputs: The user question (string)
-    - expectations: The rubric (string)
+    - expectations: Dictionary with 'rubric' key
     """
     return [
         {
             "inputs": case.user_prompt,
-            "expectations": case.rubric,
+            "expectations": {"rubric": case.rubric},
             "_case_id": case.id,  # Keep for result mapping
         }
         for case in dataset.cases
