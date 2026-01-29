@@ -59,7 +59,9 @@ services:
     restart: "no"
 
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.17.0
+    build:
+      context: .
+      dockerfile: Dockerfile.mlflow
     container_name: mlflow-server
     depends_on:
       postgres:
