@@ -11,9 +11,9 @@ class Settings(BaseSettings):
 
     # OpenAI Configuration
     openai_api_key: str
-    openai_model: str = "gpt-4"
+    openai_model: str = "gpt-4.1"
     max_tokens: int = 2000
-    allowed_models: str = "gpt-4,gpt-4-turbo-preview,gpt-3.5-turbo"
+    allowed_models: str = "gpt-4.1,gpt-4,gpt-4-turbo-preview,gpt-3.5-turbo"
 
     # Request Handling
     timeout_seconds: int = 30

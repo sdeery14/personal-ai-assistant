@@ -50,13 +50,13 @@ cp .env.example .env
 
 **Environment Variables:**
 
-| Variable          | Required | Default | Description                                 |
-| ----------------- | -------- | ------- | ------------------------------------------- |
-| `OPENAI_API_KEY`  | ✅ Yes   | -       | Your OpenAI API key                         |
-| `OPENAI_MODEL`    | No       | `gpt-4` | Model to use for completions                |
-| `MAX_TOKENS`      | No       | `2000`  | Maximum tokens per response                 |
-| `TIMEOUT_SECONDS` | No       | `30`    | Request timeout in seconds                  |
-| `LOG_LEVEL`       | No       | `INFO`  | Logging level (DEBUG, INFO, WARNING, ERROR) |
+| Variable          | Required | Default   | Description                                 |
+| ----------------- | -------- | --------- | ------------------------------------------- |
+| `OPENAI_API_KEY`  | ✅ Yes   | -         | Your OpenAI API key                         |
+| `OPENAI_MODEL`    | No       | `gpt-4.1` | Model to use for completions                |
+| `MAX_TOKENS`      | No       | `2000`    | Maximum tokens per response                 |
+| `TIMEOUT_SECONDS` | No       | `30`      | Request timeout in seconds                  |
+| `LOG_LEVEL`       | No       | `INFO`    | Logging level (DEBUG, INFO, WARNING, ERROR) |
 
 ### 3. Run the Server
 
@@ -85,24 +85,20 @@ docker run -d \
   personal-ai-assistant
 ```
 
-### Using Docker Compose (optional)
-
-```yaml
-# docker-compose.yml
-version: "3.8"
-services:
-  chat-api:
-    build: .
-    ports:
-      - "8000:8000"
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_MODEL=gpt-4
-    restart: unless-stopped
-```
+### Using Docker Compose
 
 ```bash
+# Set your API key (or add to .env file)
+export OPENAI_API_KEY=sk-your-key-here
+
+# Start the service
 docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop
+docker-compose down
 ```
 
 ## API Reference
