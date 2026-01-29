@@ -167,6 +167,7 @@ mlflow.openai.autolog()  # Enable before evaluation
 ```
 
 **Benefits**:
+
 - Traces visible in MLflow UI for debugging failed cases
 - Enables future use of trace-based scorers (`ToolCallEfficiency`, `ToolCallCorrectness`)
 - Full observability into agent execution during evaluation
@@ -223,15 +224,15 @@ See [contracts/golden-dataset-schema.json](contracts/golden-dataset-schema.json)
 
 **CLI Interface**: `python -m eval [OPTIONS]`
 
-| Option              | Default                    | Description             |
-| ------------------- | -------------------------- | ----------------------- |
-| `--dataset`         | `eval/golden_dataset.json` | Path to dataset         |
-| `--model`           | env `OPENAI_MODEL`         | Assistant model         |
-| `--judge-model`     | env `EVAL_JUDGE_MODEL`     | Judge model             |
-| `--pass-threshold`  | 0.80                       | Minimum pass rate       |
-| `--score-threshold` | 3.5                        | Minimum average score   |
-| `--workers`         | 10                         | Parallel eval workers   |
-| `--verbose`         | False                      | Show per-case details   |
+| Option              | Default                    | Description           |
+| ------------------- | -------------------------- | --------------------- |
+| `--dataset`         | `eval/golden_dataset.json` | Path to dataset       |
+| `--model`           | env `OPENAI_MODEL`         | Assistant model       |
+| `--judge-model`     | env `EVAL_JUDGE_MODEL`     | Judge model           |
+| `--pass-threshold`  | 0.80                       | Minimum pass rate     |
+| `--score-threshold` | 3.5                        | Minimum average score |
+| `--workers`         | 10                         | Parallel eval workers |
+| `--verbose`         | False                      | Show per-case details |
 
 **Exit Codes**: 0 = PASS, 1 = FAIL, 2 = ERROR
 
@@ -254,13 +255,13 @@ See [quickstart.md](quickstart.md) for setup and usage guide.
 
 ### Phase 2: Core Evaluation Components
 
-| Step | Files                                    | Done Criteria                                  |
-| ---- | ---------------------------------------- | ---------------------------------------------- |
-| 2.1  | Create `eval/config.py`                  | Pydantic settings for eval thresholds, models  |
-| 2.2  | Create `eval/dataset.py`                 | Load + validate golden dataset JSON            |
+| Step | Files                                    | Done Criteria                                       |
+| ---- | ---------------------------------------- | --------------------------------------------------- |
+| 2.1  | Create `eval/config.py`                  | Pydantic settings for eval thresholds, models       |
+| 2.2  | Create `eval/dataset.py`                 | Load + validate golden dataset JSON                 |
 | 2.3  | Create `eval/assistant.py`               | Sync wrapper with `mlflow.openai.autolog()` enabled |
-| 2.4  | Create `eval/judge.py`                   | Quality judge via `make_judge`                 |
-| 2.5  | Create `tests/unit/test_eval_dataset.py` | Dataset validation tests                       |
+| 2.4  | Create `eval/judge.py`                   | Quality judge via `make_judge`                      |
+| 2.5  | Create `tests/unit/test_eval_dataset.py` | Dataset validation tests                            |
 
 ### Phase 3: Evaluation Runner
 
@@ -327,13 +328,13 @@ See [quickstart.md](quickstart.md) for setup and usage guide.
 
 The following capabilities are enabled by the current architecture but deferred:
 
-| Enhancement              | When to Add                          | How                                                    |
-| ------------------------ | ------------------------------------ | ------------------------------------------------------ |
-| Agent tool scorers       | When assistant uses function tools   | Add `ToolCallEfficiency()` to scorers list             |
-| Multi-turn evaluation    | When conversation history matters    | Use multi-turn scorers with session IDs                |
-| Evaluation datasets      | When managing 50+ cases              | Migrate from JSON to `mlflow.genai.datasets`           |
-| Production trace scoring | When monitoring live assistant       | Use `mlflow.genai.evaluate()` on production traces     |
-| MCP Server integration   | When AI-assisted analysis is needed  | Configure MLflow MCP Server for Cursor/VS Code         |
+| Enhancement              | When to Add                         | How                                                |
+| ------------------------ | ----------------------------------- | -------------------------------------------------- |
+| Agent tool scorers       | When assistant uses function tools  | Add `ToolCallEfficiency()` to scorers list         |
+| Multi-turn evaluation    | When conversation history matters   | Use multi-turn scorers with session IDs            |
+| Evaluation datasets      | When managing 50+ cases             | Migrate from JSON to `mlflow.genai.datasets`       |
+| Production trace scoring | When monitoring live assistant      | Use `mlflow.genai.evaluate()` on production traces |
+| MCP Server integration   | When AI-assisted analysis is needed | Configure MLflow MCP Server for Cursor/VS Code     |
 
 ---
 
