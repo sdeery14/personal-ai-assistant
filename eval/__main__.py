@@ -120,6 +120,17 @@ def main() -> int:
     Returns:
         Exit code: 0 (PASS), 1 (FAIL), or 2 (ERROR).
     """
+    # Fix Windows console encoding for emojis
+    import io
+
+    if sys.platform == "win32":
+        sys.stdout = io.TextIOWrapper(
+            sys.stdout.buffer, encoding="utf-8", errors="replace"
+        )
+        sys.stderr = io.TextIOWrapper(
+            sys.stderr.buffer, encoding="utf-8", errors="replace"
+        )
+
     args = parse_args()
 
     # Reset settings to pick up latest env vars

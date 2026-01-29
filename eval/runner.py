@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import mlflow
+import pandas as pd
 from mlflow.genai import evaluate as genai_evaluate
 
 from eval.assistant import get_response
@@ -127,8 +128,18 @@ def run_evaluation(
     # Note: Parameter name must match the key in inputs dict
     def predict_fn(question: str) -> str:
         """Predict function for mlflow.genai.evaluate."""
-        response = get_response(question, model=actual_model, api_key=api_key)
-        return response
+        # CRITICAL: Set environment variable first, before any OpenAI SDK initialization
+        # MLflow serializes this function and doesn't preserve the parent environment
+        import os
+
+        os.environ["OPENAI_API_KEY"] = api_key
+
+        try:
+            response = get_response(question, model=actual_model, api_key=api_key)
+            return response
+        except Exception as e:
+            # Return error message instead of raising - allows evaluation to continue
+            return f"[ERROR: {type(e).__name__}: {str(e)}]"
 
     # Create judge
     quality_judge = create_quality_judge()
@@ -247,11 +258,27 @@ def _process_eval_results(
     error_count = 0
 
     # Get results DataFrame from MLflow
-    results_df = eval_results.tables.get("eval_results_table")
-
-    if results_df is None:
-        # Fallback: try to get from metrics
-        raise DatasetError("No evaluation results table found in MLflow output")
+    # MLflow 3.8.1 uses "eval_results" table name
+    try:
+        results_df = eval_results.tables["eval_results_table"]
+    except (KeyError, AttributeError):
+        # Fallback: MLflow 3.8.1 actually uses "eval_results" (without _table suffix)
+        try:
+            results_df = eval_results.tables["eval_results"]
+        except (KeyError, AttributeError) as e:
+            # Last resort: try to find any available table
+            available_tables = (
+                list(eval_results.tables.keys())
+                if hasattr(eval_results, "tables")
+                else []
+            )
+            if available_tables:
+                results_df = eval_results.tables[available_tables[0]]
+            else:
+                raise DatasetError(
+                    f"No evaluation results table found in MLflow output. "
+                    f"Available tables: {available_tables}. Error: {e}"
+                )
 
     for idx, case in enumerate(dataset.cases):
         try:
@@ -259,12 +286,35 @@ def _process_eval_results(
             row = results_df.iloc[idx]
 
             # Extract score from quality judge output
-            score_str = row.get("quality/value", row.get("quality", "3"))
-            score = int(score_str) if score_str else 3
+            # MLflow 3.8.1 uses 'quality/value' column for judge scores
+            score_value = row.get("quality/value")
+            if pd.isna(score_value):
+                score = 3  # Default if missing
+            else:
+                # Handle dict or string format
+                if isinstance(score_value, dict):
+                    score = int(score_value.get("result", "3"))
+                else:
+                    score = int(score_value)
 
-            # Get response and justification
-            response = row.get("outputs/response", row.get("response", ""))
-            justification = row.get("quality/rationale", "No justification provided")
+            # Get response from trace
+            response_value = row.get("response", "")
+            if isinstance(response_value, dict):
+                response = response_value.get("content", str(response_value))
+            else:
+                response = str(response_value)
+
+            # Get justification from assessments or quality rationale
+            justification = "No justification provided"
+            assessments = row.get("assessments", [])
+            if isinstance(assessments, list) and len(assessments) > 0:
+                for assessment in assessments:
+                    if (
+                        isinstance(assessment, dict)
+                        and assessment.get("name") == "quality"
+                    ):
+                        justification = assessment.get("rationale", justification)
+                        break
 
             passed = score_to_passed(score)
 

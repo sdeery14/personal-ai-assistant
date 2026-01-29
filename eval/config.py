@@ -54,10 +54,10 @@ class EvalSettings(BaseSettings):
 
     # Parallelization
     eval_max_workers: int = Field(
-        default=10,
+        default=1,
         ge=1,
         le=50,
-        description="Number of parallel evaluation workers",
+        description="Number of parallel evaluation workers (default 1 for stability)",
     )
 
     # Assistant Configuration (reuse from Feature 001)

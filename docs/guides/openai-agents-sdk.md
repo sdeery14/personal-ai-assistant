@@ -1800,15 +1800,15 @@ print(result.final_output)
 
 LiteLLM supports 100+ models. Common examples:
 
-| Provider   | Model Format                          | Requires                |
-| ---------- | ------------------------------------- | ----------------------- |
-| OpenAI     | `openai/gpt-4.1`                      | `OPENAI_API_KEY`        |
-| Anthropic  | `anthropic/claude-3-5-sonnet-YYYYMMDD`| `ANTHROPIC_API_KEY`     |
-| Google     | `google/gemini-pro`                   | `GOOGLE_API_KEY`        |
-| Cohere     | `cohere/command-r-plus`               | `COHERE_API_KEY`        |
-| Azure      | `azure/deployment-name`               | Azure credentials       |
-| Ollama     | `ollama/llama2`                       | Local Ollama server     |
-| Together   | `together_ai/meta-llama/...`          | `TOGETHERAI_API_KEY`    |
+| Provider  | Model Format                           | Requires             |
+| --------- | -------------------------------------- | -------------------- |
+| OpenAI    | `openai/gpt-4.1`                       | `OPENAI_API_KEY`     |
+| Anthropic | `anthropic/claude-3-5-sonnet-YYYYMMDD` | `ANTHROPIC_API_KEY`  |
+| Google    | `google/gemini-pro`                    | `GOOGLE_API_KEY`     |
+| Cohere    | `cohere/command-r-plus`                | `COHERE_API_KEY`     |
+| Azure     | `azure/deployment-name`                | Azure credentials    |
+| Ollama    | `ollama/llama2`                        | Local Ollama server  |
+| Together  | `together_ai/meta-llama/...`           | `TOGETHERAI_API_KEY` |
 
 **Full list**: [LiteLLM Providers Docs](https://docs.litellm.ai/docs/providers)
 
@@ -1869,12 +1869,14 @@ os.environ["OPENAI_AGENTS_ENABLE_LITELLM_SERIALIZER_PATCH"] = "true"
 **Model Not Found**
 
 Ensure the provider format is correct:
+
 - ✅ `anthropic/claude-3-5-sonnet-20240620`
 - ❌ `claude-3-5-sonnet` (missing provider prefix)
 
 **API Key Issues**
 
 LiteLLM expects environment variables for most providers:
+
 - `ANTHROPIC_API_KEY` for Anthropic
 - `GOOGLE_API_KEY` for Google
 - `COHERE_API_KEY` for Cohere
@@ -1884,12 +1886,14 @@ Or pass explicitly via `api_key` parameter.
 ### When to Use LiteLLM
 
 **Use LiteLLM when:**
+
 - Testing across multiple providers for cost/performance comparison
 - Migrating from OpenAI to another provider
 - Using local/custom models during development
 - Compliance requires specific providers
 
 **Stick with OpenAI models when:**
+
 - You only use OpenAI (simpler, no extra dependency)
 - You need cutting-edge features (may not be in LiteLLM yet)
 - Maximum stability is critical (LiteLLM is beta)
@@ -1926,12 +1930,12 @@ This is a requirement of MLflow 3.x's judge framework, not the Agents SDK direct
 
 ## Changelog
 
-| Date       | Change                                                     |
-| ---------- | ---------------------------------------------------------- |
-| 2026-01-29 | Add LiteLLM integration section for non-OpenAI models      |
-| 2026-01-28 | Add Tracing section with OpenAI & MLflow integration       |
-| 2026-01-28 | Add Guardrails section for security & validation           |
-| 2026-01-28 | Add Handoffs, Context, Modular Architecture sections       |
-| 2026-01-28 | Add MCP Servers section with patterns & gotchas            |
-| 2026-01-28 | Add Function Tools section with patterns & gotchas         |
-| 2026-01-28 | Initial guide created from Feature 001 learnings           |
+| Date       | Change                                                |
+| ---------- | ----------------------------------------------------- |
+| 2026-01-29 | Add LiteLLM integration section for non-OpenAI models |
+| 2026-01-28 | Add Tracing section with OpenAI & MLflow integration  |
+| 2026-01-28 | Add Guardrails section for security & validation      |
+| 2026-01-28 | Add Handoffs, Context, Modular Architecture sections  |
+| 2026-01-28 | Add MCP Servers section with patterns & gotchas       |
+| 2026-01-28 | Add Function Tools section with patterns & gotchas    |
+| 2026-01-28 | Initial guide created from Feature 001 learnings      |
