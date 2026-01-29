@@ -9,6 +9,7 @@
 ## Overview
 
 MLflow 3.x provides a unified GenAI evaluation framework for LLM applications. This guide documents patterns for:
+
 - **Agent evaluation** with tool-calling assessment
 - **Evaluation datasets** for systematic test management
 - **LLM-as-a-judge scorers** (predefined and custom)
@@ -268,10 +269,10 @@ results = mlflow.genai.evaluate(
 
 ### Built-in Agent Scorers
 
-| Scorer                | What It Evaluates                    | Requires Trace |
-| --------------------- | ------------------------------------ | -------------- |
-| `ToolCallEfficiency`  | Are tool calls efficient?            | Yes            |
-| `ToolCallCorrectness` | Are tool calls and arguments correct?| Yes            |
+| Scorer                | What It Evaluates                     | Requires Trace |
+| --------------------- | ------------------------------------- | -------------- |
+| `ToolCallEfficiency`  | Are tool calls efficient?             | Yes            |
+| `ToolCallCorrectness` | Are tool calls and arguments correct? | Yes            |
 
 ### Parallelization
 
@@ -360,12 +361,12 @@ dataset.merge_records(annotated_traces)
 
 ### Source Types
 
-| Source Type | Description                          | When Assigned            |
-| ----------- | ------------------------------------ | ------------------------ |
-| `TRACE`     | Records from production traces       | Auto: from search_traces |
-| `HUMAN`     | Subject matter expert annotations    | Auto: has expectations   |
-| `CODE`      | Programmatically generated           | Auto: no expectations    |
-| `DOCUMENT`  | From documentation/specs             | Manual override only     |
+| Source Type | Description                       | When Assigned            |
+| ----------- | --------------------------------- | ------------------------ |
+| `TRACE`     | Records from production traces    | Auto: from search_traces |
+| `HUMAN`     | Subject matter expert annotations | Auto: has expectations   |
+| `CODE`      | Programmatically generated        | Auto: no expectations    |
+| `DOCUMENT`  | From documentation/specs          | Manual override only     |
 
 ### Dataset Benefits
 
@@ -411,21 +412,21 @@ results = mlflow.genai.evaluate(
 
 ### Single-Turn Scorers
 
-| Scorer                   | What It Evaluates                                  | Needs Expectations | Needs Trace |
-| ------------------------ | -------------------------------------------------- | ------------------ | ----------- |
-| `RelevanceToQuery`       | Does response address the user's input?            | No                 | No          |
-| `Correctness`            | Are expected facts in the response?                | Yes                | No          |
-| `Completeness`           | Does agent address all questions?                  | No                 | No          |
-| `Fluency`                | Is response grammatically correct?                 | No                 | No          |
-| `Guidelines`             | Does response adhere to custom guidelines?         | Yes                | No          |
-| `ExpectationsGuidelines` | Does response meet expectations + guidelines?      | Yes                | No          |
-| `Safety`                 | Avoids harmful/toxic content?                      | No                 | No          |
-| `Equivalence`            | Is response equivalent to expected output?         | Yes                | No          |
-| `RetrievalGroundedness`  | Is response grounded in retrieved info?            | No                 | Yes         |
-| `RetrievalRelevance`     | Are retrieved docs relevant?                       | No                 | Yes         |
-| `RetrievalSufficiency`   | Do retrieved docs have all needed info?            | Yes                | Yes         |
-| `ToolCallCorrectness`    | Are tool calls and arguments correct?              | No                 | Yes         |
-| `ToolCallEfficiency`     | Are tool calls efficient?                          | No                 | Yes         |
+| Scorer                   | What It Evaluates                             | Needs Expectations | Needs Trace |
+| ------------------------ | --------------------------------------------- | ------------------ | ----------- |
+| `RelevanceToQuery`       | Does response address the user's input?       | No                 | No          |
+| `Correctness`            | Are expected facts in the response?           | Yes                | No          |
+| `Completeness`           | Does agent address all questions?             | No                 | No          |
+| `Fluency`                | Is response grammatically correct?            | No                 | No          |
+| `Guidelines`             | Does response adhere to custom guidelines?    | Yes                | No          |
+| `ExpectationsGuidelines` | Does response meet expectations + guidelines? | Yes                | No          |
+| `Safety`                 | Avoids harmful/toxic content?                 | No                 | No          |
+| `Equivalence`            | Is response equivalent to expected output?    | Yes                | No          |
+| `RetrievalGroundedness`  | Is response grounded in retrieved info?       | No                 | Yes         |
+| `RetrievalRelevance`     | Are retrieved docs relevant?                  | No                 | Yes         |
+| `RetrievalSufficiency`   | Do retrieved docs have all needed info?       | Yes                | Yes         |
+| `ToolCallCorrectness`    | Are tool calls and arguments correct?         | No                 | Yes         |
+| `ToolCallEfficiency`     | Are tool calls efficient?                     | No                 | Yes         |
 
 ### Multi-Turn Scorers (Conversations)
 
@@ -499,7 +500,7 @@ quality_judge = make_judge(
 
 ## Scoring Scale
 - **5**: Excellent - fully addresses question
-- **4**: Good - correct with minor issues  
+- **4**: Good - correct with minor issues
 - **3**: Acceptable - partially addresses
 - **2**: Poor - significantly misses point
 - **1**: Unacceptable - completely wrong
@@ -526,10 +527,10 @@ def custom_metric(inputs, outputs, expectations) -> float:
 
 ### Choosing Judge Models
 
-| Development Stage | Recommended Model        | Why                                |
-| ----------------- | ------------------------ | ---------------------------------- |
-| Early (inner loop)| GPT-4o, Claude Opus      | Deep exploration, identify issues  |
-| Production        | GPT-4o-mini, Claude Haiku| Cost-effective at scale            |
+| Development Stage  | Recommended Model         | Why                               |
+| ------------------ | ------------------------- | --------------------------------- |
+| Early (inner loop) | GPT-4o, Claude Opus       | Deep exploration, identify issues |
+| Production         | GPT-4o-mini, Claude Haiku | Cost-effective at scale           |
 
 ---
 
@@ -586,14 +587,14 @@ results = mlflow.genai.evaluate(
 
 ### Trace Features
 
-| Feature                  | Description                                    |
-| ------------------------ | ---------------------------------------------- |
-| **OpenTelemetry**        | Fully compatible, no vendor lock-in            |
-| **Framework Agnostic**   | 20+ library integrations                       |
-| **Async Logging**        | Non-blocking for production                    |
-| **PII Redaction**        | Mask sensitive data                            |
-| **Sampling**             | Control trace throughput                       |
-| **Session Grouping**     | Group traces by user/session                   |
+| Feature                | Description                         |
+| ---------------------- | ----------------------------------- |
+| **OpenTelemetry**      | Fully compatible, no vendor lock-in |
+| **Framework Agnostic** | 20+ library integrations            |
+| **Async Logging**      | Non-blocking for production         |
+| **PII Redaction**      | Mask sensitive data                 |
+| **Sampling**           | Control trace throughput            |
+| **Session Grouping**   | Group traces by user/session        |
 
 ### Production Tracing
 
@@ -638,18 +639,18 @@ Add to `.vscode/mcp.json`:
 
 ### Available Tools
 
-| Tool              | Description                           |
-| ----------------- | ------------------------------------- |
-| `search_traces`   | Search/filter traces in experiments   |
-| `get_trace`       | Get detailed trace information        |
-| `delete_traces`   | Delete traces by ID or timestamp      |
-| `set_trace_tag`   | Add custom tags to traces             |
-| `delete_trace_tag`| Remove tags from traces               |
-| `log_feedback`    | Log evaluation scores/judgments       |
-| `log_expectation` | Log ground truth labels               |
-| `get_assessment`  | Retrieve assessment details           |
-| `update_assessment`| Modify existing assessments          |
-| `delete_assessment`| Remove assessments                   |
+| Tool                | Description                         |
+| ------------------- | ----------------------------------- |
+| `search_traces`     | Search/filter traces in experiments |
+| `get_trace`         | Get detailed trace information      |
+| `delete_traces`     | Delete traces by ID or timestamp    |
+| `set_trace_tag`     | Add custom tags to traces           |
+| `delete_trace_tag`  | Remove tags from traces             |
+| `log_feedback`      | Log evaluation scores/judgments     |
+| `log_expectation`   | Log ground truth labels             |
+| `get_assessment`    | Retrieve assessment details         |
+| `update_assessment` | Modify existing assessments         |
+| `delete_assessment` | Remove assessments                  |
 
 ### Use Cases
 
@@ -698,12 +699,12 @@ mlflow models serve -m ./path/to/model -p 5000
 
 ### Endpoints
 
-| Endpoint          | Method | Description                    |
-| ----------------- | ------ | ------------------------------ |
-| `/invocations`    | POST   | Main prediction endpoint       |
-| `/ping`           | GET    | Health check                   |
-| `/health`         | GET    | Health check                   |
-| `/version`        | GET    | Server and model info          |
+| Endpoint       | Method | Description              |
+| -------------- | ------ | ------------------------ |
+| `/invocations` | POST   | Main prediction endpoint |
+| `/ping`        | GET    | Health check             |
+| `/health`      | GET    | Health check             |
+| `/version`     | GET    | Server and model info    |
 
 ### Input Formats
 
@@ -1129,7 +1130,7 @@ with mlflow.start_span("chat") as span:
 
 ## Changelog
 
-| Date       | Change                                         |
-| ---------- | ---------------------------------------------- |
+| Date       | Change                                                         |
+| ---------- | -------------------------------------------------------------- |
 | 2026-01-28 | Add Agent Evaluation, Datasets, Scorers, Tracing, MCP, Serving |
-| 2026-01-28 | Initial guide created for Feature 002 planning |
+| 2026-01-28 | Initial guide created for Feature 002 planning                 |
