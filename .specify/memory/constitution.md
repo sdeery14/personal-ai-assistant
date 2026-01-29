@@ -129,6 +129,22 @@ Follow-up TODOs: None
 
 ---
 
+### VIII. Reproducible Environments
+
+**NON-NEGOTIABLE**: Python dependencies must be declared in `pyproject.toml` and installed using `uv` (`uv sync`). Avoid ad-hoc installs (e.g., `pip install ...`) that bypass the lockfile/workflow.
+
+**Requirements**:
+
+- All dependencies declared in `pyproject.toml` with version constraints
+- Lock file (`uv.lock`) committed to version control
+- Development setup uses `uv sync` exclusively
+- CI/CD pipelines use `uv sync --frozen` for reproducibility
+- No manual `pip install` commands in documentation or scripts
+
+**Rationale**: Reproducible builds prevent "works on my machine" issues. Lock files ensure all environments use identical dependency versions, eliminating subtle bugs from version drift.
+
+---
+
 ## Decision Framework
 
 When principles conflict, apply this priority order:

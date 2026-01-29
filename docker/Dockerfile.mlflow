@@ -1,0 +1,13 @@
+# Custom MLflow image with PostgreSQL and S3 support
+FROM python:3.12-slim
+
+# Install system dependencies for health checks
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install MLflow 3.8.1, PostgreSQL client library, and boto3 for S3/MinIO support
+RUN pip install --no-cache-dir mlflow==3.8.1 psycopg2-binary boto3
+
+# Expose MLflow port
+EXPOSE 5000

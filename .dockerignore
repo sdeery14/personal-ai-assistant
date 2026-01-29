@@ -30,6 +30,7 @@ tests/
 
 # Documentation
 *.md
+!README.md
 docs/
 specs/
 .specify/

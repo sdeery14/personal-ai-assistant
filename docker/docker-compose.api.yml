@@ -1,8 +1,11 @@
-version: "3.8"
+# Personal AI Assistant - Chat API
+# Usage: docker compose -f docker/docker-compose.api.yml up -d
 
 services:
   chat-api:
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: chat-api
     ports:
       - "8000:8000"

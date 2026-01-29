@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "golden-dataset-schema.json",
+  "title": "Golden Dataset",
+  "description": "Schema for the evaluation golden dataset",
+  "type": "object",
+  "required": ["version", "cases"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of the dataset schema"
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional description of the dataset purpose"
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 20,
+      "description": "Array of test cases",
+      "items": {
+        "$ref": "#/$defs/TestCase"
+      }
+    }
+  },
+  "$defs": {
+    "TestCase": {
+      "type": "object",
+      "required": ["id", "user_prompt", "rubric"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$",
+          "description": "Unique case identifier"
+        },
+        "user_prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8000,
+          "description": "The question or prompt to send to the assistant"
+        },
+        "rubric": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 2000,
+          "description": "Evaluation criteria for the judge"
+        },
+        "context": {
+          "type": "string",
+          "description": "Optional notes about the test case"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional categorization tags"
+        }
+      }
+    }
+  }
+}

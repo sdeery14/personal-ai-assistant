@@ -17,3 +17,6 @@ httpx==0.26.0
 
 # Development
 python-dotenv==1.0.0
+
+# Evaluation Framework (Feature 002)
+mlflow==3.8.1
