@@ -27,7 +27,7 @@
 - [ ] T001 Create project directory structure (src/, tests/, src/api/, src/models/, src/services/)
 - [ ] T002 Create requirements.txt with pinned dependencies (fastapi==0.109.0, uvicorn[standard], openai, pydantic==2.5.0, structlog, pytest, pytest-asyncio, httpx)
 - [ ] T003 [P] Create .env.example with environment variable template (OPENAI_API_KEY, OPENAI_MODEL, MAX_TOKENS, TIMEOUT_SECONDS, LOG_LEVEL)
-- [ ] T004 [P] Create .gitignore (venv/, .env, __pycache__/, *.pyc, .pytest_cache/, htmlcov/)
+- [ ] T004 [P] Create .gitignore (venv/, .env, **pycache**/, \*.pyc, .pytest_cache/, htmlcov/)
 
 **Checkpoint**: Project structure ready for implementation
 
@@ -41,9 +41,9 @@
 
 - [ ] T005 Implement config.py with Pydantic settings (load env vars: OPENAI_API_KEY, OPENAI_MODEL, MAX_TOKENS, TIMEOUT_SECONDS, LOG_LEVEL)
 - [ ] T006 [P] Implement structlog configuration in src/services/logging_service.py (JSON output, correlation ID binding, ISO timestamps, redaction processor for api_key fields)
-- [ ] T007 [P] Create src/models/__init__.py with __all__ exports
-- [ ] T008 [P] Create src/api/__init__.py with __all__ exports
-- [ ] T009 [P] Create src/services/__init__.py with __all__ exports
+- [ ] T007 [P] Create src/models/**init**.py with **all** exports
+- [ ] T008 [P] Create src/api/**init**.py with **all** exports
+- [ ] T009 [P] Create src/services/**init**.py with **all** exports
 - [ ] T010 Create tests/conftest.py with pytest fixtures (mock OpenAI client, test app instance)
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
@@ -170,12 +170,14 @@ Within each phase, tasks marked **[P]** can run in parallel:
 ### Stop Conditions (Per User Request)
 
 ✅ **Stop when**:
+
 - A streamed response can be verified via pytest (after T017)
 - The API runs successfully in Docker (after T031)
 
 ### What to AVOID (Per User Request)
 
 ❌ **Do NOT**:
+
 - Re-plan or redesign during implementation
 - Add new architecture, tools, or abstractions not in plan.md
 - Over-optimize or refactor prematurely
@@ -185,6 +187,7 @@ Within each phase, tasks marked **[P]** can run in parallel:
 ### Key Implementation Patterns (From research.md)
 
 **FastAPI SSE Streaming**:
+
 ```python
 async def generate_stream():
     async for chunk in openai_stream:
@@ -194,6 +197,7 @@ return StreamingResponse(generate_stream(), media_type="text/event-stream")
 ```
 
 **OpenAI Streaming**:
+
 ```python
 response = client.chat.completions.create(
     model="gpt-4",
@@ -206,6 +210,7 @@ async for chunk in response:
 ```
 
 **structlog Redaction**:
+
 ```python
 def redact_sensitive(logger, method, event_dict):
     if "api_key" in event_dict:
@@ -214,6 +219,7 @@ def redact_sensitive(logger, method, event_dict):
 ```
 
 **pytest Async Streaming Test**:
+
 ```python
 @pytest.mark.asyncio
 async def test_chat_streaming():
