@@ -120,9 +120,10 @@ def run_evaluation(
     eval_data = _prepare_eval_data(dataset)
 
     # Create predict function that wraps assistant
-    def predict_fn(inputs: str) -> str:
+    def predict_fn(inputs: dict[str, str]) -> str:
         """Predict function for mlflow.genai.evaluate."""
-        response = get_response(inputs, model=actual_model)
+        question = inputs.get("question", "")
+        response = get_response(question, model=actual_model)
         return response
 
     # Create judge
@@ -202,12 +203,12 @@ def _prepare_eval_data(dataset: GoldenDataset) -> list[dict[str, Any]]:
     Prepare dataset for mlflow.genai.evaluate().
 
     Converts GoldenDataset to the format expected by MLflow 3.x:
-    - inputs: The user question (string)
+    - inputs: Dictionary with 'question' key
     - expectations: Dictionary with 'rubric' key
     """
     return [
         {
-            "inputs": case.user_prompt,
+            "inputs": {"question": case.user_prompt},
             "expectations": {"rubric": case.rubric},
             "_case_id": case.id,  # Keep for result mapping
         }
