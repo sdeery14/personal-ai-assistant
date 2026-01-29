@@ -901,11 +901,11 @@ Guardrails protect your agent from misuse and validate inputs/outputs. Essential
 
 ### Guardrail Types
 
-| Type | When It Runs | Use Case |
-|------|--------------|----------|
-| **Input Guardrails** | Before/parallel with first agent | Block malicious input, detect abuse |
-| **Output Guardrails** | After final agent completes | Validate response quality, filter sensitive data |
-| **Tool Guardrails** | Before/after each tool call | Protect tool execution, redact secrets |
+| Type                  | When It Runs                     | Use Case                                         |
+| --------------------- | -------------------------------- | ------------------------------------------------ |
+| **Input Guardrails**  | Before/parallel with first agent | Block malicious input, detect abuse              |
+| **Output Guardrails** | After final agent completes      | Validate response quality, filter sensitive data |
+| **Tool Guardrails**   | Before/after each tool call      | Protect tool execution, redact secrets           |
 
 ### Input Guardrails
 
@@ -1115,13 +1115,13 @@ async def pii_guardrail(ctx, agent, output):
 
 ### Guardrail Best Practices
 
-| Practice | Why |
-|----------|-----|
-| Use cheap/fast models for guardrails | Save cost, reduce latency |
+| Practice                                        | Why                                          |
+| ----------------------------------------------- | -------------------------------------------- |
+| Use cheap/fast models for guardrails            | Save cost, reduce latency                    |
 | Use `run_in_parallel=False` for strict security | Prevent any agent execution on blocked input |
-| Layer multiple guardrails | Defense in depth |
-| Log guardrail triggers | Audit trail, detect patterns |
-| Keep guardrail prompts focused | One check per guardrail |
+| Layer multiple guardrails                       | Defense in depth                             |
+| Log guardrail triggers                          | Audit trail, detect patterns                 |
+| Keep guardrail prompts focused                  | One check per guardrail                      |
 
 ---
 
@@ -1156,6 +1156,232 @@ def call_with_retry(agent: Agent, prompt: str) -> str:
     result = Runner.run_sync(agent, input=prompt)
     return result.final_output
 ```
+
+---
+
+## Tracing
+
+The SDK includes built-in tracing that captures comprehensive records of agent runs: LLM generations, tool calls, handoffs, guardrails, and custom events. View traces at [OpenAI Traces Dashboard](https://platform.openai.com/traces).
+
+### Traces and Spans
+
+| Concept   | Description                                                      |
+| --------- | ---------------------------------------------------------------- |
+| **Trace** | End-to-end operation of a workflow, composed of spans            |
+| **Span**  | Individual operation with start/end time (agent, tool, LLM call) |
+
+**Trace Properties:**
+
+- `workflow_name`: Logical workflow name (e.g., "Customer service")
+- `trace_id`: Unique ID (auto-generated, format: `trace_<32_alphanumeric>`)
+- `group_id`: Optional, links multiple traces (e.g., chat thread ID)
+- `disabled`: If True, trace is not recorded
+- `metadata`: Optional metadata dict
+
+### Default Tracing (Automatic)
+
+The SDK automatically traces:
+
+| Span Type            | What It Captures                |
+| -------------------- | ------------------------------- |
+| `trace()`            | Entire `Runner.run()` execution |
+| `agent_span()`       | Each agent run                  |
+| `generation_span()`  | LLM API calls                   |
+| `function_span()`    | Function tool calls             |
+| `guardrail_span()`   | Guardrail executions            |
+| `handoff_span()`     | Agent handoffs                  |
+| `transcription_span` | Speech-to-text (voice)          |
+| `speech_span()`      | Text-to-speech (voice)          |
+
+Default trace name is "Agent workflow". Customize via `trace()` or `RunConfig`.
+
+### Creating Custom Traces
+
+Wrap multiple runs in a single trace:
+
+```python
+from agents import Agent, Runner, trace
+
+async def main():
+    agent = Agent(name="Joke generator", instructions="Tell funny jokes.")
+
+    with trace("Joke workflow"):  # Custom trace name
+        first_result = await Runner.run(agent, "Tell me a joke")
+        second_result = await Runner.run(agent, f"Rate this joke: {first_result.final_output}")
+        print(f"Joke: {first_result.final_output}")
+        print(f"Rating: {second_result.final_output}")
+```
+
+**Two ways to manage traces:**
+
+```python
+# Option 1: Context manager (recommended)
+with trace("My workflow") as my_trace:
+    await Runner.run(agent, "Hello")
+
+# Option 2: Manual start/finish
+my_trace = trace("My workflow")
+my_trace.start(mark_as_current=True)
+try:
+    await Runner.run(agent, "Hello")
+finally:
+    my_trace.finish(reset_current=True)
+```
+
+### Creating Custom Spans
+
+Use `custom_span()` for tracking custom operations:
+
+```python
+from agents import custom_span
+
+with custom_span("my_custom_operation"):
+    # Your custom code here
+    result = do_something_important()
+```
+
+Spans are automatically nested under the current trace/span via Python contextvars.
+
+### Sensitive Data Control
+
+Control what gets captured in traces:
+
+```python
+from agents import Runner, RunConfig
+
+# Disable sensitive data capture for a run
+result = await Runner.run(
+    agent,
+    input="Hello",
+    run_config=RunConfig(trace_include_sensitive_data=False),
+)
+```
+
+**What's controlled:**
+
+- `generation_span()`: LLM inputs/outputs
+- `function_span()`: Tool inputs/outputs
+- Audio spans: Base64 PCM data (voice pipelines)
+
+**Environment variable default:**
+
+```bash
+# Disable globally (set before app starts)
+export OPENAI_AGENTS_TRACE_INCLUDE_SENSITIVE_DATA=false
+```
+
+### Disabling Tracing
+
+```python
+# Method 1: Environment variable (global)
+# Set OPENAI_AGENTS_DISABLE_TRACING=1
+
+# Method 2: Per-run via RunConfig
+result = await Runner.run(
+    agent,
+    input="Hello",
+    run_config=RunConfig(tracing_disabled=True),
+)
+```
+
+> **Note:** Tracing is unavailable for Zero Data Retention (ZDR) API policies.
+
+### Custom Trace Processors
+
+Send traces to additional/alternative backends:
+
+```python
+from agents import add_trace_processor, set_trace_processors
+from agents.tracing import TracingProcessor
+
+class MyCustomProcessor(TracingProcessor):
+    def on_trace_start(self, trace):
+        # Custom logic when trace starts
+        pass
+
+    def on_span_end(self, span):
+        # Custom logic when span ends
+        send_to_my_backend(span)
+
+# Add processor (keeps OpenAI backend)
+add_trace_processor(MyCustomProcessor())
+
+# Or replace all processors (removes OpenAI backend unless re-added)
+set_trace_processors([MyCustomProcessor()])
+```
+
+### Using OpenAI Tracing with Non-OpenAI Models
+
+Get free tracing in OpenAI Dashboard even with other model providers:
+
+```python
+from agents import set_tracing_export_api_key, Agent, Runner
+from agents.extensions.models.litellm_model import LitellmModel
+import os
+
+# Set OpenAI key for tracing only
+tracing_api_key = os.environ["OPENAI_API_KEY"]
+set_tracing_export_api_key(tracing_api_key)
+
+# Use a different model provider
+model = LitellmModel(
+    model="anthropic/claude-3-opus",
+    api_key=os.environ["ANTHROPIC_API_KEY"],
+)
+
+agent = Agent(name="Assistant", model=model)
+```
+
+**Per-run tracing key override:**
+
+```python
+result = await Runner.run(
+    agent,
+    input="Hello",
+    run_config=RunConfig(tracing={"api_key": "sk-tracing-123"}),
+)
+```
+
+### External Tracing Integrations
+
+The SDK integrates with many observability platforms:
+
+| Platform                     | Documentation Link                                                                     |
+| ---------------------------- | -------------------------------------------------------------------------------------- |
+| **MLflow (self-hosted/OSS)** | [mlflow.org/docs/latest/tracing/integrations/openai-agent][mlflow]                     |
+| MLflow (Databricks hosted)   | [docs.databricks.com][databricks]                                                      |
+| Weights & Biases             | [weave-docs.wandb.ai][wandb]                                                           |
+| Arize-Phoenix                | [docs.arize.com/phoenix][arize]                                                        |
+| LangSmith                    | [docs.smith.langchain.com][langsmith]                                                  |
+| Langfuse                     | [langfuse.com/docs/integrations/openaiagentssdk][langfuse]                             |
+| Braintrust                   | [braintrust.dev/docs/guides/traces/integrations][braintrust]                           |
+| Pydantic Logfire             | [logfire.pydantic.dev/docs/integrations/llms/openai][logfire]                          |
+| AgentOps                     | [docs.agentops.ai/v1/integrations/agentssdk][agentops]                                 |
+| Comet Opik                   | [comet.com/docs/opik/tracing/integrations/openai_agents][opik]                         |
+| Langtrace                    | [docs.langtrace.ai/supported-integrations/llm-frameworks/openai-agents-sdk][langtrace] |
+
+[mlflow]: https://mlflow.org/docs/latest/tracing/integrations/openai-agent
+[databricks]: https://docs.databricks.com/aws/en/mlflow/mlflow-tracing
+[wandb]: https://weave-docs.wandb.ai/guides/integrations/openai_agents
+[arize]: https://docs.arize.com/phoenix/tracing/integrations-tracing/openai-agents-sdk
+[langsmith]: https://docs.smith.langchain.com/observability/how_to_guides/trace_with_openai_agents_sdk
+[langfuse]: https://langfuse.com/docs/integrations/openaiagentssdk/openai-agents
+[braintrust]: https://braintrust.dev/docs/guides/traces/integrations
+[logfire]: https://logfire.pydantic.dev/docs/integrations/llms/openai
+[agentops]: https://docs.agentops.ai/v1/integrations/agentssdk
+[opik]: https://www.comet.com/docs/opik/tracing/integrations/openai_agents
+[langtrace]: https://docs.langtrace.ai/supported-integrations/llm-frameworks/openai-agents-sdk
+
+### Tracing Best Practices
+
+| Practice                               | Why                                        |
+| -------------------------------------- | ------------------------------------------ |
+| Use `group_id` for conversations       | Link multi-turn traces                     |
+| Set meaningful `workflow_name`         | Easier filtering in dashboard              |
+| Disable sensitive data in production   | Compliance, reduce storage                 |
+| Use custom spans for external services | Full observability                         |
+| Consider MLflow for local development  | Self-hosted, no data leaves your infra     |
+| Wrap related runs in single `trace()`  | See full workflow context                  |
 
 ---
 
@@ -1479,12 +1705,60 @@ async def security_check(...): ...
 async def security_check(...): ...
 ```
 
+### 16. Tracing Sensitive Data in Production
+
+❌ **Wrong:**
+
+```python
+# Default captures sensitive data - may violate compliance!
+result = await Runner.run(agent, input="User PII here...")
+```
+
+✅ **Correct:**
+
+```python
+result = await Runner.run(
+    agent,
+    input="User PII here...",
+    run_config=RunConfig(trace_include_sensitive_data=False),
+)
+```
+
+### 17. Manual Trace Management
+
+❌ **Wrong:**
+
+```python
+# Forgot to reset current - traces will be corrupted
+my_trace = trace("My workflow")
+my_trace.start()  # Missing mark_as_current!
+await Runner.run(agent, "Hello")
+my_trace.finish()  # Missing reset_current!
+```
+
+✅ **Correct:**
+
+```python
+# Use context manager (recommended)
+with trace("My workflow"):
+    await Runner.run(agent, "Hello")
+
+# Or manual with proper flags
+my_trace = trace("My workflow")
+my_trace.start(mark_as_current=True)
+try:
+    await Runner.run(agent, "Hello")
+finally:
+    my_trace.finish(reset_current=True)
+```
+
 ---
 
 ## Resources
 
 - [OpenAI Agents SDK GitHub](https://github.com/openai/openai-agents-python)
 - [OpenAI API Reference](https://platform.openai.com/docs/api-reference)
+- [OpenAI Traces Dashboard](https://platform.openai.com/traces) - View agent traces
 - [Model Context Protocol](https://modelcontextprotocol.io/) - MCP specification
 - [MCP Examples](https://github.com/openai/openai-agents-python/tree/main/examples/mcp) - stdio, SSE, HTTP samples
 - [Multi-Agent Patterns](https://github.com/openai/openai-agents-python/tree/main/examples/agent_patterns) - Orchestration examples
@@ -1495,6 +1769,7 @@ async def security_check(...): ...
 
 | Date       | Change                                               |
 | ---------- | ---------------------------------------------------- |
+| 2026-01-28 | Add Tracing section with OpenAI & MLflow integration |
 | 2026-01-28 | Add Guardrails section for security & validation     |
 | 2026-01-28 | Add Handoffs, Context, Modular Architecture sections |
 | 2026-01-28 | Add MCP Servers section with patterns & gotchas      |
