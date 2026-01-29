@@ -25,7 +25,7 @@
 **Purpose**: Create project structure and install dependencies
 
 - [ ] T001 Create project directory structure (src/, tests/, src/api/, src/models/, src/services/)
-- [ ] T002 Create requirements.txt with pinned dependencies (fastapi==0.109.0, uvicorn[standard], openai, pydantic==2.5.0, structlog, pytest, pytest-asyncio, httpx)
+- [ ] T002 Create requirements.txt with pinned dependencies (fastapi==0.109.0, uvicorn[standard], openai-agents, pydantic==2.5.0, structlog, pytest, pytest-asyncio, httpx)
 - [ ] T003 [P] Create .env.example with environment variable template (OPENAI_API_KEY, OPENAI_MODEL, MAX_TOKENS, TIMEOUT_SECONDS, LOG_LEVEL)
 - [ ] T004 [P] Create .gitignore (venv/, .env, **pycache**/, \*.pyc, .pytest_cache/, htmlcov/)
 
@@ -44,7 +44,7 @@
 - [ ] T007 [P] Create src/models/**init**.py with **all** exports
 - [ ] T008 [P] Create src/api/**init**.py with **all** exports
 - [ ] T009 [P] Create src/services/**init**.py with **all** exports
-- [ ] T010 Create tests/conftest.py with pytest fixtures (mock OpenAI client, test app instance)
+- [ ] T010 Create tests/conftest.py with pytest fixtures (mock agents.Runner, test app instance)
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -60,7 +60,7 @@
 
 - [ ] T011 [P] [US1] Create ChatRequest model in src/models/request.py (message: str, model: str, max_tokens: int, validation: non-empty, ≤8000 chars, model in allowlist)
 - [ ] T012 [P] [US1] Create StreamChunk and ChatResponse models in src/models/response.py (content, sequence, is_final, correlation_id, status, duration_ms, total_tokens)
-- [ ] T013 [US1] Implement ChatService.stream_completion in src/services/chat_service.py (OpenAI client, chat.completions.create with stream=True, async generator yielding chunks)
+- [ ] T013 [US1] Implement ChatService.stream_completion in src/services/chat_service.py (agents.Agent + Runner.run_streamed, filter ResponseTextDeltaEvent, async generator yielding chunks)
 - [ ] T014 [US1] Create FastAPI app in src/main.py (app initialization, CORS middleware, startup/shutdown events)
 - [ ] T015 [US1] Implement /chat endpoint in src/api/routes.py (POST handler, parse ChatRequest, generate correlation_id UUID4, call ChatService, return StreamingResponse with media_type="text/event-stream", yield SSE format "data: {json}\n\n")
 - [ ] T016 [US1] Implement /health endpoint in src/api/routes.py (GET handler, return {"status": "healthy", "timestamp": ISO8601})
@@ -79,7 +79,7 @@
 ### Implementation for User Story 2
 
 - [ ] T018 [US2] Add Pydantic validation error handler in src/api/routes.py (catch RequestValidationError, return 400 with ErrorResponse: error, detail, correlation_id)
-- [ ] T019 [US2] Add OpenAI API error handling in src/services/chat_service.py (try/except OpenAIError, stream error chunk with user-friendly message per constitution)
+- [ ] T019 [US2] Add Agents SDK error handling in src/services/chat_service.py (try/except for Runner exceptions, stream error chunk with user-friendly message per constitution)
 - [ ] T020 [US2] Add timeout handling in src/api/routes.py (asyncio.timeout(TIMEOUT_SECONDS) context manager, catch TimeoutError, return 504 with three-part error message)
 - [ ] T021 [US2] Write unit tests in tests/unit/test_models.py (test ChatRequest validation: empty message, message >8000 chars, invalid model, max_tokens out of range)
 - [ ] T022 [US2] Write integration test in tests/integration/test_chat_endpoint.py (test error scenarios: empty message → 400, invalid model → 400, mock OpenAI error → error chunk streamed)
@@ -196,17 +196,22 @@ async def generate_stream():
 return StreamingResponse(generate_stream(), media_type="text/event-stream")
 ```
 
-**OpenAI Streaming**:
+**OpenAI Agents SDK Streaming**:
 
 ```python
-response = client.chat.completions.create(
-    model="gpt-4",
-    messages=[{"role": "user", "content": message}],
-    stream=True
+from agents import Agent, Runner
+from openai.types.responses import ResponseTextDeltaEvent
+
+agent = Agent(
+    name="Assistant",
+    instructions="You are a helpful assistant.",
 )
-async for chunk in response:
-    if chunk.choices[0].delta.content:
-        yield chunk.choices[0].delta.content
+
+async def stream_response(user_message: str):
+    result = Runner.run_streamed(agent, input=user_message)
+    async for event in result.stream_events():
+        if event.type == "raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
+            yield event.data.delta
 ```
 
 **structlog Redaction**:

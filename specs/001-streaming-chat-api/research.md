@@ -45,40 +45,45 @@ async def chat(request: ChatRequest):
 
 ### 2. OpenAI Agents SDK Integration
 
-**Question**: How to use OpenAI Agents SDK (not basic client) for streaming chat completions?
+**Question**: How to use OpenAI Agents SDK for streaming chat completions?
 
-**Decision**: Use `openai.agents.Agent` with streaming enabled, wrap in service layer
+**Decision**: Use `openai-agents` package with `Agent` and `Runner.run_streamed()` for streaming
 
 **Rationale**:
 
-- Agents SDK provides higher-level abstractions for chat interactions
-- Built-in streaming support via `stream=True` parameter
+- Agents SDK is a separate package (`openai-agents`) providing higher-level abstractions
+- Built-in streaming via `Runner.run_streamed()` with event-based architecture
 - Handles token counting and error recovery internally
-- Aligns with future tool/function calling in later features
+- Native support for tools/function calling in later features
+- Built-in tracing compatible with OpenAI dashboard
 
 **Pattern**:
 
 ```python
-from openai import OpenAI
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+from agents import Agent, Runner
+from openai.types.responses import ResponseTextDeltaEvent
 
-# Agents SDK pattern for streaming
-response = client.chat.completions.create(
-    model="gpt-4",
-    messages=[{"role": "user", "content": message}],
-    stream=True
+# Define agent with instructions
+agent = Agent(
+    name="Assistant",
+    instructions="You are a helpful assistant.",
 )
 
-for chunk in response:
-    if chunk.choices[0].delta.content:
-        yield chunk.choices[0].delta.content
+# Stream response token by token
+async def stream_response(user_message: str):
+    result = Runner.run_streamed(agent, input=user_message)
+    async for event in result.stream_events():
+        if event.type == "raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
+            yield event.data.delta
+    # Access final result after streaming
+    return result.final_output
 ```
 
-**Note**: Agents SDK is built on top of the standard OpenAI client. The "Agents" terminology refers to the structured patterns for multi-turn conversations and tool use, not a separate SDK package. For this feature, we use `openai` package with chat completions streaming.
+**Note**: The `openai-agents` package is a separate SDK from the base `openai` package. It provides Agent, Runner, Handoffs, Guardrails, and Sessions abstractions. Install via `pip install openai-agents`.
 
 **Alternatives Considered**:
 
-- Basic `openai` client: Valid choice, but less abstraction for future agent patterns
+- Basic `openai` client: Lower-level, requires more boilerplate for agent patterns
 - LangChain: Too heavy, introduces unnecessary complexity
 - Direct HTTP calls: Reinvents the wheel, error-prone
 

@@ -14,7 +14,7 @@ Enable basic chat interaction where users send text messages via HTTP and receiv
 ## Technical Context
 
 **Language/Version**: Python 3.11
-**Primary Dependencies**: FastAPI 0.109+, OpenAI Agents SDK (latest), Pydantic 2.x, structlog
+**Primary Dependencies**: FastAPI 0.109+, openai-agents (latest), Pydantic 2.x, structlog
 **Storage**: N/A (stateless, no persistence)
 **Testing**: pytest, pytest-asyncio, httpx (async client for testing)
 **Target Platform**: Docker container (Linux-based), single-container deployment
