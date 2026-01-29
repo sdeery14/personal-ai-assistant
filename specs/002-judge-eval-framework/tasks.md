@@ -202,15 +202,15 @@ T030: Update README.md
 
 When all items below are checked, Feature 002 is DONE:
 
-- [ ] `docker compose -f docker/docker-compose.yml up -d` starts MLflow stack
-- [ ] `python -m eval` runs full evaluation suite
-- [ ] Each case shows: score (1-5), pass/fail, justification
-- [ ] Summary shows: total, passed, failed, errors, pass rate, avg score, decision
-- [ ] Exit code 0 when pass_rate ≥ 80% AND avg_score ≥ 3.5
-- [ ] Exit code 1 when thresholds not met
-- [ ] Results visible in MLflow UI at http://localhost:5000
-- [ ] All tests pass: `pytest tests/unit/test_eval*.py tests/integration/test_eval*.py`
-- [ ] quickstart.md validated end-to-end
+- [x] `docker compose -f docker/docker-compose.yml up -d` starts MLflow stack
+- [x] `python -m eval` runs full evaluation suite
+- [x] Each case shows: score (1-5), pass/fail, justification
+- [x] Summary shows: total, passed, failed, errors, pass rate, avg score, decision
+- [x] Exit code 0 when pass_rate ≥ 80% AND avg_score ≥ 3.5
+- [x] Exit code 1 when thresholds not met
+- [x] Results visible in MLflow UI at http://localhost:5000
+- [x] All tests pass: `pytest tests/unit/test_eval*.py tests/integration/test_eval*.py`
+- [x] quickstart.md validated end-to-end
 
 ---
 
