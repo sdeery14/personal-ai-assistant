@@ -25,19 +25,16 @@ This guide walks you through running LLM-as-a-judge evaluations against the Pers
 
 ```bash
 # From repository root
-cd docker
+cp docker/.env.example docker/.env
 
-# Copy environment template
-cp .env.example .env
-
-# Edit .env and add your OpenAI API key
+# Edit docker/.env and add your OpenAI API key
 # OPENAI_API_KEY=sk-your-key-here
 
 # Start the stack (Postgres + MinIO + MLflow)
-docker compose up -d
+docker compose -f docker/docker-compose.mlflow.yml up -d
 
 # Verify services are running
-docker compose ps
+docker compose -f docker/docker-compose.mlflow.yml ps
 ```
 
 **Services started:**
@@ -170,8 +167,8 @@ python -m eval [OPTIONS]
 
 ### MLflow UI shows no experiments
 
-1. Ensure MLflow stack is running: `docker compose ps`
-2. Check MLflow logs: `docker compose logs mlflow`
+1. Ensure MLflow stack is running: `docker compose -f docker/docker-compose.mlflow.yml ps`
+2. Check MLflow logs: `docker compose -f docker/docker-compose.mlflow.yml logs mlflow`
 3. Verify network connectivity: `curl http://localhost:5000/health`
 
 ### Evaluation errors with "Connection refused"
@@ -195,11 +192,10 @@ python -m eval [OPTIONS]
 ## Stopping the Stack
 
 ```bash
-cd docker
-docker compose down
+docker compose -f docker/docker-compose.mlflow.yml down
 
 # To also remove volumes (all data):
-docker compose down -v
+docker compose -f docker/docker-compose.mlflow.yml down -v
 ```
 
 ---

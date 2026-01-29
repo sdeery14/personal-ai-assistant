@@ -135,6 +135,7 @@ class TestJudgeInstructions:
         monkeypatch.setenv("OPENAI_MODEL", "gpt-4.1")
 
         from eval.config import reset_settings
+
         reset_settings()
 
         judge = create_quality_judge()
@@ -156,6 +157,7 @@ class TestJudgeInstructions:
         monkeypatch.setenv("OPENAI_MODEL", "gpt-4.1")
 
         from eval.config import reset_settings
+
         reset_settings()
 
         judge = create_quality_judge()

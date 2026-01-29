@@ -4,7 +4,7 @@ version: "3.8"
 # Services: PostgreSQL (backend store), MinIO (artifact store), MLflow Server
 #
 # Usage:
-#   docker compose -f docker/docker-compose.yml up -d
+#   docker compose -f docker/docker-compose.mlflow.yml up -d
 #   Open MLflow UI at http://localhost:5000
 #   MinIO Console at http://localhost:9001 (minioadmin/minioadmin)
 

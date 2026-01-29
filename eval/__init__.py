@@ -18,7 +18,7 @@ Modules:
 
 See also:
     - specs/002-judge-eval-framework/quickstart.md for setup guide
-    - docker/docker-compose.yml for MLflow stack
+    - docker/docker-compose.mlflow.yml for MLflow stack
 """
 
 __version__ = "0.1.0"

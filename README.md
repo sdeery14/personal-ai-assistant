@@ -106,13 +106,13 @@ docker run -d \
 export OPENAI_API_KEY=sk-your-key-here
 
 # Start the service
-docker-compose up -d
+docker compose -f docker/docker-compose.api.yml up -d
 
 # View logs
-docker-compose logs -f
+docker compose -f docker/docker-compose.api.yml logs -f
 
 # Stop
-docker-compose down
+docker compose -f docker/docker-compose.api.yml down
 ```
 
 ## API Reference
@@ -195,7 +195,7 @@ The project includes an LLM-as-a-judge evaluation framework to measure assistant
 
 ```bash
 # 1. Start the MLflow stack (Postgres + MinIO + MLflow)
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose.mlflow.yml up -d
 
 # 2. Run evaluation
 uv run python -m eval
