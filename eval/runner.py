@@ -297,7 +297,7 @@ def _process_eval_results(
                     score=1,
                     passed=False,
                     justification=f"Error: {str(e)}",
-                    duration_ms=0,
+                    duration_ms=1,  # Minimum valid duration
                     error=str(e),
                 )
             )

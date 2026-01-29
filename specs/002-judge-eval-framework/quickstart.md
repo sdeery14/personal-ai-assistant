@@ -52,17 +52,21 @@ docker compose ps
 # From repository root (not docker/)
 cd ..
 
-# Activate virtual environment
-source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-
-# Install evaluation dependencies (if not already)
-pip install -r requirements.txt
+# Install dependencies using uv (recommended)
+uv sync
 
 # Run evaluation with defaults
-python -m eval
+uv run python -m eval
 
 # Or with options
-python -m eval --verbose --pass-threshold 0.75
+uv run python -m eval --verbose --pass-threshold 0.75
+```
+
+**Alternative (pip)**: If you don't have uv, you can use pip:
+
+```bash
+pip install -r requirements.txt
+python -m eval
 ```
 
 ### 3. View Results in MLflow

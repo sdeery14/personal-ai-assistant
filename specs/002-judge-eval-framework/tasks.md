@@ -110,7 +110,7 @@
 
 - [x] T026 Create `tests/integration/test_eval_runner.py` — full eval flow with mocked OpenAI responses
 - [x] T027 Validate error handling: API failures (retry 3x), timeout cases (mark as error), invalid dataset (fail fast)
-- [ ] T028 Run quickstart.md validation: compose up → eval → view in MLflow UI
+- [x] T028 Run quickstart.md validation: compose up → eval → view in MLflow UI
 
 **Checkpoint**: All tests pass: `pytest tests/unit/test_eval*.py tests/integration/test_eval*.py`
 
@@ -122,7 +122,7 @@
 
 - [x] T029 [P] Verify `specs/002-judge-eval-framework/quickstart.md` is complete and accurate
 - [x] T030 [P] Update root `README.md` with Evaluation section (commands, links to quickstart)
-- [ ] T031 Final validation: full workflow from `docker compose up` through eval to MLflow UI
+- [x] T031 Final validation: full workflow from `docker compose up` through eval to MLflow UI
 
 ---
 

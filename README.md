@@ -198,7 +198,7 @@ The project includes an LLM-as-a-judge evaluation framework to measure assistant
 docker compose -f docker/docker-compose.yml up -d
 
 # 2. Run evaluation
-python -m eval
+uv run python -m eval
 
 # 3. View results in MLflow UI
 # Open http://localhost:5000
@@ -208,16 +208,16 @@ python -m eval
 
 ```bash
 # Run with defaults
-python -m eval
+uv run python -m eval
 
 # Validate dataset only (no evaluation)
-python -m eval --dry-run
+uv run python -m eval --dry-run
 
 # Run with verbose output (show per-case details)
-python -m eval --verbose
+uv run python -m eval --verbose
 
 # Custom thresholds
-python -m eval --pass-threshold 0.90 --score-threshold 4.0
+uv run python -m eval --pass-threshold 0.90 --score-threshold 4.0
 ```
 
 **CLI Options:**

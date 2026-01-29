@@ -72,18 +72,19 @@ class TestDatasetPreparation:
     """Tests for _prepare_eval_data function."""
 
     def test_prepare_eval_data_structure(self, minimal_dataset_file):
-        """Should convert dataset to MLflow-compatible format."""
+        """Should convert dataset to MLflow 3.x-compatible format."""
         dataset = load_dataset(minimal_dataset_file)
         eval_data = _prepare_eval_data(dataset)
 
         assert len(eval_data) == 5
 
         for item in eval_data:
+            # MLflow 3.x uses top-level string values
             assert "inputs" in item
             assert "expectations" in item
             assert "_case_id" in item
-            assert "question" in item["inputs"]
-            assert "rubric" in item["expectations"]
+            assert isinstance(item["inputs"], str)
+            assert isinstance(item["expectations"], str)
 
     def test_prepare_eval_data_preserves_content(self, minimal_dataset_file):
         """Should preserve original content in converted format."""
@@ -93,8 +94,9 @@ class TestDatasetPreparation:
         first_case = dataset.cases[0]
         first_data = eval_data[0]
 
-        assert first_data["inputs"]["question"] == first_case.user_prompt
-        assert first_data["expectations"]["rubric"] == first_case.rubric
+        # MLflow 3.x format: inputs and expectations are strings
+        assert first_data["inputs"] == first_case.user_prompt
+        assert first_data["expectations"] == first_case.rubric
         assert first_data["_case_id"] == first_case.id
 
 
