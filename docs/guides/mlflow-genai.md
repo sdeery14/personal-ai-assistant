@@ -159,15 +159,80 @@ print(results.metrics)
 - Each key maps to a dict of fields accessible in judge template
 - Metrics auto-aggregated as `{scorer_name}/mean`, `{scorer_name}/mode`
 
-### Pattern 3: With Prediction Function
+### Pattern 3: Prediction Function Parameter Matching
 
-When you need to generate outputs dynamically:
+**CRITICAL**: The keys in your `inputs` dictionary must match the parameter names of your `predict_fn`.
+
+#### Correct Example
 
 ```python
-def predict_fn(inputs: dict) -> dict:
-    """Generate assistant response."""
-    response = get_assistant_response(inputs["question"])
-    return {"response": response}
+# ✅ CORRECT: Parameter name matches inputs key
+def predict_fn(question: str) -> str:
+    """Parameter name 'question' matches inputs key 'question'."""
+    response = get_assistant_response(question)
+    return response
+
+eval_data = [
+    {
+        "inputs": {"question": "What is 2+2?"},  # Key matches parameter name
+        "expectations": {"rubric": "Should correctly answer."},
+    },
+]
+
+results = mlflow.genai.evaluate(
+    data=eval_data,
+    predict_fn=predict_fn,
+    scorers=[quality_judge],
+)
+```
+
+#### Multiple Parameters
+
+```python
+# ✅ CORRECT: Multiple parameters
+def predict_fn(question: str, context: str) -> str:
+    """Parameters match inputs keys."""
+    response = get_assistant_response(question, context)
+    return response
+
+eval_data = [
+    {
+        "inputs": {
+            "question": "What is 2+2?",
+            "context": "mathematics",
+        },
+        "expectations": {"rubric": "Should correctly answer."},
+    },
+]
+```
+
+#### Common Mistake
+
+```python
+# ❌ WRONG: Parameter name doesn't match inputs structure
+def predict_fn(inputs: dict) -> str:
+    """DON'T DO THIS - MLflow won't know how to map the data."""
+    question = inputs.get("question")
+    return get_assistant_response(question)
+
+# This will fail with:
+# "The `inputs` column must be a dictionary with the parameter names 
+#  of the `predict_fn` as keys"
+```
+
+**Why this matters**: MLflow inspects your function signature and maps the `inputs` dictionary keys to function parameters by name. If the parameter is named `inputs`, MLflow expects `{"inputs": {"inputs": {...}}}` which is confusing and wrong.
+
+**Best practice**: Name your parameters after the actual input fields (e.g., `question`, `context`, `query`), not generic names like `inputs` or `data`.
+
+### Pattern 4: With Prediction Function (Returns Dict)
+
+When you need to generate outputs dynamically with multiple fields:
+
+```python
+def predict_fn(question: str) -> dict:
+    """Generate assistant response - returns dict for multiple output fields."""
+    response = get_assistant_response(question)
+    return {"response": response, "model_used": "gpt-4.1"}
 
 # Data without outputs
 eval_data = [

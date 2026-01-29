@@ -120,9 +120,9 @@ def run_evaluation(
     eval_data = _prepare_eval_data(dataset)
 
     # Create predict function that wraps assistant
-    def predict_fn(inputs: dict[str, str]) -> str:
+    # Note: Parameter name must match the key in inputs dict
+    def predict_fn(question: str) -> str:
         """Predict function for mlflow.genai.evaluate."""
-        question = inputs.get("question", "")
         response = get_response(question, model=actual_model)
         return response
 
