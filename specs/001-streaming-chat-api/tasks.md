@@ -24,10 +24,10 @@
 
 **Purpose**: Create project structure and install dependencies
 
-- [ ] T001 Create project directory structure (src/, tests/, src/api/, src/models/, src/services/)
-- [ ] T002 Create requirements.txt with pinned dependencies (fastapi==0.109.0, uvicorn[standard], openai-agents, pydantic==2.5.0, structlog, pytest, pytest-asyncio, httpx)
-- [ ] T003 [P] Create .env.example with environment variable template (OPENAI_API_KEY, OPENAI_MODEL, MAX_TOKENS, TIMEOUT_SECONDS, LOG_LEVEL)
-- [ ] T004 [P] Create .gitignore (venv/, .env, **pycache**/, \*.pyc, .pytest_cache/, htmlcov/)
+- [x] T001 Create project directory structure (src/, tests/, src/api/, src/models/, src/services/)
+- [x] T002 Create requirements.txt with pinned dependencies (fastapi==0.109.0, uvicorn[standard], openai-agents, pydantic==2.5.0, structlog, pytest, pytest-asyncio, httpx)
+- [x] T003 [P] Create .env.example with environment variable template (OPENAI_API_KEY, OPENAI_MODEL, MAX_TOKENS, TIMEOUT_SECONDS, LOG_LEVEL)
+- [x] T004 [P] Create .gitignore (venv/, .env, **pycache**/, \*.pyc, .pytest_cache/, htmlcov/)
 
 **Checkpoint**: Project structure ready for implementation
 
@@ -39,12 +39,12 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 Implement config.py with Pydantic settings (load env vars: OPENAI_API_KEY, OPENAI_MODEL, MAX_TOKENS, TIMEOUT_SECONDS, LOG_LEVEL)
-- [ ] T006 [P] Implement structlog configuration in src/services/logging_service.py (JSON output, correlation ID binding, ISO timestamps, redaction processor for api_key fields)
-- [ ] T007 [P] Create src/models/**init**.py with **all** exports
-- [ ] T008 [P] Create src/api/**init**.py with **all** exports
-- [ ] T009 [P] Create src/services/**init**.py with **all** exports
-- [ ] T010 Create tests/conftest.py with pytest fixtures (mock agents.Runner, test app instance)
+- [x] T005 Implement config.py with Pydantic settings (load env vars: OPENAI_API_KEY, OPENAI_MODEL, MAX_TOKENS, TIMEOUT_SECONDS, LOG_LEVEL)
+- [x] T006 [P] Implement structlog configuration in src/services/logging_service.py (JSON output, correlation ID binding, ISO timestamps, redaction processor for api_key fields)
+- [x] T007 [P] Create src/models/**init**.py with **all** exports
+- [x] T008 [P] Create src/api/**init**.py with **all** exports
+- [x] T009 [P] Create src/services/**init**.py with **all** exports
+- [x] T010 Create tests/conftest.py with pytest fixtures (mock agents.Runner, test app instance)
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -58,13 +58,13 @@
 
 ### Implementation for User Story 1
 
-- [ ] T011 [P] [US1] Create ChatRequest model in src/models/request.py (message: str, model: str, max_tokens: int, validation: non-empty, ≤8000 chars, model in allowlist)
-- [ ] T012 [P] [US1] Create StreamChunk and ChatResponse models in src/models/response.py (content, sequence, is_final, correlation_id, status, duration_ms, total_tokens)
-- [ ] T013 [US1] Implement ChatService.stream_completion in src/services/chat_service.py (agents.Agent + Runner.run_streamed, filter ResponseTextDeltaEvent, async generator yielding chunks)
-- [ ] T014 [US1] Create FastAPI app in src/main.py (app initialization, CORS middleware, startup/shutdown events)
-- [ ] T015 [US1] Implement /chat endpoint in src/api/routes.py (POST handler, parse ChatRequest, generate correlation_id UUID4, call ChatService, return StreamingResponse with media_type="text/event-stream", yield SSE format "data: {json}\n\n")
-- [ ] T016 [US1] Implement /health endpoint in src/api/routes.py (GET handler, return {"status": "healthy", "timestamp": ISO8601})
-- [ ] T017 [US1] Write integration test in tests/integration/test_chat_endpoint.py (mock OpenAI, test streaming chunks received, verify sequence and is_final flag, use httpx.AsyncClient with stream())
+- [x] T011 [P] [US1] Create ChatRequest model in src/models/request.py (message: str, model: str, max_tokens: int, validation: non-empty, ≤8000 chars, model in allowlist)
+- [x] T012 [P] [US1] Create StreamChunk and ChatResponse models in src/models/response.py (content, sequence, is_final, correlation_id, status, duration_ms, total_tokens)
+- [x] T013 [US1] Implement ChatService.stream_completion in src/services/chat_service.py (agents.Agent + Runner.run_streamed, filter ResponseTextDeltaEvent, async generator yielding chunks)
+- [x] T014 [US1] Create FastAPI app in src/main.py (app initialization, CORS middleware, startup/shutdown events)
+- [x] T015 [US1] Implement /chat endpoint in src/api/routes.py (POST handler, parse ChatRequest, generate correlation_id UUID4, call ChatService, return StreamingResponse with media_type="text/event-stream", yield SSE format "data: {json}\n\n")
+- [x] T016 [US1] Implement /health endpoint in src/api/routes.py (GET handler, return {"status": "healthy", "timestamp": ISO8601})
+- [x] T017 [US1] Write integration test in tests/integration/test_chat_endpoint.py (mock OpenAI, test streaming chunks received, verify sequence and is_final flag, use httpx.AsyncClient with stream())
 
 **Checkpoint**: At this point, User Story 1 should stream responses successfully - testable with pytest
 
@@ -78,11 +78,11 @@
 
 ### Implementation for User Story 2
 
-- [ ] T018 [US2] Add Pydantic validation error handler in src/api/routes.py (catch RequestValidationError, return 400 with ErrorResponse: error, detail, correlation_id)
-- [ ] T019 [US2] Add Agents SDK error handling in src/services/chat_service.py (try/except for Runner exceptions, stream error chunk with user-friendly message per constitution)
-- [ ] T020 [US2] Add timeout handling in src/api/routes.py (asyncio.timeout(TIMEOUT_SECONDS) context manager, catch TimeoutError, return 504 with three-part error message)
-- [ ] T021 [US2] Write unit tests in tests/unit/test_models.py (test ChatRequest validation: empty message, message >8000 chars, invalid model, max_tokens out of range)
-- [ ] T022 [US2] Write integration test in tests/integration/test_chat_endpoint.py (test error scenarios: empty message → 400, invalid model → 400, mock OpenAI error → error chunk streamed)
+- [x] T018 [US2] Add Pydantic validation error handler in src/api/routes.py (catch RequestValidationError, return 400 with ErrorResponse: error, detail, correlation_id)
+- [x] T019 [US2] Add Agents SDK error handling in src/services/chat_service.py (try/except for Runner exceptions, stream error chunk with user-friendly message per constitution)
+- [x] T020 [US2] Add timeout handling in src/api/routes.py (asyncio.timeout(TIMEOUT_SECONDS) context manager, catch TimeoutError, return 504 with three-part error message)
+- [x] T021 [US2] Write unit tests in tests/unit/test_models.py (test ChatRequest validation: empty message, message >8000 chars, invalid model, max_tokens out of range)
+- [x] T022 [US2] Write integration test in tests/integration/test_chat_endpoint.py (test error scenarios: empty message → 400, invalid model → 400, mock OpenAI error → error chunk streamed)
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work - error handling validated
 
@@ -96,12 +96,12 @@
 
 ### Implementation for User Story 3
 
-- [ ] T023 [P] [US3] Implement correlation ID middleware in src/api/middleware.py (generate UUID4 per request, add to request.state, bind to structlog context, add X-Correlation-Id response header)
-- [ ] T024 [US3] Add request lifecycle logging in src/api/routes.py (log request_received with correlation_id/method/path on entry, log response_complete with duration_ms/token_count/status on exit)
-- [ ] T025 [US3] Add chunk metadata logging in src/services/chat_service.py (log chunk_sent events with sequence and timing, do NOT log content)
-- [ ] T026 [US3] Add error context logging in error handlers (log error_occurred with correlation_id, error_type, message, recovery action)
-- [ ] T027 [US3] Write tests in tests/unit/test_logging.py (test redaction processor removes api_key, test correlation_id binds correctly, test log format is JSON)
-- [ ] T028 [US3] Write integration test in tests/integration/test_observability.py (capture logs, verify correlation_id present, verify no secrets in logs, verify timestamps in UTC ISO8601)
+- [x] T023 [P] [US3] Implement correlation ID middleware in src/api/middleware.py (generate UUID4 per request, add to request.state, bind to structlog context, add X-Correlation-Id response header)
+- [x] T024 [US3] Add request lifecycle logging in src/api/routes.py (log request_received with correlation_id/method/path on entry, log response_complete with duration_ms/token_count/status on exit)
+- [x] T025 [US3] Add chunk metadata logging in src/services/chat_service.py (log chunk_sent events with sequence and timing, do NOT log content)
+- [x] T026 [US3] Add error context logging in error handlers (log error_occurred with correlation_id, error_type, message, recovery action)
+- [x] T027 [US3] Write tests in tests/unit/test_logging.py (test redaction processor removes api_key, test correlation_id binds correctly, test log format is JSON)
+- [x] T028 [US3] Write integration test in tests/integration/test_observability.py (capture logs, verify correlation_id present, verify no secrets in logs, verify timestamps in UTC ISO8601)
 
 **Checkpoint**: All user stories should now be independently functional with full observability
 
@@ -111,9 +111,9 @@
 
 **Purpose**: Containerize application for consistent runtime environment
 
-- [ ] T029 Create Dockerfile (FROM python:3.11-slim, WORKDIR /app, COPY requirements.txt, RUN pip install, COPY src/, EXPOSE 8000, CMD uvicorn src.main:app --host 0.0.0.0 --port 8000)
-- [ ] T030 Create README.md with setup instructions (prerequisites, .env setup, docker build/run commands, curl examples, troubleshooting)
-- [ ] T031 Verify full workflow: docker build → docker run → curl /health → curl /chat → verify streaming → verify logs → pytest
+- [x] T029 Create Dockerfile (FROM python:3.11-slim, WORKDIR /app, COPY requirements.txt, RUN pip install, COPY src/, EXPOSE 8000, CMD uvicorn src.main:app --host 0.0.0.0 --port 8000)
+- [x] T030 Create README.md with setup instructions (prerequisites, .env setup, docker build/run commands, curl examples, troubleshooting)
+- [x] T031 Verify full workflow: docker build → docker run → curl /health → curl /chat → verify streaming → verify logs → pytest
 
 **Checkpoint**: Feature 001 complete - streaming chat API runs in Docker with tests passing
 
