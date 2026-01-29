@@ -3,6 +3,8 @@
 Auto-generated from all feature plans. Last updated: 2026-01-28
 
 ## Active Technologies
+- Python 3.11 + mlflow==3.8.1, openai-agents (existing), pydantic>=2.10.0 (002-judge-eval-framework)
+- PostgreSQL (MLflow backend), MinIO (S3-compatible artifacts) (002-judge-eval-framework)
 
 - Python 3.11 + FastAPI 0.109+, OpenAI Agents SDK (latest), Pydantic 2.x, structlog (001-streaming-chat-api)
 
@@ -22,6 +24,7 @@ cd src; pytest; ruff check .
 Python 3.11: Follow standard conventions
 
 ## Recent Changes
+- 002-judge-eval-framework: Added Python 3.11 + mlflow==3.8.1, openai-agents (existing), pydantic>=2.10.0
 
 - 001-streaming-chat-api: Added Python 3.11 + FastAPI 0.109+, OpenAI Agents SDK (latest), Pydantic 2.x, structlog
 
