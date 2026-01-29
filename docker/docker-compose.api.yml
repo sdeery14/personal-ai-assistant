@@ -1,5 +1,3 @@
-version: "3.8"
-
 # Personal AI Assistant - Chat API
 # Usage: docker compose -f docker/docker-compose.api.yml up -d
 

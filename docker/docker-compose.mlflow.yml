@@ -1,5 +1,3 @@
-version: "3.8"
-
 # MLflow Evaluation Stack for Feature 002: Judge-Centered Evaluation
 # Services: PostgreSQL (backend store), MinIO (artifact store), MLflow Server
 #

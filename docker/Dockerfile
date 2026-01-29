@@ -9,14 +9,15 @@ WORKDIR /app
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Copy dependency files
-COPY pyproject.toml uv.lock ./
+# Copy dependency files and README (needed by hatchling)
+COPY pyproject.toml uv.lock README.md ./
 
 # Install dependencies using uv (no dev dependencies)
 RUN uv sync --frozen --no-dev
 
 # Copy application code
 COPY src/ ./src/
+COPY eval/ ./eval/
 
 # Set Python path to include src directory
 ENV PYTHONPATH=/app
