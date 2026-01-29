@@ -1374,14 +1374,14 @@ The SDK integrates with many observability platforms:
 
 ### Tracing Best Practices
 
-| Practice                               | Why                                        |
-| -------------------------------------- | ------------------------------------------ |
-| Use `group_id` for conversations       | Link multi-turn traces                     |
-| Set meaningful `workflow_name`         | Easier filtering in dashboard              |
-| Disable sensitive data in production   | Compliance, reduce storage                 |
-| Use custom spans for external services | Full observability                         |
-| Consider MLflow for local development  | Self-hosted, no data leaves your infra     |
-| Wrap related runs in single `trace()`  | See full workflow context                  |
+| Practice                               | Why                                    |
+| -------------------------------------- | -------------------------------------- |
+| Use `group_id` for conversations       | Link multi-turn traces                 |
+| Set meaningful `workflow_name`         | Easier filtering in dashboard          |
+| Disable sensitive data in production   | Compliance, reduce storage             |
+| Use custom spans for external services | Full observability                     |
+| Consider MLflow for local development  | Self-hosted, no data leaves your infra |
+| Wrap related runs in single `trace()`  | See full workflow context              |
 
 ---
 
