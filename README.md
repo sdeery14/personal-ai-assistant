@@ -87,8 +87,8 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000
 ### Build and Run
 
 ```bash
-# Build the image
-docker build -t personal-ai-assistant .
+# Build the image (uses uv for dependency management)
+docker build -f docker/Dockerfile -t personal-ai-assistant .
 
 # Run the container
 docker run -d \
