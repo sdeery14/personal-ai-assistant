@@ -18,12 +18,12 @@
 
 **Purpose**: Establish MLflow stack (Postgres + MinIO + MLflow) and project structure
 
-- [ ] T001 Create `docker/` directory and move docker-compose.yml from root
-- [ ] T002 Create `docker/docker-compose.yml` with Postgres, MinIO, minio-init, and MLflow services
-- [ ] T003 Create `docker/.env.example` with MLflow credentials and S3 config template
-- [ ] T004 [P] Update root `requirements.txt` to add `mlflow==3.8.1`
-- [ ] T005 [P] Create `eval/__init__.py` with package docstring
-- [ ] T006 [P] Create `eval/config.py` with Pydantic settings (thresholds, models, env vars)
+- [x] T001 Create `docker/` directory and move docker-compose.yml from root
+- [x] T002 Create `docker/docker-compose.yml` with Postgres, MinIO, minio-init, and MLflow services
+- [x] T003 Create `docker/.env.example` with MLflow credentials and S3 config template
+- [x] T004 [P] Update root `requirements.txt` to add `mlflow==3.8.1`
+- [x] T005 [P] Create `eval/__init__.py` with package docstring
+- [x] T006 [P] Create `eval/config.py` with Pydantic settings (thresholds, models, env vars)
 
 **Gate**: `docker compose -f docker/docker-compose.yml up -d` starts all services, MLflow UI at http://localhost:5000
 
@@ -35,10 +35,10 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T007 Create `eval/models.py` with Pydantic models: TestCase, GoldenDataset, EvalResult, EvalRunMetrics
-- [ ] T008 Create `eval/dataset.py` with `load_dataset(path) -> GoldenDataset` and JSON Schema validation
-- [ ] T009 Create `eval/assistant.py` with `get_response(prompt) -> str` using `Runner.run_sync()` and `mlflow.openai.autolog()`
-- [ ] T010 Create `eval/judge.py` with `create_quality_judge()` using `mlflow.genai.judges.make_judge`
+- [x] T007 Create `eval/models.py` with Pydantic models: TestCase, GoldenDataset, EvalResult, EvalRunMetrics
+- [x] T008 Create `eval/dataset.py` with `load_dataset(path) -> GoldenDataset` and JSON Schema validation
+- [x] T009 Create `eval/assistant.py` with `get_response(prompt) -> str` using `Runner.run_sync()` and `mlflow.openai.autolog()`
+- [x] T010 Create `eval/judge.py` with `create_quality_judge()` using `mlflow.genai.judges.make_judge`
 
 **Gate**: Foundation ready — `eval/` package imports without errors
 
@@ -52,15 +52,15 @@
 
 ### Tests for User Story 1
 
-- [ ] T011 [P] [US1] Create `tests/unit/test_eval_dataset.py` — dataset loading, validation, error cases
-- [ ] T012 [P] [US1] Create `tests/unit/test_eval_judge.py` — judge output structure (Literal 1-5), not score values
+- [x] T011 [P] [US1] Create `tests/unit/test_eval_dataset.py` — dataset loading, validation, error cases
+- [x] T012 [P] [US1] Create `tests/unit/test_eval_judge.py` — judge output structure (Literal 1-5), not score values
 
 ### Implementation for User Story 1
 
-- [ ] T013 [US1] Create `eval/golden_dataset.json` with 10 golden test cases (diverse prompts/rubrics)
-- [ ] T014 [US1] Create `eval/runner.py` with `run_evaluation()` — load dataset, invoke assistant, score with judge
-- [ ] T015 [US1] Create `eval/__main__.py` with CLI entry point using argparse (--dataset, --model, --verbose, --dry-run, --workers)
-- [ ] T016 [US1] Add console output: per-case score/pass/fail, summary table with totals
+- [x] T013 [US1] Create `eval/golden_dataset.json` with 10 golden test cases (diverse prompts/rubrics)
+- [x] T014 [US1] Create `eval/runner.py` with `run_evaluation()` — load dataset, invoke assistant, score with judge
+- [x] T015 [US1] Create `eval/__main__.py` with CLI entry point using argparse (--dataset, --model, --verbose, --dry-run, --workers)
+- [x] T016 [US1] Add console output: per-case score/pass/fail, summary table with totals
 
 **Checkpoint**: `python -m eval` runs all 10 cases, prints scores, shows summary. Tests pass.
 
@@ -74,11 +74,11 @@
 
 ### Implementation for User Story 2
 
-- [ ] T017 [US2] Update `eval/runner.py` to use `mlflow.genai.evaluate()` with scorers=[quality_judge]
-- [ ] T018 [US2] Update `eval/runner.py` to log parameters: assistant_model, judge_model, temperature, dataset_version, thresholds
-- [ ] T019 [US2] Update `eval/runner.py` to log metrics: pass_rate, average_score, total_cases, passed_cases, failed_cases
-- [ ] T020 [US2] Update `eval/runner.py` to log artifacts: per-case results JSON, golden dataset snapshot
-- [ ] T021 [US2] Configure MLflow experiment name: `personal-ai-assistant-eval`
+- [x] T017 [US2] Update `eval/runner.py` to use `mlflow.genai.evaluate()` with scorers=[quality_judge]
+- [x] T018 [US2] Update `eval/runner.py` to log parameters: assistant_model, judge_model, temperature, dataset_version, thresholds
+- [x] T019 [US2] Update `eval/runner.py` to log metrics: pass_rate, average_score, total_cases, passed_cases, failed_cases
+- [x] T020 [US2] Update `eval/runner.py` to log artifacts: per-case results JSON, golden dataset snapshot
+- [x] T021 [US2] Configure MLflow experiment name: `personal-ai-assistant-eval`
 
 **Checkpoint**: Run eval, open MLflow UI at http://localhost:5000, verify run with params/metrics/artifacts.
 
@@ -92,13 +92,13 @@
 
 ### Tests for User Story 3
 
-- [ ] T022 [US3] Create `tests/unit/test_eval_gating.py` — threshold logic (pass_rate >= X AND avg_score >= Y)
+- [x] T022 [US3] Create `tests/unit/test_eval_gating.py` — threshold logic (pass_rate >= X AND avg_score >= Y)
 
 ### Implementation for User Story 3
 
-- [ ] T023 [US3] Update `eval/runner.py` to compute overall_passed based on configurable thresholds
-- [ ] T024 [US3] Update `eval/__main__.py` to exit with code 0 (PASS), 1 (FAIL), or 2 (ERROR)
-- [ ] T025 [US3] Add final summary output: decision banner (PASS/FAIL), threshold comparison, failure reasons
+- [x] T023 [US3] Update `eval/runner.py` to compute overall_passed based on configurable thresholds
+- [x] T024 [US3] Update `eval/__main__.py` to exit with code 0 (PASS), 1 (FAIL), or 2 (ERROR)
+- [x] T025 [US3] Add final summary output: decision banner (PASS/FAIL), threshold comparison, failure reasons
 
 **Checkpoint**: Passing run → exit 0; failing run → exit 1 with clear reason.
 
@@ -108,8 +108,8 @@
 
 **Purpose**: End-to-end harness tests with mocked APIs
 
-- [ ] T026 Create `tests/integration/test_eval_runner.py` — full eval flow with mocked OpenAI responses
-- [ ] T027 Validate error handling: API failures (retry 3x), timeout cases (mark as error), invalid dataset (fail fast)
+- [x] T026 Create `tests/integration/test_eval_runner.py` — full eval flow with mocked OpenAI responses
+- [x] T027 Validate error handling: API failures (retry 3x), timeout cases (mark as error), invalid dataset (fail fast)
 - [ ] T028 Run quickstart.md validation: compose up → eval → view in MLflow UI
 
 **Checkpoint**: All tests pass: `pytest tests/unit/test_eval*.py tests/integration/test_eval*.py`
@@ -120,8 +120,8 @@
 
 **Purpose**: Final cleanup and documentation updates
 
-- [ ] T029 [P] Verify `specs/002-judge-eval-framework/quickstart.md` is complete and accurate
-- [ ] T030 [P] Update root `README.md` with Evaluation section (commands, links to quickstart)
+- [x] T029 [P] Verify `specs/002-judge-eval-framework/quickstart.md` is complete and accurate
+- [x] T030 [P] Update root `README.md` with Evaluation section (commands, links to quickstart)
 - [ ] T031 Final validation: full workflow from `docker compose up` through eval to MLflow UI
 
 ---
@@ -138,11 +138,11 @@ Phase 1 (Setup) → Phase 2 (Foundational) → Phases 3-5 (User Stories) → Pha
 
 ### User Story Dependencies
 
-| Story | Depends On     | Can Parallelize With |
-|-------|----------------|----------------------|
-| US1   | Phase 2        | None (do first)      |
-| US2   | US1 (runner)   | US3                  |
-| US3   | US1 (runner)   | US2                  |
+| Story | Depends On   | Can Parallelize With |
+| ----- | ------------ | -------------------- |
+| US1   | Phase 2      | None (do first)      |
+| US2   | US1 (runner) | US3                  |
+| US3   | US1 (runner) | US2                  |
 
 ### Within Each Phase
 
@@ -156,6 +156,7 @@ Phase 1 (Setup) → Phase 2 (Foundational) → Phases 3-5 (User Stories) → Pha
 ## Parallel Opportunities
 
 ### Phase 1 Parallel Set
+
 ```
 T004: Update requirements.txt (mlflow==3.8.1)
 T005: Create eval/__init__.py
@@ -163,12 +164,14 @@ T006: Create eval/config.py
 ```
 
 ### Phase 3 (US1) Parallel Set
+
 ```
 T011: tests/unit/test_eval_dataset.py
 T012: tests/unit/test_eval_judge.py
 ```
 
 ### Phase 7 Parallel Set
+
 ```
 T029: Verify quickstart.md
 T030: Update README.md
@@ -221,6 +224,7 @@ When all items below are checked, Feature 002 is DONE:
 4. LLM-as-a-judge is the operational evaluation mechanism for Feature 001 assistant
 
 **Out of Scope (confirmed not done):**
+
 - ❌ UI dashboards beyond default MLflow UI
 - ❌ Human review workflows
 - ❌ Production/cloud deployment

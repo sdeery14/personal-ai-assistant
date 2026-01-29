@@ -13,10 +13,24 @@ A FastAPI-based streaming chat API that interfaces with OpenAI's Agents SDK for 
 ## Prerequisites
 
 - Python 3.11 or higher
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip
 - Docker (optional, for containerized deployment)
 - OpenAI API key with access to chat models
 
-## Quick Start
+## Setup
+
+```bash
+# Install dependencies and create virtual environment
+uv sync
+
+# Run tests
+uv run pytest
+
+# Run the server
+uv run uvicorn src.main:app --reload
+```
+
+## Quick Start (Alternative with pip)
 
 ### 1. Clone and Setup
 
@@ -172,6 +186,65 @@ pytest tests/ --cov=src --cov-report=html
 # Run specific test file
 pytest tests/integration/test_chat_endpoint.py -v
 ```
+
+## Evaluation Framework
+
+The project includes an LLM-as-a-judge evaluation framework to measure assistant quality and detect regressions.
+
+### Quick Start
+
+```bash
+# 1. Start the MLflow stack (Postgres + MinIO + MLflow)
+docker compose -f docker/docker-compose.yml up -d
+
+# 2. Run evaluation
+python -m eval
+
+# 3. View results in MLflow UI
+# Open http://localhost:5000
+```
+
+### Evaluation CLI
+
+```bash
+# Run with defaults
+python -m eval
+
+# Validate dataset only (no evaluation)
+python -m eval --dry-run
+
+# Run with verbose output (show per-case details)
+python -m eval --verbose
+
+# Custom thresholds
+python -m eval --pass-threshold 0.90 --score-threshold 4.0
+```
+
+**CLI Options:**
+
+| Option              | Default                    | Description                 |
+| ------------------- | -------------------------- | --------------------------- |
+| `--dataset`         | `eval/golden_dataset.json` | Path to golden dataset      |
+| `--model`           | env `OPENAI_MODEL`         | Assistant model             |
+| `--judge-model`     | env `EVAL_JUDGE_MODEL`     | Judge model                 |
+| `--pass-threshold`  | `0.80`                     | Minimum pass rate (0-1)     |
+| `--score-threshold` | `3.5`                      | Minimum average score (1-5) |
+| `--workers`         | `10`                       | Parallel eval workers       |
+| `--verbose`         | `False`                    | Show per-case details       |
+| `--dry-run`         | `False`                    | Validate dataset only       |
+
+**Exit Codes:**
+
+| Code | Meaning                   |
+| ---- | ------------------------- |
+| 0    | PASS - All thresholds met |
+| 1    | FAIL - Thresholds not met |
+| 2    | ERROR - Evaluation failed |
+
+### Documentation
+
+- **Quickstart Guide**: [specs/002-judge-eval-framework/quickstart.md](specs/002-judge-eval-framework/quickstart.md)
+- **Technical Plan**: [specs/002-judge-eval-framework/plan.md](specs/002-judge-eval-framework/plan.md)
 
 ## Project Structure
 

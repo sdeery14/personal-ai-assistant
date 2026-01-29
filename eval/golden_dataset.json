@@ -1,0 +1,76 @@
+{
+  "version": "1.0.0",
+  "description": "Golden test cases for Personal AI Assistant evaluation. Covers diverse prompt types including factual questions, reasoning, creative tasks, and edge cases.",
+  "cases": [
+    {
+      "id": "case-001",
+      "user_prompt": "What is 2+2?",
+      "rubric": "Response should correctly state that the answer is 4. Should be concise and direct without unnecessary elaboration.",
+      "context": "Simple arithmetic - baseline test",
+      "tags": ["math", "simple", "factual"]
+    },
+    {
+      "id": "case-002",
+      "user_prompt": "Explain the difference between a list and a tuple in Python.",
+      "rubric": "Response should mention: (1) lists are mutable, tuples are immutable; (2) syntax difference ([] vs ()); (3) when to use each. Should be accurate and educational.",
+      "context": "Technical explanation - programming concepts",
+      "tags": ["programming", "python", "explanation"]
+    },
+    {
+      "id": "case-003",
+      "user_prompt": "Write a haiku about artificial intelligence.",
+      "rubric": "Response should be a valid haiku (5-7-5 syllable structure) about AI. Should be creative and coherent. Minor syllable flexibility acceptable if meaning is preserved.",
+      "context": "Creative writing task",
+      "tags": ["creative", "poetry"]
+    },
+    {
+      "id": "case-004",
+      "user_prompt": "What are the three branches of the United States government?",
+      "rubric": "Response must correctly name all three branches: Executive, Legislative, and Judicial. May include brief descriptions of each. Should be factually accurate.",
+      "context": "Factual knowledge - civics",
+      "tags": ["factual", "government", "simple"]
+    },
+    {
+      "id": "case-005",
+      "user_prompt": "If I have 3 apples and give away 2, then receive 5 more, how many apples do I have?",
+      "rubric": "Response should show the calculation (3 - 2 + 5 = 6) and state the answer is 6 apples. Should demonstrate step-by-step reasoning.",
+      "context": "Word problem requiring multi-step reasoning",
+      "tags": ["math", "reasoning", "word-problem"]
+    },
+    {
+      "id": "case-006",
+      "user_prompt": "Summarize the key benefits of regular exercise in 3 bullet points.",
+      "rubric": "Response should include exactly 3 bullet points covering distinct benefits (e.g., physical health, mental health, longevity). Each point should be concise and accurate.",
+      "context": "Structured output format test",
+      "tags": ["health", "formatting", "summary"]
+    },
+    {
+      "id": "case-007",
+      "user_prompt": "What is the capital of Australia?",
+      "rubric": "Response must correctly state Canberra (not Sydney or Melbourne). May include brief additional context about why Canberra was chosen as capital.",
+      "context": "Common misconception test",
+      "tags": ["geography", "factual", "trivia"]
+    },
+    {
+      "id": "case-008",
+      "user_prompt": "Translate 'Hello, how are you?' to French.",
+      "rubric": "Response should provide 'Bonjour, comment allez-vous?' or an equivalent formal/informal translation. Should be grammatically correct French.",
+      "context": "Translation task",
+      "tags": ["language", "translation", "french"]
+    },
+    {
+      "id": "case-009",
+      "user_prompt": "What are some best practices for writing clean code?",
+      "rubric": "Response should mention at least 3 best practices such as: meaningful variable names, single responsibility principle, commenting, DRY principle, or code formatting. Should be practical and accurate.",
+      "context": "Software engineering advice",
+      "tags": ["programming", "best-practices", "advice"]
+    },
+    {
+      "id": "case-010",
+      "user_prompt": "Is water wet?",
+      "rubric": "Response should acknowledge this is a philosophical/semantic question. Should explain both perspectives (water makes things wet vs water itself is wet) thoughtfully. Avoid dismissive or flippant answers.",
+      "context": "Edge case - philosophical/semantic question",
+      "tags": ["philosophy", "edge-case", "nuanced"]
+    }
+  ]
+}
