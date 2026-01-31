@@ -191,7 +191,8 @@ class TestModerateWithRetry:
 
 
 # NOTE: validate_input and validate_output are decorated with @sdk_input_guardrail
-# and @sdk_output_guardrail, which wraps them in InputGuardrail/OutputGuardrail objects.
-# These are tested via integration tests (see tests/integration/test_guardrails_api.py)
-# where they're called through the Agent SDK's internal mechanisms.
-# Unit testing focuses on the core moderate_with_retry logic above.
+# and @sdk_output_guardrail, which wraps them as InputGuardrail/OutputGuardrail objects.
+# These cannot be tested directly via unit tests as they require the Agent SDK runtime.
+# Per testing philosophy: guardrail effectiveness is validated via MLflow eval (Phase 5)
+# with real API calls against the security golden dataset.
+

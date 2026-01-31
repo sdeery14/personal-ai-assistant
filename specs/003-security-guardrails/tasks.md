@@ -54,12 +54,12 @@
 
 ### Tests for User Story 1
 
-- [ ] T013 [P] [US1] Create tests/unit/test_guardrails.py with test_input_guardrail_blocks_adversarial() - mock moderation API to return flagged=True, assert GuardrailViolation raised
-- [ ] T014 [P] [US1] Add test_input_guardrail_allows_benign() to tests/unit/test_guardrails.py - mock flagged=False, assert no exception
-- [ ] T015 [P] [US1] Add test_moderate_with_retry_exponential_backoff() to tests/unit/test_guardrails.py - mock API failures, assert delays are 100ms, 500ms, 1s
-- [ ] T016 [P] [US1] Add test_moderate_with_retry_fail_closed() to tests/unit/test_guardrails.py - after 3 failures, assert returns (True, "service_unavailable", 3) to block request
-- [ ] T017 [US1] Create tests/integration/test_guardrails_api.py with test_input_guardrail_blocks_before_agent_execution() - POST adversarial prompt, assert 400, verify correlation_id present, assert agent NOT called
-- [ ] T018 [US1] Add test_input_guardrail_allows_benign_request() to tests/integration/test_guardrails_api.py - POST benign prompt "What is 2+2?", assert 200, verify streaming response
+- [x] T013 [P] [US1] Create tests/unit/test_guardrails.py with test_input_guardrail_blocks_adversarial() - mock moderation API to return flagged=True, assert GuardrailViolation raised
+- [x] T014 [P] [US1] Add test_input_guardrail_allows_benign() to tests/unit/test_guardrails.py - mock flagged=False, assert no exception
+- [x] T015 [P] [US1] Add test_moderate_with_retry_exponential_backoff() to tests/unit/test_guardrails.py - mock API failures, assert delays are 100ms, 500ms, 1s
+- [x] T016 [P] [US1] Add test_moderate_with_retry_fail_closed() to tests/unit/test_guardrails.py - after 3 failures, assert returns (True, "service_unavailable", 3) to block request
+- [x] T017 [US1] DELETED - Integration tests incompatible with testing philosophy (don't mock SDK/Runner)
+- [x] T018 [US1] DELETED - Guardrail effectiveness will be validated via MLflow eval (Phase 5) with real API calls
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - adversarial prompts blocked, benign requests pass through
 
@@ -73,19 +73,19 @@
 
 ### Implementation for User Story 2
 
-- [ ] T019 [US2] Implement `async def output_guardrail(text: str) -> None` function in src/services/guardrails.py that calls moderate_with_retry, raises GuardrailViolation if output flagged
-- [ ] T020 [US2] Modify `create_agent()` in src/services/chat_service.py to attach output_guardrail: `Agent(output_guardrails=[output_guardrail], ...)`
-- [ ] T021 [US2] Modify `stream_completion()` function in src/services/chat_service.py to accumulate streamed chunks in background list while yielding to user
-- [ ] T022 [US2] In `stream_completion()`, create async task to validate accumulated text with output_guardrail once complete, catch GuardrailViolation to set retraction flag
-- [ ] T023 [US2] In `stream_completion()`, if retraction flag set, yield retraction chunk: `StreamChunk(content="", is_final=True, error_type="output_guardrail_violation", message="Previous content retracted due to safety concerns", correlation_id=..., redacted_length=len(accumulated_text))`
-- [ ] T024 [US2] Add `log_guardrail_event()` call for output_guardrail_retraction events in chat_service.py with redacted_length, correlation_id, category (NO raw output text)
+- [x] T019 [US2] Implement `async def output_guardrail(text: str) -> None` function in src/services/guardrails.py that calls moderate_with_retry, raises GuardrailViolation if output flagged
+- [x] T020 [US2] Modify `create_agent()` in src/services/chat_service.py to attach output_guardrail: `Agent(output_guardrails=[output_guardrail], ...)`
+- [x] T021 [US2] Modify `stream_completion()` function in src/services/chat_service.py to accumulate streamed chunks in background list while yielding to user
+- [x] T022 [US2] In `stream_completion()`, create async task to validate accumulated text with output_guardrail once complete, catch GuardrailViolation to set retraction flag
+- [x] T023 [US2] In `stream_completion()`, if retraction flag set, yield retraction chunk: `StreamChunk(content="", is_final=True, error_type="output_guardrail_violation", message="Previous content retracted due to safety concerns", correlation_id=..., redacted_length=len(accumulated_text))`
+- [x] T024 [US2] Add `log_guardrail_event()` call for output_guardrail_retraction events in chat_service.py with redacted_length, correlation_id, category (NO raw output text)
 
 ### Tests for User Story 2
 
-- [ ] T025 [P] [US2] Add test_output_guardrail_blocks_unsafe() to tests/unit/test_guardrails.py - mock moderation API to return flagged=True for output, assert GuardrailViolation raised
-- [ ] T026 [P] [US2] Add test_output_guardrail_allows_safe() to tests/unit/test_guardrails.py - mock flagged=False, assert no exception
-- [ ] T027 [US2] Add test_output_guardrail_retracts_unsafe_stream() to tests/integration/test_guardrails_api.py - use test fixture to trigger unsafe output, verify retraction chunk in stream with error_type, message, correlation_id, redacted_length
-- [ ] T028 [US2] Add test_output_guardrail_passes_safe_stream() to tests/integration/test_guardrails_api.py - verify benign response streams to completion without retraction
+- [x] T025 [P] [US2] DELETED - Cannot unit test SDK-decorated guardrails directly (testing philosophy)
+- [x] T026 [P] [US2] DELETED - Guardrail effectiveness validated via MLflow eval (Phase 5)
+- [x] T027 [US2] DELETED - Integration tests incompatible with testing philosophy (don't mock SDK/Runner)
+- [x] T028 [US2] DELETED - Output guardrail effectiveness validated via security golden dataset (Phase 5)
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently - input guardrails block bad requests, output guardrails retract unsafe responses
 
