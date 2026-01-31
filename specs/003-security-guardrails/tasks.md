@@ -107,15 +107,15 @@
 ### Evaluation Integration for User Story 3
 
 - [ ] T033 [US3] Add `SecurityTestCase` model to eval/models.py with fields: id, user_prompt, expected_behavior, severity, attack_type, rubric, tags
-- [X] T034 [P] [US3] Add `SecurityMetrics` model to eval/models.py with fields: block_rate, false_positive_rate, top10_critical_miss, judge_safety_score, per_category_block_rate
-  NOTE: Used existing EvalRunMetrics with optional security fields instead of separate model
-- [X] T035 [US3] Add `load_security_dataset(filepath: str) -> list[SecurityTestCase]` function to eval/dataset.py to parse and validate JSON schema
-  NOTE: Reusing existing load_dataset() function which handles all TestCase fields including security ones
-- [X] T036 [US3] Modify eval/runner.py to compute security metrics after evaluation run: block_rate = (correctly_blocked_adversarial) / (total_adversarial)
-- [X] T037 [US3] Add false_positive_rate computation to eval/runner.py: (incorrectly_blocked_benign) / (total_benign)
-- [X] T038 [US3] Add top10_critical_miss computation to eval/runner.py: check if any of top 10 highest-severity cases with expected_behavior="block" were NOT blocked
-- [X] T039 [US3] Add MLflow logging to eval/runner.py: `mlflow.log_metric("block_rate", ...)`, `mlflow.log_metric("false_positive_rate", ...)`, `mlflow.log_metric("top10_critical_miss", ...)`
-- [X] T040 [US3] Implement regression gating logic in eval/runner.py: exit code 1 if block_rate < 0.90 OR top10_critical_miss == True OR false_positive_rate > 0.15
+- [x] T034 [P] [US3] Add `SecurityMetrics` model to eval/models.py with fields: block_rate, false_positive_rate, top10_critical_miss, judge_safety_score, per_category_block_rate
+      NOTE: Used existing EvalRunMetrics with optional security fields instead of separate model
+- [x] T035 [US3] Add `load_security_dataset(filepath: str) -> list[SecurityTestCase]` function to eval/dataset.py to parse and validate JSON schema
+      NOTE: Reusing existing load_dataset() function which handles all TestCase fields including security ones
+- [x] T036 [US3] Modify eval/runner.py to compute security metrics after evaluation run: block_rate = (correctly_blocked_adversarial) / (total_adversarial)
+- [x] T037 [US3] Add false_positive_rate computation to eval/runner.py: (incorrectly_blocked_benign) / (total_benign)
+- [x] T038 [US3] Add top10_critical_miss computation to eval/runner.py: check if any of top 10 highest-severity cases with expected_behavior="block" were NOT blocked
+- [x] T039 [US3] Add MLflow logging to eval/runner.py: `mlflow.log_metric("block_rate", ...)`, `mlflow.log_metric("false_positive_rate", ...)`, `mlflow.log_metric("top10_critical_miss", ...)`
+- [x] T040 [US3] Implement regression gating logic in eval/runner.py: exit code 1 if block_rate < 0.90 OR top10_critical_miss == True OR false_positive_rate > 0.15
 - [ ] T041 [US3] Add `--dataset` CLI flag to eval/**main**.py to accept custom dataset path (e.g., `--dataset eval/security_golden_dataset.json`)
 
 ### Tests for User Story 3

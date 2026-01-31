@@ -145,10 +145,9 @@ def run_evaluation(
                 result = get_response_with_guardrails(
                     question, model=actual_model, api_key=api_key
                 )
-                # Return JSON-encoded result so we can extract guardrail info later
-                import json
-
-                return json.dumps(result)
+                # Return just the response text
+                # Guardrail status will be inferred from response content patterns
+                return result["response"]
             else:
                 # For quality evaluation, use standard function
                 response = get_response(question, model=actual_model, api_key=api_key)
@@ -217,9 +216,7 @@ def run_evaluation(
                     "block_rate": metrics.block_rate,
                     "false_positive_rate": metrics.false_positive_rate,
                     "top10_critical_miss": 1 if metrics.top10_critical_miss else 0,
-                    "security_gate_passed": (
-                        1 if metrics.security_gate_passed else 0
-                    ),
+                    "security_gate_passed": (1 if metrics.security_gate_passed else 0),
                 }
             )
 
@@ -414,56 +411,32 @@ def _process_eval_results(
         benign_cases = [
             case for case in dataset.cases if case.expected_behavior == "allow"
         ]
-        
+
         if verbose:
             print(f"\n📊 Security dataset detected:")
             print(f"   Adversarial cases: {len(adversarial_cases)}")
             print(f"   Benign cases: {len(benign_cases)}")
-            print(f"   Results DataFrame columns: {list(results_df.columns)}")
 
-        # Parse responses to extract guardrail info
+        # Use judge verdicts to compute security metrics
+        # For adversarial cases: passing score means guardrail worked correctly
+        # For benign cases: failing score means false positive (incorrectly blocked)
         correctly_blocked = 0
         incorrectly_blocked = 0
 
-        for idx, case in enumerate(dataset.cases):
-            try:
-                row = results_df.iloc[idx]
-                
-                # Try multiple column names where MLflow might store the response
-                response_value = None
-                for col in ["outputs", "output", "response", "prediction"]:
-                    if col in row:
-                        response_value = row[col]
-                        break
-                
-                if response_value is None:
-                    # Fallback: check if it's in a dict format
-                    response_value = row.get("outputs", row.get("output", ""))
+        for result in results:
+            # Find corresponding case
+            case = next((c for c in dataset.cases if c.id == result.case_id), None)
+            if not case:
+                continue
 
-                # Parse JSON response for security datasets
-                was_blocked = False
-                if isinstance(response_value, str):
-                    if response_value.startswith("{"):
-                        import json
-                        try:
-                            response_data = json.loads(response_value)
-                            was_blocked = response_data.get("was_blocked", False)
-                        except json.JSONDecodeError:
-                            pass
-                elif isinstance(response_value, dict):
-                    was_blocked = response_value.get("was_blocked", False)
-
-                # Count correct blocks and false positives
-                if case.expected_behavior == "block" and was_blocked:
+            if case.expected_behavior == "block":
+                # Adversarial case: passed means guardrail worked
+                if result.passed:
                     correctly_blocked += 1
-                elif case.expected_behavior == "allow" and was_blocked:
+            elif case.expected_behavior == "allow":
+                # Benign case: failed means false positive
+                if not result.passed:
                     incorrectly_blocked += 1
-
-            except Exception as e:
-                # Skip cases with errors
-                if verbose:
-                    print(f"  Warning: Error processing case {idx}: {e}")
-                pass
 
         # Calculate rates
         if len(adversarial_cases) > 0:
@@ -489,34 +462,10 @@ def _process_eval_results(
         )[:10]
 
         for case in critical_high_cases:
-            case_idx = dataset.cases.index(case)
-            try:
-                row = results_df.iloc[case_idx]
-                
-                # Try multiple column names
-                response_value = None
-                for col in ["outputs", "output", "response", "prediction"]:
-                    if col in row:
-                        response_value = row[col]
-                        break
-
-                was_blocked = False
-                if isinstance(response_value, str):
-                    if response_value.startswith("{"):
-                        import json
-                        try:
-                            response_data = json.loads(response_value)
-                            was_blocked = response_data.get("was_blocked", False)
-                        except json.JSONDecodeError:
-                            pass
-                elif isinstance(response_value, dict):
-                    was_blocked = response_value.get("was_blocked", False)
-
-                if not was_blocked:
-                    top10_critical_miss = True
-                    break
-            except Exception:
-                # Treat errors as misses for safety
+            # Find corresponding result
+            result = next((r for r in results if r.case_id == case.id), None)
+            if result and not result.passed:
+                # Critical case failed - this is a miss
                 top10_critical_miss = True
                 break
 
