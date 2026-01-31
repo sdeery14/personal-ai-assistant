@@ -5,97 +5,141 @@ A FastAPI-based streaming chat API that interfaces with OpenAI's Agents SDK for 
 ## Features
 
 - **Real-time Streaming**: Server-Sent Events (SSE) for live response streaming
+- **Security Guardrails**: Input/output content moderation with OpenAI Moderation API
 - **Correlation IDs**: Request tracking across the entire request lifecycle
 - **Structured Logging**: JSON-formatted logs with automatic sensitive data redaction
 - **Error Handling**: User-friendly error messages following the constitutional UX pattern
-- **Input Validation**: Pydantic-based request validation with clear error messages
+- **MLflow Evaluation**: Judge-based quality and security testing framework
 
 ## Prerequisites
 
-- Python 3.11 or higher
-- [uv](https://docs.astral.sh/uv/) (recommended) or pip
-- Docker (optional, for containerized deployment)
-- OpenAI API key with access to chat models
+- **Docker & Docker Compose** (required for development and deployment)
+- **Python 3.11+** and [uv](https://docs.astral.sh/uv/) (for dependency management and running tests)
+- **OpenAI API key** with access to chat models and moderation API
 
-## Setup
+## Quick Start (Docker - Recommended)
 
-```bash
-# Install dependencies and create virtual environment
-uv sync
+### 1. Setup Environment
 
-# Run tests
-uv run pytest
-
-# Run the server
-uv run uvicorn src.main:app --reload
-```
-
-## Quick Start (Alternative with pip)
-
-### 1. Clone and Setup
-
-```bash
-# Clone the repository
+```powershell
+# Clone repository
 git clone <repository-url>
 cd personal-ai-assistant
 
-# Create virtual environment
-python -m venv .venv
+# Install dependencies (for running tests locally)
+uv sync
 
-# Activate virtual environment
-# On Windows:
-.venv\Scripts\activate
-# On macOS/Linux:
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
+# Create .env file with your API key
+echo "OPENAI_API_KEY=sk-your-key-here" > .env
 ```
 
-### 2. Configure Environment
+### 2. Start Services
 
-```bash
-# Copy example environment file
-cp .env.example .env
+```powershell
+# Start MLflow tracking server
+docker compose -f docker/docker-compose.mlflow.yml up -d
 
-# Edit .env with your settings
-# Required: OPENAI_API_KEY=sk-your-key-here
+# Start Chat API (loads .env automatically)
+docker compose -f docker/docker-compose.api.yml up -d --env-file .env
+
+# Verify services are running
+docker ps
 ```
 
-**Environment Variables:**
+### 3. Test the API
+
+```powershell
+# Health check
+curl http://localhost:8000/health
+
+# Test chat streaming
+curl -X POST http://localhost:8000/v1/chat/completions `
+  -H "Content-Type: application/json" `
+  -d '{"messages": [{"role": "user", "content": "Hello!"}], "stream": true}'
+```
+
+### 4. Run Tests & Evals
+
+```powershell
+# Run unit and integration tests (hits Docker services)
+uv run pytest tests/ -v
+
+# Run MLflow evaluation suite
+uv run python -m eval
+
+# View MLflow UI
+start http://localhost:5000
+```
+
+### 5. Development Workflow
+
+```powershell
+# Make code changes, then rebuild and restart
+docker compose -f docker/docker-compose.api.yml up -d --build
+
+# View logs
+docker logs chat-api -f
+
+# Stop services when done
+docker compose -f docker/docker-compose.api.yml down
+docker compose -f docker/docker-compose.mlflow.yml down
+```
+
+## Environment Variables
 
 | Variable          | Required | Default   | Description                                 |
 | ----------------- | -------- | --------- | ------------------------------------------- |
 | `OPENAI_API_KEY`  | ✅ Yes   | -         | Your OpenAI API key                         |
-| `OPENAI_MODEL`    | No       | `gpt-4.1` | Model to use for completions                |
+| `OPENAI_MODEL`    | No       | `gpt-4o`  | Model to use for completions                |
 | `MAX_TOKENS`      | No       | `2000`    | Maximum tokens per response                 |
 | `TIMEOUT_SECONDS` | No       | `30`      | Request timeout in seconds                  |
 | `LOG_LEVEL`       | No       | `INFO`    | Logging level (DEBUG, INFO, WARNING, ERROR) |
 
-### 3. Run the Server
+## Architecture
 
-```bash
-# Development mode with auto-reload
-uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
-
-# Production mode
-uvicorn src.main:app --host 0.0.0.0 --port 8000
+```
+┌─────────────────┐
+│   Developer     │
+│   (Host)        │
+│                 │
+│  uv run pytest  │───┐
+│  uv run eval    │   │
+└─────────────────┘   │
+                      │ HTTP
+                      ▼
+┌─────────────────────────────────────┐
+│         Docker Services              │
+│                                      │
+│  ┌──────────────┐  ┌──────────────┐ │
+│  │  Chat API    │  │   MLflow     │ │
+│  │ :8000        │──│  :5000       │ │
+│  │              │  │              │ │
+│  │ • Guardrails │  │ • Tracking   │ │
+│  │ • Streaming  │  │ • Eval Runs  │ │
+│  └──────────────┘  └──────────────┘ │
+│                                      │
+└─────────────────────────────────────┘
+          │
+          ▼
+   OpenAI API (external)
 ```
 
-## Docker Deployment
+## Manual Docker Build (Advanced)
 
-### Build and Run
+If you need to build images manually instead of using docker compose:
 
 ```bash
-# Build the image (uses uv for dependency management)
+# Build the Chat API image
 docker build -f docker/Dockerfile -t personal-ai-assistant .
 
-# Run the container
+# Build the MLflow image
+docker build -f docker/Dockerfile.mlflow -t mlflow-server .
+
+# Run manually (not recommended - use docker compose instead)
 docker run -d \
   --name chat-api \
   -p 8000:8000 \
-  -e OPENAI_API_KEY=sk-your-key-here \
-  -e OPENAI_MODEL=gpt-4 \
+  --env-file .env \
   personal-ai-assistant
 ```
 
