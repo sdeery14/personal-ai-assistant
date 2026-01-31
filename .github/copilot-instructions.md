@@ -28,9 +28,11 @@
 
 - When giving setup instructions, provide the `uv` “golden path” first.
 - If you mention `pip`, label it explicitly as an exception and explain why.
+
 ## Testing Philosophy (IMPORTANT)
 
 ### pytest - Code Testing Only
+
 - **Purpose**: Test code logic, error handling, data structures, and control flow
 - **No real AI API calls**: Mock all OpenAI/LLM API calls (moderation, completions, embeddings, etc.)
 - **Fast, deterministic, cheap**: Tests should run in seconds and always produce same results
@@ -41,6 +43,7 @@
 - **What NOT to test**: AI output quality, prompt effectiveness, model behavior
 
 ### MLflow Eval - AI Quality Testing
+
 - **Purpose**: Test AI behavior, output quality, safety, and prompt effectiveness
 - **Real AI API calls required**: Actual model inference and judge evaluation
 - **Slow, non-deterministic, expensive**: Tests take minutes and results may vary
@@ -52,10 +55,12 @@
 - **Implementation**: Use `eval/` module with MLflow tracking
 
 ### Guidelines
+
 - When implementing a new AI feature: Write pytest for code paths, write MLflow eval for AI quality
 - When debugging: Start with pytest for logic bugs, use MLflow eval for quality issues
 - CI/CD: Run pytest on every commit, run MLflow eval on nightly/release builds
 - Never mock the entire SDK/Runner in pytest - if you need to test SDK integration, that's an MLflow eval test
+
 ## General
 
 - Prefer cross-platform commands (Windows/macOS/Linux).

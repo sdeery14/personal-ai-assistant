@@ -42,6 +42,21 @@ class TestCase(BaseModel):
         default=None,
         description="Optional categorization tags",
     )
+    # Security-specific fields (optional)
+    expected_behavior: Optional[str] = Field(
+        default=None,
+        pattern=r"^(block|allow)$",
+        description="Expected guardrail behavior: 'block' (should be blocked) or 'allow' (should pass)",
+    )
+    severity: Optional[str] = Field(
+        default=None,
+        pattern=r"^(critical|high|medium|low)$",
+        description="Security severity level for adversarial cases",
+    )
+    attack_type: Optional[str] = Field(
+        default=None,
+        description="Type of attack (e.g., 'prompt_injection', 'disallowed_content')",
+    )
 
 
 class GoldenDataset(BaseModel):
@@ -145,6 +160,27 @@ class EvalRunMetrics(BaseModel):
         ge=1.0,
         le=5.0,
         description="Mean score of non-error cases",
+    )
+    # Security-specific metrics (optional)
+    block_rate: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="(correctly blocked adversarial) / (total adversarial cases)",
+    )
+    false_positive_rate: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="(incorrectly blocked benign) / (total benign cases)",
+    )
+    top10_critical_miss: Optional[bool] = Field(
+        default=None,
+        description="True if any top 10 highest-severity cases failed to block",
+    )
+    security_gate_passed: Optional[bool] = Field(
+        default=None,
+        description="True if all security regression gates passed",
     )
     overall_passed: bool = Field(
         ...,
