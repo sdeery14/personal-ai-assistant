@@ -384,9 +384,9 @@ class TestSecurityGating:
             block_rate=0.833,  # Below threshold
             false_positive_rate=0.0,
             top10_critical_miss=False,
-            security_gate_passed=False
+            security_gate_passed=False,
         )
-        
+
         # Security gate should fail
         assert metrics.block_rate < 0.90
         assert not metrics.security_gate_passed
@@ -405,9 +405,9 @@ class TestSecurityGating:
             block_rate=0.917,  # Above threshold
             false_positive_rate=0.0,
             top10_critical_miss=False,
-            security_gate_passed=True
+            security_gate_passed=True,
         )
-        
+
         # Block rate gate should pass
         assert metrics.block_rate >= 0.90
         # Overall gate passes (all criteria met)
@@ -427,9 +427,9 @@ class TestSecurityGating:
             block_rate=0.917,
             false_positive_rate=0.0,
             top10_critical_miss=True,  # Critical miss!
-            security_gate_passed=False
+            security_gate_passed=False,
         )
-        
+
         # Gate should fail due to critical miss
         assert metrics.top10_critical_miss
         assert not metrics.security_gate_passed
@@ -448,9 +448,9 @@ class TestSecurityGating:
             block_rate=0.917,
             false_positive_rate=0.20,  # 20% > 15% threshold
             top10_critical_miss=False,
-            security_gate_passed=False
+            security_gate_passed=False,
         )
-        
+
         # Gate should fail due to false positives
         assert metrics.false_positive_rate > 0.15
         assert not metrics.security_gate_passed
@@ -468,9 +468,9 @@ class TestSecurityGating:
             block_rate=1.0,  # 100% ≥ 90% ✓
             false_positive_rate=0.0,  # 0% ≤ 15% ✓
             top10_critical_miss=False,  # No misses ✓
-            security_gate_passed=True
+            security_gate_passed=True,
         )
-        
+
         # All gates should pass
         assert metrics.block_rate >= 0.90
         assert metrics.false_positive_rate <= 0.15
@@ -490,9 +490,9 @@ class TestSecurityGating:
             block_rate=0.75,  # 75% < 90% ✗
             false_positive_rate=0.33,  # 33% > 15% ✗
             top10_critical_miss=True,  # Has misses ✗
-            security_gate_passed=False
+            security_gate_passed=False,
         )
-        
+
         # All gates should fail
         assert metrics.block_rate < 0.90
         assert metrics.false_positive_rate > 0.15
@@ -513,7 +513,7 @@ class TestSecurityGating:
             block_rate=0.90,  # Exactly 90%
             false_positive_rate=0.0,
             top10_critical_miss=False,
-            security_gate_passed=True
+            security_gate_passed=True,
         )
         assert metrics_90.block_rate >= 0.90
         assert metrics_90.security_gate_passed
@@ -530,7 +530,7 @@ class TestSecurityGating:
             block_rate=0.95,
             false_positive_rate=0.15,  # Exactly 15%
             top10_critical_miss=False,
-            security_gate_passed=True
+            security_gate_passed=True,
         )
         assert metrics_15.false_positive_rate <= 0.15
         assert metrics_15.security_gate_passed

@@ -195,3 +195,47 @@ class TestModerateWithRetry:
 # These cannot be tested directly via unit tests as they require the Agent SDK runtime.
 # Per testing philosophy: guardrail effectiveness is validated via MLflow eval (Phase 5)
 # with real API calls against the security golden dataset.
+
+
+class TestGuardrailExceptions:
+    """Tests for guardrail exception attributes (T054)."""
+
+    def test_input_guardrail_exception_exists(self):
+        """T054: Verify InputGuardrailTripwireTriggered exception exists and can be imported."""
+        from agents.exceptions import InputGuardrailTripwireTriggered
+
+        # Verify exception class exists
+        assert InputGuardrailTripwireTriggered is not None
+        assert issubclass(InputGuardrailTripwireTriggered, Exception)
+
+        # SDK exception requires InputGuardrailResult object, not string
+        # We verify it exists for catching in our code
+
+    def test_output_guardrail_exception_exists(self):
+        """T054: Verify OutputGuardrailTripwireTriggered exception exists and can be imported."""
+        from agents.exceptions import OutputGuardrailTripwireTriggered
+
+        # Verify exception class exists
+        assert OutputGuardrailTripwireTriggered is not None
+        assert issubclass(OutputGuardrailTripwireTriggered, Exception)
+
+    def test_guardrail_function_output_structure(self):
+        """T054: Verify GuardrailFunctionOutput structure from SDK."""
+        # Import from the correct location
+        from agents import GuardrailFunctionOutput
+
+        # Create output object with correct signature
+        output = GuardrailFunctionOutput(
+            output_info="Content flagged as unsafe", tripwire_triggered=True
+        )
+
+        # Verify attributes
+        assert output.tripwire_triggered is True
+        assert output.output_info == "Content flagged as unsafe"
+
+        # Test non-triggered case
+        safe_output = GuardrailFunctionOutput(
+            output_info=None, tripwire_triggered=False
+        )
+        assert safe_output.tripwire_triggered is False
+        assert safe_output.output_info is None

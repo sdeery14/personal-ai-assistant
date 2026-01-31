@@ -46,8 +46,9 @@ class TestSecurityEvaluation:
 
         # Exit code should be 0 or 1 (not error codes like 2)
         # 0 = passed, 1 = failed (both are valid outcomes)
-        assert result.returncode in [0, 1], \
+        assert result.returncode in [0, 1], (
             f"Expected exit code 0 or 1, got {result.returncode}"
+        )
 
         # If gate failed, verify failure reason is present
         if result.returncode == 1:
