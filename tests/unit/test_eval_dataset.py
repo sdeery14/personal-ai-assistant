@@ -331,3 +331,125 @@ class TestHelperFunctions:
         case = get_case_by_id(dataset, "nonexistent")
 
         assert case is None
+
+
+# =============================================================================
+# Security Dataset Tests (T042-T046)
+# =============================================================================
+
+
+@pytest.fixture
+def security_dataset_path():
+    """Path to the security golden dataset."""
+    return Path("eval/security_golden_dataset.json")
+
+
+@pytest.fixture
+def security_dataset(security_dataset_path):
+    """Load the security dataset for testing."""
+    return load_dataset(str(security_dataset_path))
+
+
+class TestSecurityDataset:
+    """Tests for security golden dataset validation (User Story 3)."""
+
+    def test_load_security_dataset(self, security_dataset_path):
+        """T042: Verify security dataset JSON parses correctly."""
+        # Should not raise any exceptions
+        dataset = load_dataset(str(security_dataset_path))
+
+        # Verify it's a valid GoldenDataset
+        assert isinstance(dataset, GoldenDataset)
+        assert dataset.version
+        assert dataset.description
+        assert len(dataset.cases) > 0
+
+    def test_dataset_schema_validation(self, security_dataset):
+        """T043: Verify required security fields are present."""
+        # All cases should have security-specific fields
+        for case in security_dataset.cases:
+            # Required base fields
+            assert case.id, f"Case missing id: {case}"
+            assert case.user_prompt, f"Case {case.id} missing user_prompt"
+            assert case.rubric, f"Case {case.id} missing rubric"
+
+            # Required security fields
+            assert case.expected_behavior in ["block", "allow"], (
+                f"Case {case.id} has invalid expected_behavior: {case.expected_behavior}"
+            )
+            assert case.severity in ["critical", "high", "medium", "low"], (
+                f"Case {case.id} has invalid severity: {case.severity}"
+            )
+            assert case.attack_type, f"Case {case.id} missing attack_type"
+
+    def test_severity_distribution(self, security_dataset):
+        """T044: Verify ≥10 critical/high severity cases."""
+        critical_high_cases = [
+            case
+            for case in security_dataset.cases
+            if case.severity in ["critical", "high"]
+        ]
+
+        assert len(critical_high_cases) >= 10, (
+            f"Expected ≥10 critical/high cases, got {len(critical_high_cases)}"
+        )
+
+    def test_attack_type_coverage(self, security_dataset):
+        """T045: Verify 5 attack categories covered."""
+        # Expected attack types per spec
+        expected_types = {
+            "prompt_injection",
+            "disallowed_content",
+            "secret_extraction",
+            "social_engineering",
+            "jailbreak",
+        }
+
+        # Get unique attack types from dataset (excluding benign cases)
+        adversarial_cases = [
+            case for case in security_dataset.cases if case.expected_behavior == "block"
+        ]
+        actual_types = {case.attack_type for case in adversarial_cases}
+
+        # Verify all expected types are covered
+        missing_types = expected_types - actual_types
+        assert not missing_types, (
+            f"Missing attack types: {missing_types}. Found: {actual_types}"
+        )
+
+    def test_expected_behavior_distribution(self, security_dataset):
+        """T046: Verify ~80% block / ~20% allow distribution."""
+        total_cases = len(security_dataset.cases)
+        block_cases = [
+            case for case in security_dataset.cases if case.expected_behavior == "block"
+        ]
+        allow_cases = [
+            case for case in security_dataset.cases if case.expected_behavior == "allow"
+        ]
+
+        block_percentage = len(block_cases) / total_cases
+        allow_percentage = len(allow_cases) / total_cases
+
+        # Allow some flexibility: 70-90% block, 10-30% allow
+        assert 0.70 <= block_percentage <= 0.90, (
+            f"Block cases should be 70-90%, got {block_percentage:.1%}"
+        )
+        assert 0.10 <= allow_percentage <= 0.30, (
+            f"Allow cases should be 10-30%, got {allow_percentage:.1%}"
+        )
+
+    def test_dataset_minimum_size(self, security_dataset):
+        """Verify dataset has minimum viable size."""
+        assert len(security_dataset.cases) >= 15, (
+            f"Expected ≥15 cases for meaningful evaluation, got {len(security_dataset.cases)}"
+        )
+
+    def test_benign_cases_present(self, security_dataset):
+        """Verify benign cases exist to test false positives."""
+        benign_cases = [
+            case for case in security_dataset.cases if case.expected_behavior == "allow"
+        ]
+
+        assert len(benign_cases) >= 3, (
+            f"Need at least 3 benign cases to test false positives, got {len(benign_cases)}"
+        )

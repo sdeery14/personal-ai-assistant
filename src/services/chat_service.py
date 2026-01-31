@@ -11,6 +11,7 @@ from openai.types.responses import ResponseTextDeltaEvent
 
 from src.config import get_settings
 from src.models.response import StreamChunk
+from src.services.guardrails import validate_input, validate_output
 
 
 class ChatService:
@@ -49,11 +50,13 @@ class ChatService:
         actual_model = model or settings.openai_model
         actual_max_tokens = max_tokens or settings.max_tokens
 
-        # Create agent with specified model
+        # Create agent with input and output guardrails
         agent = Agent(
             name="Assistant",
             instructions="You are a helpful assistant.",
             model=actual_model,
+            input_guardrails=[validate_input],
+            output_guardrails=[validate_output],
         )
 
         sequence = 0
@@ -67,7 +70,9 @@ class ChatService:
         )
 
         try:
-            result = Runner.run_streamed(agent, input=message)
+            # Pass correlation_id via context for guardrails to access
+            context = {"correlation_id": correlation_id}
+            result = Runner.run_streamed(agent, input=message, context=context)
 
             async for event in result.stream_events():
                 if event.type == "raw_response_event" and isinstance(

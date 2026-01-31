@@ -1,0 +1,203 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Personal AI Assistant - Streaming Chat API with Guardrails",
+    "version": "1.1.0",
+    "description": "Streaming chat API with input/output guardrails. Extends Feature 001 with security guardrails that block unsafe requests and retract unsafe outputs."
+  },
+  "paths": {
+    "/chat/completions": {
+      "post": {
+        "summary": "Stream chat completion with guardrails",
+        "description": "Streams chat completion chunks. Input guardrails validate request before agent execution. Output guardrails monitor stream and send retraction chunk if unsafe content detected.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SSE stream of chat chunks",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "oneOf": [
+                    {"$ref": "#/components/schemas/StreamChunk"},
+                    {"$ref": "#/components/schemas/RetractionChunk"}
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Input guardrail violation - request blocked before agent execution",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatRequest": {
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "User's input message"
+          },
+          "model": {
+            "type": "string",
+            "description": "Optional model override",
+            "default": "gpt-4o-mini"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "description": "Optional max tokens override",
+            "minimum": 1,
+            "default": 4096
+          }
+        }
+      },
+      "StreamChunk": {
+        "type": "object",
+        "required": ["content", "sequence", "is_final", "correlation_id"],
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "Chunk of response text"
+          },
+          "sequence": {
+            "type": "integer",
+            "description": "Chunk sequence number (0-indexed)"
+          },
+          "is_final": {
+            "type": "boolean",
+            "description": "Whether this is the final chunk"
+          },
+          "correlation_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Request tracking UUID"
+          }
+        }
+      },
+      "RetractionChunk": {
+        "type": "object",
+        "required": ["content", "sequence", "is_final", "correlation_id", "error_type", "message"],
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "Empty or safe message text",
+            "example": ""
+          },
+          "sequence": {
+            "type": "integer",
+            "description": "Sequence number after last valid chunk"
+          },
+          "is_final": {
+            "type": "boolean",
+            "description": "Always true - terminates stream",
+            "enum": [true]
+          },
+          "correlation_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Request tracking UUID"
+          },
+          "error_type": {
+            "type": "string",
+            "description": "Type of guardrail violation",
+            "enum": ["output_guardrail_violation"]
+          },
+          "message": {
+            "type": "string",
+            "description": "Safe user-facing explanation",
+            "example": "Previous content retracted due to safety concerns"
+          },
+          "redacted_length": {
+            "type": "integer",
+            "description": "Character count of retracted content (for client-side cleanup)"
+          }
+        }
+      },
+      "GuardrailErrorResponse": {
+        "type": "object",
+        "required": ["error", "correlation_id", "guardrail_type"],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Safe user-facing error message",
+            "example": "Your request cannot be processed due to security concerns"
+          },
+          "correlation_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Request tracking UUID for debugging"
+          },
+          "guardrail_type": {
+            "type": "string",
+            "description": "Which guardrail triggered",
+            "enum": ["input", "output"]
+          },
+          "error_type": {
+            "type": "string",
+            "description": "Specific error classification",
+            "example": "input_guardrail_violation"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error message"
+          },
+          "detail": {
+            "type": "string",
+            "description": "Additional error details"
+          },
+          "correlation_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Request tracking UUID if available"
+          }
+        }
+      }
+    }
+  }
+}

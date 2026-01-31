@@ -10,10 +10,14 @@ import structlog
 from fastapi import APIRouter, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
+from agents.exceptions import (
+    InputGuardrailTripwireTriggered,
+    OutputGuardrailTripwireTriggered,
+)
 
 from src.config import get_settings
 from src.models.request import ChatRequest
-from src.models.response import ErrorResponse, StreamChunk
+from src.models.response import ErrorResponse, GuardrailErrorResponse, StreamChunk
 from src.services.chat_service import ChatService
 
 
@@ -109,6 +113,36 @@ async def generate_sse_stream_with_timeout(
             "error": "Request timed out. The server took too long to respond. Please try again with a shorter message or try again later.",
         }
         yield f"data: {json.dumps(error_chunk)}\n\n"
+    except (InputGuardrailTripwireTriggered, OutputGuardrailTripwireTriggered) as e:
+        # Guardrail blocked the request or response - stream as SSE error event
+        status = "blocked"
+        guardrail_type = (
+            "input" if isinstance(e, InputGuardrailTripwireTriggered) else "output"
+        )
+
+        logger.warning(
+            f"{guardrail_type}_guardrail_triggered",
+            correlation_id=correlation_id,
+            guardrail_type=guardrail_type,
+            error_type=type(e).__name__,
+        )
+
+        # User-safe message with no technical details
+        message = (
+            "Your request cannot be processed due to security concerns. Please rephrase your message and try again."
+            if guardrail_type == "input"
+            else "Previous content retracted due to safety concerns. Please try a different request."
+        )
+
+        error_chunk = {
+            "content": "",
+            "sequence": -1,
+            "is_final": True,
+            "correlation_id": correlation_id,
+            "error": message,
+            "error_type": f"{guardrail_type}_guardrail_violation",
+        }
+        yield f"data: {json.dumps(error_chunk)}\n\n"
     except Exception as e:
         status = "error"
         # Stream error as SSE event with user-friendly message
@@ -152,6 +186,9 @@ async def chat(request: ChatRequest, http_request: Request) -> StreamingResponse
 
     Returns:
         StreamingResponse with SSE content type
+
+    Raises:
+        HTTPException: 400 if input guardrail blocks the request
     """
     # Use correlation ID from middleware if available, otherwise generate
     correlation_id = getattr(http_request.state, "correlation_id", None) or str(uuid4())
@@ -167,7 +204,8 @@ async def chat(request: ChatRequest, http_request: Request) -> StreamingResponse
         message_length=len(request.message),
     )
 
-    # Create streaming response with SSE content type and timeout
+    # Create streaming response with SSE content type
+    # Guardrail exceptions are handled within the stream as SSE error events
     response = StreamingResponse(
         generate_sse_stream_with_timeout(request, correlation_id),
         media_type="text/event-stream",
@@ -177,5 +215,4 @@ async def chat(request: ChatRequest, http_request: Request) -> StreamingResponse
             "Connection": "keep-alive",
         },
     )
-
     return response

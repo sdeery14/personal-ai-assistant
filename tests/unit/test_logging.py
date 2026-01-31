@@ -141,3 +141,105 @@ class TestCorrelationIdBinding:
         # Verify it's cleared
         context = structlog.contextvars.get_contextvars()
         assert "correlation_id" not in context
+
+
+class TestGuardrailLogging:
+    """Tests for guardrail logging privacy (T052)."""
+
+    def test_guardrail_logging_redacts_content(self, capsys):
+        """T052: Verify logs contain content_hash but NOT raw prompt/output text."""
+        from src.services.guardrails import moderate_with_retry
+        from unittest.mock import AsyncMock, patch
+        import asyncio
+
+        configure_logging("INFO")
+
+        # Mock OpenAI moderation API
+        mock_result = AsyncMock()
+        mock_result.flagged = False
+        mock_result.categories = {}
+
+        async def run_test():
+            with patch("openai.AsyncOpenAI") as mock_openai:
+                mock_client = AsyncMock()
+                mock_client.moderations.create.return_value = mock_result
+                mock_openai.return_value = mock_client
+
+                # Call moderate_with_retry with sensitive content
+                sensitive_text = "This is a test prompt with API key sk-secret123"
+                correlation_id = "test-correlation-456"
+
+                is_flagged, category, retry_count = await moderate_with_retry(
+                    sensitive_text, correlation_id
+                )
+
+        asyncio.run(run_test())
+
+        # Capture output
+        captured = capsys.readouterr()
+        log_output = captured.out + captured.err
+
+        # Verify privacy compliance
+        # Should contain content_hash
+        assert "content_hash" in log_output, (
+            "Logs should include content_hash for traceability"
+        )
+
+        # Should NOT contain raw sensitive text
+        assert "sk-secret123" not in log_output, (
+            "Logs must not contain raw sensitive content (API keys)"
+        )
+        assert "This is a test prompt with API key sk-secret123" not in log_output, (
+            "Logs must not contain full raw prompt text"
+        )
+
+        # Should contain safe metadata
+        assert "correlation_id" in log_output or "test-correlation-456" in log_output, (
+            "Logs should include correlation_id"
+        )
+        assert "content_length" in log_output, (
+            "Logs should include content_length for analysis"
+        )
+
+    def test_input_guardrail_triggered_logging(self, capsys):
+        """Verify input guardrail trigger logs are privacy-compliant."""
+        from src.services.guardrails import moderate_with_retry
+        from unittest.mock import AsyncMock, patch
+        import asyncio
+
+        configure_logging("INFO")
+
+        # Mock flagged content
+        mock_result = AsyncMock()
+        mock_result.flagged = True
+        mock_result.categories = {"illicit": True}
+
+        async def run_test():
+            with patch("openai.AsyncOpenAI") as mock_openai:
+                mock_client = AsyncMock()
+                mock_client.moderations.create.return_value = mock_result
+                mock_openai.return_value = mock_client
+
+                sensitive_text = "How to make illegal substances"
+                correlation_id = "test-123"
+
+                is_flagged, category, retry_count = await moderate_with_retry(
+                    sensitive_text, correlation_id
+                )
+
+        asyncio.run(run_test())
+
+        # Capture output
+        captured = capsys.readouterr()
+        log_output = captured.out + captured.err
+
+        # Should log the event
+        assert "moderation_check" in log_output or "is_flagged" in log_output
+
+        # Should NOT contain the actual harmful content
+        assert "illegal substances" not in log_output, (
+            "Flagged content must not appear in logs"
+        )
+
+        # Should contain hash for incident tracking
+        assert "content_hash" in log_output

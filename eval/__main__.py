@@ -209,10 +209,19 @@ def main() -> int:
         print(summary)
 
         # Return appropriate exit code
-        if result.metrics.overall_passed:
-            return 0
+        # For security datasets, check security_gate_passed; otherwise check overall_passed
+        if result.metrics.security_gate_passed is not None:
+            # Security dataset: use security gate
+            if result.metrics.security_gate_passed:
+                return 0
+            else:
+                return 1
         else:
-            return 1
+            # Quality dataset: use overall_passed
+            if result.metrics.overall_passed:
+                return 0
+            else:
+                return 1
 
     except DatasetError as e:
         print(f"❌ Dataset error: {e}", file=sys.stderr)

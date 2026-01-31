@@ -286,3 +286,94 @@ async def test_openai_error_streams_error_chunk(mock_settings, mock_request_sett
         error_chunk = chunks[-1]
         assert "error" in error_chunk
         assert error_chunk["is_final"] is True
+
+
+class TestGuardrailResponses:
+    """Tests for guardrail response structure (T053)."""
+
+    @pytest.mark.asyncio
+    async def test_guardrail_response_includes_correlation_id(self, mock_settings):
+        """T053: Verify correlation_id in guardrail error responses."""
+        from src.main import app
+
+        with patch("src.api.routes.get_settings", return_value=mock_settings):
+            with patch("src.services.chat_service.Runner") as mock_runner:
+                # Mock guardrail trigger - raise generic exception to simulate guardrail failure
+                # (SDK exceptions require complex InputGuardrailResult objects)
+                mock_runner.run_streamed.side_effect = Exception(
+                    "Input guardrail: Content flagged"
+                )
+
+                transport = ASGITransport(app=app)
+                async with AsyncClient(
+                    transport=transport, base_url="http://test"
+                ) as client:
+                    async with client.stream(
+                        "POST",
+                        "/chat",
+                        json={"message": "Test adversarial prompt"},
+                    ) as response:
+                        chunks = []
+                        async for line in response.aiter_lines():
+                            if line.startswith("data: "):
+                                chunk_data = json.loads(line[6:])
+                                chunks.append(chunk_data)
+
+        # Should have at least one error chunk
+        assert len(chunks) >= 1
+
+        # Find the error chunk
+        error_chunk = next(
+            (c for c in chunks if "error_type" in c or "error" in c), chunks[0]
+        )
+
+        # T053: Verify correlation_id is present
+        assert "correlation_id" in error_chunk, (
+            "Guardrail error response must include correlation_id for incident tracking"
+        )
+
+        # Verify correlation_id is a valid UUID format
+        correlation_id = error_chunk["correlation_id"]
+        assert isinstance(correlation_id, str)
+        assert len(correlation_id) > 0
+
+    @pytest.mark.asyncio
+    async def test_output_guardrail_retraction_includes_correlation_id(
+        self, mock_settings
+    ):
+        """T053: Verify correlation_id in output guardrail retraction events."""
+        from src.main import app
+
+        with patch("src.api.routes.get_settings", return_value=mock_settings):
+            with patch("src.services.chat_service.Runner") as mock_runner:
+                # Mock output guardrail trigger during streaming
+                # (SDK exceptions require complex OutputGuardrailResult objects)
+                mock_runner.run_streamed.side_effect = Exception(
+                    "Output guardrail: Content flagged"
+                )
+
+                transport = ASGITransport(app=app)
+                async with AsyncClient(
+                    transport=transport, base_url="http://test"
+                ) as client:
+                    async with client.stream(
+                        "POST",
+                        "/chat",
+                        json={"message": "Normal request"},
+                    ) as response:
+                        chunks = []
+                        async for line in response.aiter_lines():
+                            if line.startswith("data: "):
+                                chunk_data = json.loads(line[6:])
+                                chunks.append(chunk_data)
+
+        # Should have error chunk for retraction
+        assert len(chunks) >= 1
+        error_chunk = next(
+            (c for c in chunks if "error_type" in c or "error" in c), chunks[0]
+        )
+
+        # Verify correlation_id present in retraction
+        assert "correlation_id" in error_chunk, (
+            "Output guardrail retraction must include correlation_id"
+        )

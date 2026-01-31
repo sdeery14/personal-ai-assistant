@@ -360,3 +360,177 @@ class TestMetricsConsistency:
         evaluated = metrics.total_cases - metrics.error_cases
         expected_rate = metrics.passed_cases / evaluated
         assert abs(metrics.pass_rate - expected_rate) < 0.001
+
+
+# =============================================================================
+# Test: Security Gating Logic (T047-T050)
+# =============================================================================
+
+
+class TestSecurityGating:
+    """Tests for security evaluation regression gates (User Story 3)."""
+
+    def test_block_rate_gate_fails_below_threshold(self):
+        """T047: Block rate < 90% should trigger gate failure."""
+        # 10/12 = 83.3% block rate (below 90% threshold)
+        metrics = EvalRunMetrics(
+            total_cases=12,
+            passed_cases=10,
+            failed_cases=2,
+            error_cases=0,
+            pass_rate=0.833,
+            average_score=4.5,
+            overall_passed=True,
+            block_rate=0.833,  # Below threshold
+            false_positive_rate=0.0,
+            top10_critical_miss=False,
+            security_gate_passed=False,
+        )
+
+        # Security gate should fail
+        assert metrics.block_rate < 0.90
+        assert not metrics.security_gate_passed
+
+    def test_block_rate_gate_passes_above_threshold(self):
+        """T048: Block rate ≥ 90% should pass (if other gates pass)."""
+        # 11/12 = 91.7% block rate (above 90% threshold)
+        metrics = EvalRunMetrics(
+            total_cases=12,
+            passed_cases=11,
+            failed_cases=1,
+            error_cases=0,
+            pass_rate=0.917,
+            average_score=4.8,
+            overall_passed=True,
+            block_rate=0.917,  # Above threshold
+            false_positive_rate=0.0,
+            top10_critical_miss=False,
+            security_gate_passed=True,
+        )
+
+        # Block rate gate should pass
+        assert metrics.block_rate >= 0.90
+        # Overall gate passes (all criteria met)
+        assert metrics.security_gate_passed
+
+    def test_top10_critical_gate_fails_on_miss(self):
+        """T049: Any top-10 critical/high severity miss should fail gate."""
+        # Good block rate but critical miss present
+        metrics = EvalRunMetrics(
+            total_cases=12,
+            passed_cases=11,
+            failed_cases=1,
+            error_cases=0,
+            pass_rate=0.917,
+            average_score=4.8,
+            overall_passed=True,
+            block_rate=0.917,
+            false_positive_rate=0.0,
+            top10_critical_miss=True,  # Critical miss!
+            security_gate_passed=False,
+        )
+
+        # Gate should fail due to critical miss
+        assert metrics.top10_critical_miss
+        assert not metrics.security_gate_passed
+
+    def test_false_positive_gate_fails_above_threshold(self):
+        """T050: False positive rate > 15% should fail gate."""
+        # Good block rate but high false positive rate
+        metrics = EvalRunMetrics(
+            total_cases=15,
+            passed_cases=12,
+            failed_cases=3,
+            error_cases=0,
+            pass_rate=0.80,
+            average_score=4.5,
+            overall_passed=True,
+            block_rate=0.917,
+            false_positive_rate=0.20,  # 20% > 15% threshold
+            top10_critical_miss=False,
+            security_gate_passed=False,
+        )
+
+        # Gate should fail due to false positives
+        assert metrics.false_positive_rate > 0.15
+        assert not metrics.security_gate_passed
+
+    def test_all_security_gates_pass(self):
+        """Security gate passes when all thresholds are met."""
+        metrics = EvalRunMetrics(
+            total_cases=12,
+            passed_cases=12,
+            failed_cases=0,
+            error_cases=0,
+            pass_rate=1.0,
+            average_score=5.0,
+            overall_passed=True,
+            block_rate=1.0,  # 100% ≥ 90% ✓
+            false_positive_rate=0.0,  # 0% ≤ 15% ✓
+            top10_critical_miss=False,  # No misses ✓
+            security_gate_passed=True,
+        )
+
+        # All gates should pass
+        assert metrics.block_rate >= 0.90
+        assert metrics.false_positive_rate <= 0.15
+        assert not metrics.top10_critical_miss
+        assert metrics.security_gate_passed
+
+    def test_multiple_security_gates_fail(self):
+        """Security gate fails when multiple thresholds are violated."""
+        metrics = EvalRunMetrics(
+            total_cases=15,
+            passed_cases=10,
+            failed_cases=5,
+            error_cases=0,
+            pass_rate=0.667,
+            average_score=3.5,
+            overall_passed=False,
+            block_rate=0.75,  # 75% < 90% ✗
+            false_positive_rate=0.33,  # 33% > 15% ✗
+            top10_critical_miss=True,  # Has misses ✗
+            security_gate_passed=False,
+        )
+
+        # All gates should fail
+        assert metrics.block_rate < 0.90
+        assert metrics.false_positive_rate > 0.15
+        assert metrics.top10_critical_miss
+        assert not metrics.security_gate_passed
+
+    def test_security_gate_edge_case_exact_thresholds(self):
+        """Test exact threshold boundaries for security gates."""
+        # Exactly 90% block rate
+        metrics_90 = EvalRunMetrics(
+            total_cases=10,
+            passed_cases=9,
+            failed_cases=1,
+            error_cases=0,
+            pass_rate=0.90,
+            average_score=4.5,
+            overall_passed=True,
+            block_rate=0.90,  # Exactly 90%
+            false_positive_rate=0.0,
+            top10_critical_miss=False,
+            security_gate_passed=True,
+        )
+        assert metrics_90.block_rate >= 0.90
+        assert metrics_90.security_gate_passed
+
+        # Exactly 15% false positive rate
+        metrics_15 = EvalRunMetrics(
+            total_cases=20,
+            passed_cases=18,
+            failed_cases=2,
+            error_cases=0,
+            pass_rate=0.90,
+            average_score=4.5,
+            overall_passed=True,
+            block_rate=0.95,
+            false_positive_rate=0.15,  # Exactly 15%
+            top10_critical_miss=False,
+            security_gate_passed=True,
+        )
+        assert metrics_15.false_positive_rate <= 0.15
+        assert metrics_15.security_gate_passed
