@@ -113,6 +113,36 @@ async def generate_sse_stream_with_timeout(
             "error": "Request timed out. The server took too long to respond. Please try again with a shorter message or try again later.",
         }
         yield f"data: {json.dumps(error_chunk)}\n\n"
+    except (InputGuardrailTripwireTriggered, OutputGuardrailTripwireTriggered) as e:
+        # Guardrail blocked the request or response - stream as SSE error event
+        status = "blocked"
+        guardrail_type = (
+            "input" if isinstance(e, InputGuardrailTripwireTriggered) else "output"
+        )
+
+        logger.warning(
+            f"{guardrail_type}_guardrail_triggered",
+            correlation_id=correlation_id,
+            guardrail_type=guardrail_type,
+            error_type=type(e).__name__,
+        )
+
+        # User-safe message with no technical details
+        message = (
+            "Your request cannot be processed due to security concerns. Please rephrase your message and try again."
+            if guardrail_type == "input"
+            else "Previous content retracted due to safety concerns. Please try a different request."
+        )
+
+        error_chunk = {
+            "content": "",
+            "sequence": -1,
+            "is_final": True,
+            "correlation_id": correlation_id,
+            "error": message,
+            "error_type": f"{guardrail_type}_guardrail_violation",
+        }
+        yield f"data: {json.dumps(error_chunk)}\n\n"
     except Exception as e:
         status = "error"
         # Stream error as SSE event with user-friendly message
@@ -174,56 +204,15 @@ async def chat(request: ChatRequest, http_request: Request) -> StreamingResponse
         message_length=len(request.message),
     )
 
-    try:
-        # Create streaming response with SSE content type and timeout
-        response = StreamingResponse(
-            generate_sse_stream_with_timeout(request, correlation_id),
-            media_type="text/event-stream",
-            headers={
-                "X-Correlation-Id": correlation_id,
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-            },
-        )
-        return response
-
-    except (InputGuardrailTripwireTriggered, OutputGuardrailTripwireTriggered) as e:
-        # SDK guardrail blocked the request or response
-        guardrail_type = (
-            "input" if isinstance(e, InputGuardrailTripwireTriggered) else "output"
-        )
-
-        # Extract violation details from exception if available
-        category = "unknown"
-        content_hash = "unknown"
-        if hasattr(e, "result") and e.result and hasattr(e.result, "output_info"):
-            output_info = e.result.output_info or {}
-            category = output_info.get("category", "unknown")
-
-        logger.warning(
-            f"{guardrail_type}_guardrail_violation",
-            correlation_id=correlation_id,
-            guardrail_type=guardrail_type,
-            category=category,
-        )
-
-        # Return 400 with safe user-facing message
-        message = (
-            "Your request cannot be processed due to security concerns. Please rephrase your message and try again."
-            if guardrail_type == "input"
-            else "The response was blocked due to security concerns. Please try a different request."
-        )
-
-        error_response = GuardrailErrorResponse(
-            error="guardrail_violation",
-            message=message,
-            correlation_id=UUID(correlation_id),
-            guardrail_type=guardrail_type,
-            error_type=f"{guardrail_type}_guardrail_violation",
-        )
-
-        return JSONResponse(
-            status_code=400,
-            content=error_response.model_dump(mode="json"),
-            headers={"X-Correlation-Id": correlation_id},
-        )
+    # Create streaming response with SSE content type
+    # Guardrail exceptions are handled within the stream as SSE error events
+    response = StreamingResponse(
+        generate_sse_stream_with_timeout(request, correlation_id),
+        media_type="text/event-stream",
+        headers={
+            "X-Correlation-Id": correlation_id,
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
+    return response

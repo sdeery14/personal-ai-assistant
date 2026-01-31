@@ -3,6 +3,11 @@
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
+from dotenv import load_dotenv
+
+# Load environment variables before anything else
+load_dotenv()
+
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
