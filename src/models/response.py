@@ -14,12 +14,18 @@ class StreamChunk(BaseModel):
         sequence: Zero-indexed chunk number
         is_final: True if this is the last chunk
         correlation_id: Request tracking ID (UUID4)
+        error_type: Optional error type for retraction chunks (e.g., "output_guardrail_violation")
+        message: Optional user-facing message for retraction chunks
+        redacted_length: Optional length of content that was redacted/retracted
     """
 
     content: str
     sequence: int = Field(ge=0)
     is_final: bool = False
     correlation_id: UUID
+    error_type: Optional[str] = None
+    message: Optional[str] = None
+    redacted_length: Optional[int] = None
 
 
 class ChatResponse(BaseModel):
@@ -58,3 +64,21 @@ class ErrorResponse(BaseModel):
     error: str  # What happened
     detail: str  # Why and what to do
     correlation_id: UUID
+
+
+class GuardrailErrorResponse(BaseModel):
+    """Error response for guardrail violations.
+
+    Attributes:
+        error: High-level error type (e.g., "guardrail_violation")
+        message: User-safe explanation (no technical details)
+        correlation_id: Request tracking ID for debugging
+        guardrail_type: "input" or "output"
+        error_type: Specific error code (e.g., "input_guardrail_violation")
+    """
+
+    error: str
+    message: str
+    correlation_id: UUID
+    guardrail_type: str
+    error_type: str

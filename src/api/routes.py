@@ -10,10 +10,14 @@ import structlog
 from fastapi import APIRouter, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
+from agents.exceptions import (
+    InputGuardrailTripwireTriggered,
+    OutputGuardrailTripwireTriggered,
+)
 
 from src.config import get_settings
 from src.models.request import ChatRequest
-from src.models.response import ErrorResponse, StreamChunk
+from src.models.response import ErrorResponse, GuardrailErrorResponse, StreamChunk
 from src.services.chat_service import ChatService
 
 
@@ -152,6 +156,9 @@ async def chat(request: ChatRequest, http_request: Request) -> StreamingResponse
 
     Returns:
         StreamingResponse with SSE content type
+
+    Raises:
+        HTTPException: 400 if input guardrail blocks the request
     """
     # Use correlation ID from middleware if available, otherwise generate
     correlation_id = getattr(http_request.state, "correlation_id", None) or str(uuid4())
@@ -167,15 +174,56 @@ async def chat(request: ChatRequest, http_request: Request) -> StreamingResponse
         message_length=len(request.message),
     )
 
-    # Create streaming response with SSE content type and timeout
-    response = StreamingResponse(
-        generate_sse_stream_with_timeout(request, correlation_id),
-        media_type="text/event-stream",
-        headers={
-            "X-Correlation-Id": correlation_id,
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        },
-    )
+    try:
+        # Create streaming response with SSE content type and timeout
+        response = StreamingResponse(
+            generate_sse_stream_with_timeout(request, correlation_id),
+            media_type="text/event-stream",
+            headers={
+                "X-Correlation-Id": correlation_id,
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            },
+        )
+        return response
 
-    return response
+    except (InputGuardrailTripwireTriggered, OutputGuardrailTripwireTriggered) as e:
+        # SDK guardrail blocked the request or response
+        guardrail_type = (
+            "input" if isinstance(e, InputGuardrailTripwireTriggered) else "output"
+        )
+
+        # Extract violation details from exception if available
+        category = "unknown"
+        content_hash = "unknown"
+        if hasattr(e, "result") and e.result and hasattr(e.result, "output_info"):
+            output_info = e.result.output_info or {}
+            category = output_info.get("category", "unknown")
+
+        logger.warning(
+            f"{guardrail_type}_guardrail_violation",
+            correlation_id=correlation_id,
+            guardrail_type=guardrail_type,
+            category=category,
+        )
+
+        # Return 400 with safe user-facing message
+        message = (
+            "Your request cannot be processed due to security concerns. Please rephrase your message and try again."
+            if guardrail_type == "input"
+            else "The response was blocked due to security concerns. Please try a different request."
+        )
+
+        error_response = GuardrailErrorResponse(
+            error="guardrail_violation",
+            message=message,
+            correlation_id=UUID(correlation_id),
+            guardrail_type=guardrail_type,
+            error_type=f"{guardrail_type}_guardrail_violation",
+        )
+
+        return JSONResponse(
+            status_code=400,
+            content=error_response.model_dump(mode="json"),
+            headers={"X-Correlation-Id": correlation_id},
+        )
