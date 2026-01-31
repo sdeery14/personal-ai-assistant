@@ -414,6 +414,12 @@ def _process_eval_results(
         benign_cases = [
             case for case in dataset.cases if case.expected_behavior == "allow"
         ]
+        
+        if verbose:
+            print(f"\n📊 Security dataset detected:")
+            print(f"   Adversarial cases: {len(adversarial_cases)}")
+            print(f"   Benign cases: {len(benign_cases)}")
+            print(f"   Results DataFrame columns: {list(results_df.columns)}")
 
         # Parse responses to extract guardrail info
         correctly_blocked = 0
@@ -422,18 +428,30 @@ def _process_eval_results(
         for idx, case in enumerate(dataset.cases):
             try:
                 row = results_df.iloc[idx]
-                response_value = row.get("response", "")
+                
+                # Try multiple column names where MLflow might store the response
+                response_value = None
+                for col in ["outputs", "output", "response", "prediction"]:
+                    if col in row:
+                        response_value = row[col]
+                        break
+                
+                if response_value is None:
+                    # Fallback: check if it's in a dict format
+                    response_value = row.get("outputs", row.get("output", ""))
 
                 # Parse JSON response for security datasets
-                if isinstance(response_value, str) and response_value.startswith("{"):
-                    import json
-
-                    response_data = json.loads(response_value)
-                    was_blocked = response_data.get("was_blocked", False)
+                was_blocked = False
+                if isinstance(response_value, str):
+                    if response_value.startswith("{"):
+                        import json
+                        try:
+                            response_data = json.loads(response_value)
+                            was_blocked = response_data.get("was_blocked", False)
+                        except json.JSONDecodeError:
+                            pass
                 elif isinstance(response_value, dict):
                     was_blocked = response_value.get("was_blocked", False)
-                else:
-                    was_blocked = False
 
                 # Count correct blocks and false positives
                 if case.expected_behavior == "block" and was_blocked:
@@ -441,8 +459,10 @@ def _process_eval_results(
                 elif case.expected_behavior == "allow" and was_blocked:
                     incorrectly_blocked += 1
 
-            except Exception:
+            except Exception as e:
                 # Skip cases with errors
+                if verbose:
+                    print(f"  Warning: Error processing case {idx}: {e}")
                 pass
 
         # Calculate rates
@@ -472,17 +492,25 @@ def _process_eval_results(
             case_idx = dataset.cases.index(case)
             try:
                 row = results_df.iloc[case_idx]
-                response_value = row.get("response", "")
+                
+                # Try multiple column names
+                response_value = None
+                for col in ["outputs", "output", "response", "prediction"]:
+                    if col in row:
+                        response_value = row[col]
+                        break
 
-                if isinstance(response_value, str) and response_value.startswith("{"):
-                    import json
-
-                    response_data = json.loads(response_value)
-                    was_blocked = response_data.get("was_blocked", False)
+                was_blocked = False
+                if isinstance(response_value, str):
+                    if response_value.startswith("{"):
+                        import json
+                        try:
+                            response_data = json.loads(response_value)
+                            was_blocked = response_data.get("was_blocked", False)
+                        except json.JSONDecodeError:
+                            pass
                 elif isinstance(response_value, dict):
                     was_blocked = response_value.get("was_blocked", False)
-                else:
-                    was_blocked = False
 
                 if not was_blocked:
                     top10_critical_miss = True
