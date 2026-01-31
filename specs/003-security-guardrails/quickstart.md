@@ -224,7 +224,16 @@ docker logs chat-api -f
 **Example log entries** (JSON format):
 
 ```json
-{"event": "moderation_check", "correlation_id": "...", "is_flagged": true, "category": "violence", "content_hash": "abc123...", "content_length": 156, "latency_ms": 145, "retry_count": 0}
+{
+  "event": "moderation_check",
+  "correlation_id": "...",
+  "is_flagged": true,
+  "category": "violence",
+  "content_hash": "abc123...",
+  "content_length": 156,
+  "latency_ms": 145,
+  "retry_count": 0
+}
 ```
 
 **Privacy note**: Raw prompts/outputs are NEVER logged, only hashes and lengths.

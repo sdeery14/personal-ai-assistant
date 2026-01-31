@@ -87,13 +87,13 @@ docker compose -f docker/docker-compose.mlflow.yml down
 
 ## Environment Variables
 
-| Variable          | Required | Default   | Description                                 |
-| ----------------- | -------- | --------- | ------------------------------------------- |
-| `OPENAI_API_KEY`  | ✅ Yes   | -         | Your OpenAI API key                         |
-| `OPENAI_MODEL`    | No       | `gpt-4o`  | Model to use for completions                |
-| `MAX_TOKENS`      | No       | `2000`    | Maximum tokens per response                 |
-| `TIMEOUT_SECONDS` | No       | `30`      | Request timeout in seconds                  |
-| `LOG_LEVEL`       | No       | `INFO`    | Logging level (DEBUG, INFO, WARNING, ERROR) |
+| Variable          | Required | Default  | Description                                 |
+| ----------------- | -------- | -------- | ------------------------------------------- |
+| `OPENAI_API_KEY`  | ✅ Yes   | -        | Your OpenAI API key                         |
+| `OPENAI_MODEL`    | No       | `gpt-4o` | Model to use for completions                |
+| `MAX_TOKENS`      | No       | `2000`   | Maximum tokens per response                 |
+| `TIMEOUT_SECONDS` | No       | `30`     | Request timeout in seconds                  |
+| `LOG_LEVEL`       | No       | `INFO`   | Logging level (DEBUG, INFO, WARNING, ERROR) |
 
 ## Architecture
 
