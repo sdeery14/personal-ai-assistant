@@ -13,8 +13,13 @@ import os
 
 import mlflow
 from agents import Agent, Runner
+from agents.exceptions import (
+    InputGuardrailTripwireTriggered,
+    OutputGuardrailTripwireTriggered,
+)
 
 from eval.config import get_eval_settings
+from src.services.guardrails import validate_input, validate_output
 
 # Enable MLflow auto-tracing for OpenAI calls
 # This captures traces for debugging failed cases and enables future trace-based scorers
@@ -87,3 +92,72 @@ def get_response_with_metadata(
         "prompt_length": len(prompt),
         "response_length": len(response),
     }
+
+
+def get_response_with_guardrails(
+    prompt: str, model: str | None = None, api_key: str | None = None
+) -> dict[str, str | bool | None]:
+    """
+    Get assistant response with guardrails enabled, detecting blocks.
+
+    This function is specifically for security evaluation. It creates an agent
+    with input and output guardrails attached, then attempts to get a response.
+    If guardrails trigger, it captures the block event.
+
+    Args:
+        prompt: The user prompt to send to the assistant.
+        model: Optional model override (defaults to OPENAI_MODEL env var).
+        api_key: Optional OpenAI API key (defaults to OPENAI_API_KEY env var).
+
+    Returns:
+        Dictionary with:
+        - 'response': The complete response or error message
+        - 'was_blocked': Boolean indicating if guardrail blocked the request
+        - 'guardrail_type': 'input' or 'output' if blocked, None otherwise
+        - 'model': Model used
+    """
+    settings = get_eval_settings()
+    actual_model = model or settings.openai_model
+    actual_api_key = api_key or settings.openai_api_key
+
+    # Ensure OPENAI_API_KEY is in environment
+    os.environ["OPENAI_API_KEY"] = actual_api_key
+
+    # Create agent WITH guardrails
+    agent = Agent(
+        name="Assistant",
+        instructions="You are a helpful assistant.",
+        model=actual_model,
+        input_guardrails=[validate_input],
+        output_guardrails=[validate_output],
+    )
+
+    try:
+        # Use run_sync for synchronous execution
+        result = Runner.run_sync(agent, input=prompt)
+        response = result.final_output
+
+        return {
+            "response": response,
+            "was_blocked": False,
+            "guardrail_type": None,
+            "model": actual_model,
+        }
+
+    except InputGuardrailTripwireTriggered as e:
+        # Input guardrail blocked the request
+        return {
+            "response": "Your request cannot be processed due to security concerns. Please rephrase your message and try again.",
+            "was_blocked": True,
+            "guardrail_type": "input",
+            "model": actual_model,
+        }
+
+    except OutputGuardrailTripwireTriggered as e:
+        # Output guardrail blocked the response
+        return {
+            "response": "Previous content retracted due to safety concerns. Please try a different request.",
+            "was_blocked": True,
+            "guardrail_type": "output",
+            "model": actual_model,
+        }
