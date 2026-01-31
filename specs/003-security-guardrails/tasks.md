@@ -120,16 +120,16 @@
 
 ### Tests for User Story 3
 
-- [ ] T042 [P] [US3] Create tests/unit/test_security_dataset.py with test_load_security_dataset() - verify JSON parses correctly
-- [ ] T043 [P] [US3] Add test_dataset_schema_validation() to tests/unit/test_security_dataset.py - verify required fields (expected_behavior, severity, attack_type) present
-- [ ] T044 [P] [US3] Add test_severity_distribution() to tests/unit/test_security_dataset.py - verify ≥10 critical/high severity cases
-- [ ] T045 [P] [US3] Add test_attack_type_coverage() to tests/unit/test_security_dataset.py - verify 5 attack categories covered
-- [ ] T046 [P] [US3] Add test_expected_behavior_distribution() to tests/unit/test_security_dataset.py - verify ~80% block / ~20% allow
-- [ ] T047 [P] [US3] Create tests/unit/test_gating.py with test_block_rate_gate_fails_below_threshold() - mock block_rate < 0.90, assert exit code 1
-- [ ] T048 [P] [US3] Add test_block_rate_gate_passes_above_threshold() to tests/unit/test_gating.py - mock block_rate ≥ 0.90, assert exit code 0
-- [ ] T049 [P] [US3] Add test_top10_critical_gate_fails_on_miss() to tests/unit/test_gating.py - mock any top-10 severity miss, assert exit code 1
-- [ ] T050 [P] [US3] Add test_false_positive_gate_fails_above_threshold() to tests/unit/test_gating.py - mock FP rate > 0.15, assert exit code 1
-- [ ] T051 [US3] Create tests/integration/test_security_eval.py with test_full_security_eval_run() - run `python -m eval --dataset security_golden_dataset.json`, verify MLflow metrics logged, check exit code
+- [X] T042 [P] [US3] Create tests/unit/test_security_dataset.py with test_load_security_dataset() - verify JSON parses correctly
+- [X] T043 [P] [US3] Add test_dataset_schema_validation() to tests/unit/test_security_dataset.py - verify required fields (expected_behavior, severity, attack_type) present
+- [X] T044 [P] [US3] Add test_severity_distribution() to tests/unit/test_security_dataset.py - verify ≥10 critical/high severity cases
+- [X] T045 [P] [US3] Add test_attack_type_coverage() to tests/unit/test_security_dataset.py - verify 5 attack categories covered
+- [X] T046 [P] [US3] Add test_expected_behavior_distribution() to tests/unit/test_security_dataset.py - verify ~80% block / ~20% allow
+- [X] T047 [P] [US3] Create tests/unit/test_gating.py with test_block_rate_gate_fails_below_threshold() - mock block_rate < 0.90, assert exit code 1
+- [X] T048 [P] [US3] Add test_block_rate_gate_passes_above_threshold() to tests/unit/test_gating.py - mock block_rate ≥ 0.90, assert exit code 0
+- [X] T049 [P] [US3] Add test_top10_critical_gate_fails_on_miss() to tests/unit/test_gating.py - mock any top-10 severity miss, assert exit code 1
+- [X] T050 [P] [US3] Add test_false_positive_gate_fails_above_threshold() to tests/unit/test_gating.py - mock FP rate > 0.15, assert exit code 1
+- [X] T051 [US3] Create tests/integration/test_security_eval.py with test_full_security_eval_run() - run `python -m eval --dataset security_golden_dataset.json`, verify MLflow metrics logged, check exit code
 
 **Checkpoint**: All user stories should now be independently functional - input/output guardrails operational, security dataset evaluated, regression gating functional
 
