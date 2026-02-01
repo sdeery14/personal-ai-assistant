@@ -36,10 +36,28 @@ async def health_check() -> dict:
     Returns:
         Status and timestamp in ISO8601 format
     """
-    return {
+    health_status = {
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+    # Check database health
+    try:
+        from src.database import health_check as db_health_check
+        db_healthy = await db_health_check()
+        health_status["database"] = "healthy" if db_healthy else "unhealthy"
+    except Exception:
+        health_status["database"] = "unavailable"
+
+    # Check Redis health
+    try:
+        from src.services.redis_service import get_redis
+        redis_client = await get_redis()
+        health_status["redis"] = "healthy" if redis_client else "unavailable"
+    except Exception:
+        health_status["redis"] = "unavailable"
+
+    return health_status
 
 
 async def generate_sse_stream(
@@ -65,6 +83,8 @@ async def generate_sse_stream(
         correlation_id=correlation_uuid,
         model=request.get_model(),
         max_tokens=request.get_max_tokens(),
+        user_id=request.user_id,
+        conversation_id=request.conversation_id,
     ):
         chunk_dict = {
             "content": chunk.content,
@@ -169,6 +189,7 @@ async def generate_sse_stream_with_timeout(
             duration_ms=duration_ms,
             chunk_count=chunk_count,
             status=status,
+            user_id=request.user_id,
         )
 
 
@@ -181,7 +202,7 @@ async def chat(request: ChatRequest, http_request: Request) -> StreamingResponse
     and final flag.
 
     Args:
-        request: ChatRequest with message and optional model/max_tokens
+        request: ChatRequest with message, optional model/max_tokens, user_id, conversation_id
         http_request: FastAPI request object for metadata
 
     Returns:
@@ -202,6 +223,8 @@ async def chat(request: ChatRequest, http_request: Request) -> StreamingResponse
         method=http_request.method,
         path=str(http_request.url.path),
         message_length=len(request.message),
+        user_id=request.user_id,
+        conversation_id=request.conversation_id,
     )
 
     # Create streaming response with SSE content type

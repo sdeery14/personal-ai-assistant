@@ -1,7 +1,40 @@
-# Personal AI Assistant - Chat API
+# Personal AI Assistant - Chat API with Memory Infrastructure
 # Usage: docker compose -f docker/docker-compose.api.yml up -d
 
 services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: assistant-postgres
+    environment:
+      POSTGRES_USER: assistant
+      POSTGRES_PASSWORD: assistant_dev_password
+      POSTGRES_DB: assistant
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-pgvector.sql:/docker-entrypoint-initdb.d/init-pgvector.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U assistant -d assistant"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: assistant-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   chat-api:
     build:
       context: ..
@@ -11,6 +44,14 @@ services:
       - "8000:8000"
     env_file:
       - ../.env
+    environment:
+      - POSTGRES_URL=postgresql://assistant:assistant_dev_password@postgres:5432/assistant
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test:
@@ -24,3 +65,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+volumes:
+  postgres_data:
+  redis_data:

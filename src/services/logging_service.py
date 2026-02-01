@@ -1,8 +1,10 @@
 """Structured logging configuration with redaction support."""
 
+import hashlib
 import logging
 import sys
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+from uuid import UUID
 
 import structlog
 
@@ -68,7 +70,7 @@ def configure_logging(log_level: str = "INFO") -> None:
     )
 
 
-def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
+def get_logger(name: Optional[str] = None) -> structlog.stdlib.BoundLogger:
     """Get a configured logger instance.
 
     Args:
@@ -81,3 +83,36 @@ def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     if name:
         logger = logger.bind(logger_name=name)
     return logger
+
+
+def log_memory_retrieval(
+    correlation_id: Optional[UUID],
+    query: str,
+    user_id: str,
+    result_count: int,
+    latency_ms: int,
+    truncated: bool,
+) -> None:
+    """Log memory retrieval event with privacy-safe query hash.
+
+    Args:
+        correlation_id: Request correlation ID
+        query: Search query (will be hashed, not logged raw)
+        user_id: User identifier
+        result_count: Number of results returned
+        latency_ms: Retrieval latency in milliseconds
+        truncated: Whether results were truncated for token budget
+    """
+    # Hash the query for privacy (never log raw query content)
+    query_hash = hashlib.sha256(query.encode()).hexdigest()[:16]
+
+    logger = get_logger("memory")
+    logger.info(
+        "memory_retrieval",
+        correlation_id=str(correlation_id) if correlation_id else None,
+        query_hash=query_hash,
+        user_id=user_id,
+        result_count=result_count,
+        latency_ms=latency_ms,
+        truncated=truncated,
+    )

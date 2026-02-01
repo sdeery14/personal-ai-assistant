@@ -19,6 +19,12 @@ dependencies = [
     # Evaluation Framework (Feature 002)
     "mlflow>=3.8.1",
     "litellm>=1.81.5",
+    # Memory Feature (Feature 004)
+    "asyncpg>=0.29.0",
+    "pgvector>=0.3.0",
+    "redis>=5.0.0",
+    "tiktoken>=0.7.0",
+    "openai>=1.0.0",
 ]
 
 [project.optional-dependencies]
