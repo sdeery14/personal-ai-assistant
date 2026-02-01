@@ -3,88 +3,111 @@
 This roadmap intentionally builds **capability + safety + confidence** in layers.
 Each feature delivers a clear, testable user capability and becomes the foundation for the next.
 
+> **Related Documents:** See [vision-memory.md](vision-memory.md) for the long-term memory architecture vision.
+
 ---
 
-## Feature 001 – Core Streaming Chat API
+## Completed Features
+
+### Feature 001 – Core Streaming Chat API ✅
 
 **Goal**
 Establish a reliable, observable interaction loop with the assistant.
 
 **User Capability**
 
-> “I can send a message and receive a streamed response from the assistant.”
+> "I can send a message and receive a streamed response from the assistant."
 
 **Scope**
 
-- OpenAI chat model integration
-- Server-side streaming responses
+- OpenAI Agents SDK integration
+- Server-side SSE streaming responses
 - Request lifecycle with correlation IDs
 - Structured logging and basic error handling
 
-**Explicitly Out of Scope**
-
-- Memory
-- External tools
-- Evaluations
-- Voice
+**Status:** Complete (spec `001-streaming-chat-api`)
 
 ---
 
-## Feature 002 – Evaluation Harness (MLflow)
+### Feature 002 – Evaluation Harness (MLflow) ✅
 
 **Goal**
 Prevent silent regressions in assistant behavior.
 
 **User Capability**
 
-> “I can tell if the assistant got better or worse after a change.”
+> "I can tell if the assistant got better or worse after a change."
 
 **Scope**
 
 - Golden test dataset (small, deterministic)
-- Prompt and schema versioning
+- LLM-as-judge scoring with rubrics
 - MLflow-backed run tracking
-- Pass/fail thresholds
+- Pass/fail thresholds with regression gating
 - CI gate for prompt / routing changes
 
-**Explicitly Out of Scope**
-
-- Complex scoring models
-- Large-scale benchmarking
+**Status:** Complete (spec `002-judge-eval-framework`)
 
 ---
 
-## Feature 003 – Memory v1 (Hybrid Retrieval, Read-Only)
+### Feature 003 – Security Guardrails ✅
+
+**Goal**
+Protect users and the system from harmful inputs and outputs.
+
+**User Capability**
+
+> "The assistant blocks dangerous requests and never produces harmful content."
+
+**Scope**
+
+- Input guardrails via OpenAI Moderation API
+- Output guardrails with stream retraction
+- Fail-closed behavior with exponential backoff retry
+- Security red-team golden dataset
+- Security-specific eval metrics (block rate, false positive rate)
+
+**Status:** Complete (spec `003-security-guardrails`)
+
+---
+
+## Upcoming Features
+
+### Feature 004 – Memory v1 (Read-Only Recall)
+
+> _Implements Memory v1 from [vision-memory.md](vision-memory.md)_
 
 **Goal**
 Enable safe retrieval of relevant past information.
 
 **User Capability**
 
-> “The assistant can look up relevant past information when answering.”
+> "The assistant can look up relevant past information when answering."
 
 **Scope**
 
-- Hybrid search (keyword + vector)
-- Read-only memory store
-- Explicit memory query tool
+- Hybrid search (keyword + semantic)
+- Read-only memory store with typed items (Fact, Preference, Decision, Note)
+- Explicit memory query tool for the Agent
 - Retrieval-only grounding in responses
+- Memory retrieval eval coverage
 
 **Explicitly Out of Scope**
 
 - Automatic memory writes
+- Summarization or insight extraction
 - Long-term personalization logic
 
 ---
 
-## Feature 004 – External Tool v1: Weather Lookup
+### Feature 005 – External Tool v1: Weather Lookup
 
 **Goal**
 Introduce a safe, real-world external tool.
 
 **User Capability**
 
-> “The assistant can accurately tell me the weather.”
+> "The assistant can accurately tell me the weather."
 
 **Scope**
 
@@ -100,14 +123,14 @@ Introduce a safe, real-world external tool.
 
 ---
 
-## Feature 005 – Tool-Based Reasoning (Weather-Aware Suggestions)
+### Feature 006 – Tool-Based Reasoning (Weather-Aware Suggestions)
 
 **Goal**
 Combine factual tools with assistant reasoning.
 
 **User Capability**
 
-> “The assistant can suggest plans, clothing, or gear based on weather.”
+> "The assistant can suggest plans, clothing, or gear based on weather."
 
 **Scope**
 
@@ -122,16 +145,41 @@ Combine factual tools with assistant reasoning.
 
 ---
 
-## Feature 006 – Voice Interaction (Phased)
+### Feature 007 – Memory v2 (Automatic Writes)
 
-### Feature 006a – Voice Output (TTS Only)
+> _Implements Memory v2 from [vision-memory.md](vision-memory.md)_
+
+**Goal**
+Allow the assistant to remember important information automatically.
+
+**User Capability**
+
+> "The assistant remembers what I told it without me having to repeat myself."
+
+**Scope**
+
+- Automatic summarization of conversation windows
+- Insight extraction (facts, preferences, decisions)
+- User-observable memory writes with provenance
+- Memory write eval coverage (precision, relevance)
+
+**Explicitly Out of Scope**
+
+- Background jobs
+- Proactive suggestions
+
+---
+
+### Feature 008 – Voice Interaction (Phased)
+
+#### Feature 008a – Voice Output (TTS Only)
 
 **Goal**
 Add audio output without increasing system complexity.
 
 **User Capability**
 
-> “I can hear the assistant’s responses.”
+> "I can hear the assistant's responses."
 
 **Scope**
 
@@ -141,14 +189,14 @@ Add audio output without increasing system complexity.
 
 ---
 
-### Feature 006b – Two-Way Voice Chat
+#### Feature 008b – Two-Way Voice Chat
 
 **Goal**
 Enable natural spoken conversations.
 
 **User Capability**
 
-> “I can talk to the assistant and hear it respond.”
+> "I can talk to the assistant and hear it respond."
 
 **Scope**
 
@@ -158,14 +206,14 @@ Enable natural spoken conversations.
 
 ---
 
-## Feature 007 – Edge Client v1: Raspberry Pi Interface
+### Feature 009 – Edge Client v1: Raspberry Pi Interface
 
 **Goal**
 Deploy the assistant in a physical environment.
 
 **User Capability**
 
-> “I can interact with the assistant from a Raspberry Pi.”
+> "I can interact with the assistant from a Raspberry Pi."
 
 **Scope**
 
@@ -180,14 +228,14 @@ Deploy the assistant in a physical environment.
 
 ---
 
-## Feature 008 – External Integrations v1: Google (Read-Only)
+### Feature 010 – External Integrations v1: Google (Read-Only)
 
 **Goal**
 Allow the assistant to see personal context safely.
 
 **User Capability**
 
-> “The assistant can tell me about my emails and calendar events.”
+> "The assistant can tell me about my emails and calendar events."
 
 **Scope**
 
@@ -203,17 +251,42 @@ Allow the assistant to see personal context safely.
 
 ---
 
-## Feature 009+ – Capability Expansion
+### Feature 011 – Memory v3 (Background Jobs & Proactivity)
+
+> _Implements Memory v3 from [vision-memory.md](vision-memory.md)_
+
+**Goal**
+Enable time-shifted intelligence and proactive preparation.
+
+**User Capability**
+
+> "The assistant prepares helpful information before I ask for it."
+
+**Scope**
+
+- Background job execution
+- Morning briefings (news, weather, calendar)
+- Trip/event preparation summaries
+- Opt-in proactive notifications
+
+**Explicitly Out of Scope**
+
+- Autonomous actions
+- Unsolicited interruptions
+
+---
+
+## Future Capability Expansion
 
 **Goal**
 Safely extend assistant usefulness over time.
 
 **Examples**
 
-- Memory writes and personalization
-- Task automation
-- Proactive suggestions
-- Additional tools and integrations
+- Memory v4: Long-horizon personalization and planning
+- Task automation and write-capable integrations
+- Multi-modal inputs (images, documents)
+- Additional tool integrations
 
 Each new capability must:
 
