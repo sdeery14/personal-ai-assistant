@@ -196,3 +196,146 @@ class EvalRun(BaseModel):
     parameters: EvalRunParameters = Field(..., description="Configuration for this run")
     metrics: EvalRunMetrics = Field(..., description="Aggregate results")
     results: list[EvalResult] = Field(..., description="Per-case results")
+
+
+# Memory-specific models for Feature 004 evaluation
+
+
+class MemorySetupItem(BaseModel):
+    """A memory item to seed for a test case."""
+
+    content: str = Field(..., min_length=1, description="Memory content text")
+    type: str = Field(
+        ...,
+        pattern=r"^(fact|preference|decision|note)$",
+        description="Memory type",
+    )
+    user_id: Optional[str] = Field(
+        default=None,
+        description="Override user_id for cross-user security tests",
+    )
+
+
+class MemoryTestCase(BaseModel):
+    """A test case for memory retrieval evaluation."""
+
+    id: str = Field(
+        ...,
+        pattern=r"^[a-z0-9-]+$",
+        description="Unique case identifier",
+    )
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Search query to test retrieval",
+    )
+    user_id: str = Field(
+        ...,
+        description="User ID for the query (for user scoping)",
+    )
+    setup_memories: list[MemorySetupItem] = Field(
+        default_factory=list,
+        description="Memories to seed for this test case",
+    )
+    other_user_memories: Optional[list[MemorySetupItem]] = Field(
+        default=None,
+        description="Memories for other users (cross-user security tests)",
+    )
+    expected_retrievals: list[str] = Field(
+        ...,
+        description="Keywords/phrases expected in retrieved memories",
+    )
+    rubric: str = Field(
+        ...,
+        min_length=10,
+        max_length=2000,
+        description="Evaluation criteria for the judge",
+    )
+
+
+class MemoryGoldenDataset(BaseModel):
+    """Complete memory evaluation dataset."""
+
+    version: str = Field(
+        ...,
+        pattern=r"^\d+\.\d+\.\d+$",
+        description="Dataset schema version (semver)",
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Dataset purpose description",
+    )
+    cases: list[MemoryTestCase] = Field(
+        ...,
+        min_length=5,
+        max_length=50,
+        description="Array of memory test cases",
+    )
+
+    @field_validator("cases")
+    @classmethod
+    def unique_ids(cls, v: list[MemoryTestCase]) -> list[MemoryTestCase]:
+        """Validate that all case IDs are unique."""
+        ids = [case.id for case in v]
+        if len(ids) != len(set(ids)):
+            duplicates = [id_ for id_ in ids if ids.count(id_) > 1]
+            raise ValueError(f"Case IDs must be unique. Duplicates: {set(duplicates)}")
+        return v
+
+
+class MemoryEvalResult(BaseModel):
+    """Result of evaluating one memory retrieval test case."""
+
+    case_id: str = Field(..., description="Reference to MemoryTestCase.id")
+    query: str = Field(..., description="Original query")
+    retrieved_contents: list[str] = Field(..., description="Contents of retrieved memories")
+    retrieved_count: int = Field(..., ge=0, description="Number of memories retrieved")
+    expected_found: int = Field(..., ge=0, description="How many expected items were found")
+    expected_total: int = Field(..., ge=0, description="Total expected items")
+    recall: float = Field(..., ge=0.0, le=1.0, description="Recall score for this case")
+    precision: float = Field(..., ge=0.0, le=1.0, description="Precision score for this case")
+    latency_ms: int = Field(..., gt=0, description="Retrieval latency in milliseconds")
+    token_count: int = Field(..., ge=0, description="Token count of retrieved memories")
+    within_budget: bool = Field(..., description="Whether token budget was respected")
+    cross_user_violation: bool = Field(
+        default=False,
+        description="True if memories from wrong user were returned",
+    )
+    error: Optional[str] = Field(default=None, description="Error message if failed")
+
+
+class MemoryMetrics(BaseModel):
+    """Aggregate metrics for a memory evaluation run."""
+
+    total_cases: int = Field(..., description="Total number of test cases")
+    recall_at_5: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Average recall@5 across all cases",
+    )
+    precision_at_5: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Average precision@5 across all cases",
+    )
+    latency_p50: float = Field(..., ge=0.0, description="Median latency in ms")
+    latency_p95: float = Field(..., ge=0.0, description="95th percentile latency in ms")
+    token_compliance: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Percentage of retrievals within token budget",
+    )
+    cross_user_violations: int = Field(
+        ...,
+        ge=0,
+        description="Number of cases with cross-user data leakage",
+    )
+    error_cases: int = Field(..., ge=0, description="Cases that errored")
+    overall_passed: bool = Field(
+        ...,
+        description="True if recall >= 0.80 AND precision >= 0.70 AND violations == 0",
+    )

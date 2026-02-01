@@ -229,46 +229,46 @@
 
 ### Golden Dataset
 
-- [ ] T102 [US5] Create eval/memory_golden_dataset.json with version, description, and empty cases array
-- [ ] T103 [US5] Add 5 recall test cases to memory_golden_dataset.json: setup_memories, query, expected_retrievals, rubric
-- [ ] T104 [US5] Add 5 precision test cases to memory_golden_dataset.json: queries with multiple potential matches
-- [ ] T105 [US5] Add 3 edge case tests to memory_golden_dataset.json: no matches, semantic-only match, keyword-only match
-- [ ] T106 [US5] Add 2 cross-user security cases to memory_golden_dataset.json: verify user A cannot retrieve user B's memories
+- [x] T102 [US5] Create eval/memory_golden_dataset.json with version, description, and empty cases array
+- [x] T103 [US5] Add 5 recall test cases to memory_golden_dataset.json: setup_memories, query, expected_retrievals, rubric
+- [x] T104 [US5] Add 5 precision test cases to memory_golden_dataset.json: queries with multiple potential matches
+- [x] T105 [US5] Add 3 edge case tests to memory_golden_dataset.json: no matches, semantic-only match, keyword-only match
+- [x] T106 [US5] Add 2 cross-user security cases to memory_golden_dataset.json: verify user A cannot retrieve user B's memories
 
 ### Eval Models
 
-- [ ] T107 [US5] Add MemoryTestCase model to eval/models.py: id, setup_memories, query, expected_retrievals, rubric, user_id
-- [ ] T108 [US5] Add MemoryMetrics model to eval/models.py: recall_at_5, precision_at_5, latency_p50, latency_p95, token_compliance, cross_user_violations
+- [x] T107 [US5] Add MemoryTestCase model to eval/models.py: id, setup_memories, query, expected_retrievals, rubric, user_id
+- [x] T108 [US5] Add MemoryMetrics model to eval/models.py: recall_at_5, precision_at_5, latency_p50, latency_p95, token_compliance, cross_user_violations
 
 ### Dataset Loading
 
-- [ ] T109 [US5] Add `load_memory_dataset(filepath: str) -> list[MemoryTestCase]` function to eval/dataset.py
-- [ ] T110 [US5] Add schema validation in load_memory_dataset(): required fields (id, setup_memories, query, expected_retrievals)
+- [x] T109 [US5] Add `load_memory_dataset(filepath: str) -> list[MemoryTestCase]` function to eval/dataset.py
+- [x] T110 [US5] Add schema validation in load_memory_dataset(): required fields (id, setup_memories, query, expected_retrievals)
 
 ### Memory Judge
 
-- [ ] T111 [US5] Create eval/memory_judge.py with MemoryJudge class
-- [ ] T112 [US5] Implement `def evaluate_recall(retrieved: list[str], expected: list[str], k: int = 5) -> float` in memory_judge.py
-- [ ] T113 [US5] Implement `def evaluate_precision(retrieved: list[str], expected: list[str], k: int = 5) -> float` in memory_judge.py
-- [ ] T114 [US5] Implement `def check_cross_user_violation(retrieved_user_ids: list[str], expected_user_id: str) -> bool` in memory_judge.py
+- [x] T111 [US5] Create eval/memory_judge.py with MemoryJudge class
+- [x] T112 [US5] Implement `def evaluate_recall(retrieved: list[str], expected: list[str], k: int = 5) -> float` in memory_judge.py
+- [x] T113 [US5] Implement `def evaluate_precision(retrieved: list[str], expected: list[str], k: int = 5) -> float` in memory_judge.py
+- [x] T114 [US5] Implement `def check_cross_user_violation(retrieved_user_ids: list[str], expected_user_id: str) -> bool` in memory_judge.py
 
 ### Runner Integration
 
-- [ ] T115 [US5] Modify eval/runner.py: add `--dataset memory` flag support
-- [ ] T116 [US5] In runner.py: implement memory eval flow - seed memories, run queries, collect results
-- [ ] T117 [US5] In runner.py: compute recall@5, precision@5 using memory_judge
-- [ ] T118 [US5] In runner.py: compute latency_p50, latency_p95 from retrieval timing
-- [ ] T119 [US5] In runner.py: compute token_compliance (% of retrievals within budget)
-- [ ] T120 [US5] In runner.py: log metrics to MLflow: `mlflow.log_metric("memory_recall_at_5", ...)`, etc.
-- [ ] T121 [US5] Implement regression gating in runner.py: exit code 1 if recall@5 < 0.80 OR precision@5 < 0.70 OR cross_user_violations > 0
+- [x] T115 [US5] Modify eval/runner.py: add `--dataset memory` flag support
+- [x] T116 [US5] In runner.py: implement memory eval flow - seed memories, run queries, collect results
+- [x] T117 [US5] In runner.py: compute recall@5, precision@5 using memory_judge
+- [x] T118 [US5] In runner.py: compute latency_p50, latency_p95 from retrieval timing
+- [x] T119 [US5] In runner.py: compute token_compliance (% of retrievals within budget)
+- [x] T120 [US5] In runner.py: log metrics to MLflow: `mlflow.log_metric("memory_recall_at_5", ...)`, etc.
+- [x] T121 [US5] Implement regression gating in runner.py: exit code 1 if recall@5 < 0.80 OR precision@5 < 0.70 OR cross_user_violations > 0
 
 ### Tests for User Story 5
 
-- [ ] T122 [P] [US5] Create tests/unit/test_memory_dataset.py with test_load_memory_dataset_parses_json() - verify parsing works
-- [ ] T123 [P] [US5] Add test_memory_dataset_schema_validation() to tests/unit/test_memory_dataset.py - verify required fields checked
-- [ ] T124 [P] [US5] Add test_evaluate_recall_correct_calculation() to tests/unit/test_memory_judge.py - verify formula
-- [ ] T125 [P] [US5] Add test_evaluate_precision_correct_calculation() to tests/unit/test_memory_judge.py - verify formula
-- [ ] T126 [P] [US5] Add test_cross_user_violation_detected() to tests/unit/test_memory_judge.py - verify detection works
+- [x] T122 [P] [US5] Create tests/unit/test_memory_dataset.py with test_load_memory_dataset_parses_json() - verify parsing works
+- [x] T123 [P] [US5] Add test_memory_dataset_schema_validation() to tests/unit/test_memory_dataset.py - verify required fields checked
+- [x] T124 [P] [US5] Add test_evaluate_recall_correct_calculation() to tests/unit/test_memory_judge.py - verify formula
+- [x] T125 [P] [US5] Add test_evaluate_precision_correct_calculation() to tests/unit/test_memory_judge.py - verify formula
+- [x] T126 [P] [US5] Add test_cross_user_violation_detected() to tests/unit/test_memory_judge.py - verify detection works
 - [ ] T127 [US5] Create tests/integration/test_memory_eval.py with test_full_memory_eval_run() - run `python -m eval --dataset memory`, verify exit code and MLflow metrics
 
 **Checkpoint**: User Story 5 complete - memory evaluation integrated with MLflow.

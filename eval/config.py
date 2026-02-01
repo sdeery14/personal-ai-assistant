@@ -74,6 +74,14 @@ class EvalSettings(BaseSettings):
         description="Temperature for assistant (0 for reproducibility)",
     )
 
+    # Memory Evaluation Configuration
+    token_budget: int = Field(
+        default=1000,
+        ge=100,
+        le=10000,
+        description="Token budget for memory retrieval",
+    )
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

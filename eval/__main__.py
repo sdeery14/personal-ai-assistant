@@ -19,7 +19,15 @@ from pathlib import Path
 
 from eval.config import get_eval_settings, reset_settings
 from eval.dataset import DatasetError
-from eval.runner import EvaluationResult, format_summary, run_evaluation
+from eval.runner import (
+    EvaluationResult,
+    MemoryEvaluationResult,
+    format_memory_summary,
+    format_summary,
+    is_memory_dataset,
+    run_evaluation,
+    run_memory_evaluation,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -172,56 +180,94 @@ def main() -> int:
         return 2
 
     try:
-        if args.dry_run:
-            # Dry run mode: validate only
-            print("🔍 Validating dataset (dry run)...")
+        # Check if this is a memory dataset
+        is_memory = is_memory_dataset(args.dataset)
+
+        if is_memory:
+            # Memory evaluation flow
+            if args.dry_run:
+                print("🔍 Validating memory dataset (dry run)...")
+                result = run_memory_evaluation(
+                    dataset_path=args.dataset,
+                    verbose=args.verbose,
+                    dry_run=True,
+                )
+                print(f"✅ Memory dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+
+            print("🚀 Running memory evaluation...")
+            if args.verbose:
+                print()
+
+            result = run_memory_evaluation(
+                dataset_path=args.dataset,
+                verbose=args.verbose,
+                dry_run=False,
+            )
+
+            # Print summary
+            summary = format_memory_summary(result)
+            print(summary)
+
+            # Return exit code based on memory gate
+            if result.metrics.overall_passed:
+                return 0
+            else:
+                return 1
+
+        else:
+            # Standard evaluation flow
+            if args.dry_run:
+                # Dry run mode: validate only
+                print("🔍 Validating dataset (dry run)...")
+                result = run_evaluation(
+                    dataset_path=args.dataset,
+                    model=args.model,
+                    judge_model=args.judge_model,
+                    pass_threshold=args.pass_threshold,
+                    score_threshold=args.score_threshold,
+                    verbose=args.verbose,
+                    dry_run=True,
+                )
+                print(f"✅ Dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+
+            # Run full evaluation
+            print("🚀 Running evaluation...")
+            if args.verbose:
+                print()
+
             result = run_evaluation(
                 dataset_path=args.dataset,
                 model=args.model,
                 judge_model=args.judge_model,
                 pass_threshold=args.pass_threshold,
                 score_threshold=args.score_threshold,
+                max_workers=args.workers,
                 verbose=args.verbose,
-                dry_run=True,
+                dry_run=False,
             )
-            print(f"✅ Dataset valid: {result.metrics.total_cases} cases")
-            print("   Run without --dry-run to execute evaluation.")
-            return 0
 
-        # Run full evaluation
-        print("🚀 Running evaluation...")
-        if args.verbose:
-            print()
+            # Print summary
+            summary = format_summary(result, settings)
+            print(summary)
 
-        result = run_evaluation(
-            dataset_path=args.dataset,
-            model=args.model,
-            judge_model=args.judge_model,
-            pass_threshold=args.pass_threshold,
-            score_threshold=args.score_threshold,
-            max_workers=args.workers,
-            verbose=args.verbose,
-            dry_run=False,
-        )
-
-        # Print summary
-        summary = format_summary(result, settings)
-        print(summary)
-
-        # Return appropriate exit code
-        # For security datasets, check security_gate_passed; otherwise check overall_passed
-        if result.metrics.security_gate_passed is not None:
-            # Security dataset: use security gate
-            if result.metrics.security_gate_passed:
-                return 0
+            # Return appropriate exit code
+            # For security datasets, check security_gate_passed; otherwise check overall_passed
+            if result.metrics.security_gate_passed is not None:
+                # Security dataset: use security gate
+                if result.metrics.security_gate_passed:
+                    return 0
+                else:
+                    return 1
             else:
-                return 1
-        else:
-            # Quality dataset: use overall_passed
-            if result.metrics.overall_passed:
-                return 0
-            else:
-                return 1
+                # Quality dataset: use overall_passed
+                if result.metrics.overall_passed:
+                    return 0
+                else:
+                    return 1
 
     except DatasetError as e:
         print(f"❌ Dataset error: {e}", file=sys.stderr)
