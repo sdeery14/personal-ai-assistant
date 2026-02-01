@@ -1,8 +1,8 @@
 # Feature Specification: External Tool v1 – Weather Lookup
 
-**Feature Branch**: `005-weather-lookup`  
-**Created**: 2026-02-01  
-**Status**: Draft  
+**Feature Branch**: `005-weather-lookup`
+**Created**: 2026-02-01
+**Status**: Draft
 **Input**: User description: "Feature 005 - External Tool v1: Weather Lookup. Goal: Introduce a safe, real-world external tool. User Capability: The assistant can accurately tell me the weather. Scope: Single weather provider, schema-validated tool calls, caching of safe responses, clear error states and fallbacks. Out of scope: Advice or recommendations, multi-provider failover."
 
 ## User Scenarios & Testing
