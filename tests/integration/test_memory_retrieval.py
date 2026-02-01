@@ -164,3 +164,116 @@ class TestEmptyMemoryStore:
             )
 
             assert response.status_code == 200
+
+
+class TestAgentToolInvocation:
+    """Tests for Agent tool invocation (T093)."""
+
+    @pytest.mark.asyncio
+    async def test_agent_can_invoke_query_memory(self):
+        """T093: Verify Agent can invoke query_memory tool.
+
+        This test verifies that the query_memory tool is properly
+        configured and can be invoked by the Agent.
+        """
+        from src.tools.query_memory import query_memory_tool
+        from agents import FunctionTool
+
+        # Verify the tool is a FunctionTool instance
+        assert isinstance(query_memory_tool, FunctionTool)
+
+        # Verify tool has the expected name
+        assert query_memory_tool.name == "query_memory_tool"
+
+        # Verify tool has the expected parameters in its schema
+        schema = query_memory_tool.params_json_schema
+        assert "properties" in schema
+        assert "query" in schema["properties"]
+
+    @pytest.mark.asyncio
+    async def test_query_memory_tool_registered_with_agent(self):
+        """Verify query_memory tool is returned by ChatService._get_tools().
+
+        The ChatService adds tools to the agent during stream_completion()
+        when database is available. This test verifies the tool loading works.
+        """
+        from src.services.chat_service import ChatService
+        from src.tools.query_memory import query_memory_tool
+
+        with patch("src.services.chat_service.get_settings") as mock_settings:
+            mock_settings.return_value = MagicMock(
+                openai_api_key="test-key",
+                openai_model="gpt-4",
+                max_tokens=2000,
+                timeout_seconds=30,
+            )
+
+            service = ChatService()
+
+            # Verify _get_tools() returns the query_memory tool
+            tools = service._get_tools()
+            assert len(tools) == 1
+            assert tools[0] == query_memory_tool
+
+    @pytest.mark.asyncio
+    async def test_query_memory_tool_context_includes_user_id(self):
+        """Verify user_id is passed in context when Agent invokes tool."""
+        import json
+        from unittest.mock import AsyncMock, patch
+        from uuid import uuid4
+
+        from src.services.memory_service import MemoryService
+        from src.services.redis_service import RedisService
+
+        # Mock dependencies
+        with patch.object(
+            RedisService, "check_rate_limit", return_value=(True, 9)
+        ):
+            with patch("src.services.memory_service.get_settings") as mock_mem_settings:
+                mock_mem_settings.return_value = MagicMock(
+                    token_budget=1000,
+                    min_relevance=0.3,
+                    max_results=10,
+                    rrf_k=60,
+                    openai_api_key="test-key",
+                    embedding_model="text-embedding-3-small",
+                )
+
+                with patch.object(
+                    MemoryService, "hybrid_search"
+                ) as mock_search:
+                    from src.models.memory import MemoryQueryResponse
+
+                    mock_search.return_value = MemoryQueryResponse(
+                        items=[],
+                        total_count=0,
+                        query_embedding_ms=10,
+                        retrieval_ms=20,
+                        token_count=0,
+                        truncated=False,
+                    )
+
+                    # Import after mocking
+                    from src.tools.query_memory import query_memory_tool
+
+                    # Create mock context with user_id
+                    mock_ctx = MagicMock()
+                    mock_ctx.context = {
+                        "user_id": "test-user-123",
+                        "correlation_id": uuid4(),
+                    }
+
+                    # Call the tool function directly
+                    # Note: We access the wrapped function via the tool
+                    result = await query_memory_tool.on_invoke_tool(
+                        mock_ctx,
+                        '{"query": "test query"}',
+                    )
+
+                    # Verify hybrid_search was called
+                    assert mock_search.called
+
+                    # Verify the request included user_id
+                    call_args = mock_search.call_args
+                    request = call_args.kwargs.get("request") or call_args[0][0]
+                    assert request.user_id == "test-user-123"

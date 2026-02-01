@@ -22,8 +22,8 @@
 - [x] T003 Create docker/init-pgvector.sql with `CREATE EXTENSION IF NOT EXISTS vector;`
 - [x] T004 Add new dependencies to pyproject.toml: asyncpg, pgvector, redis, tiktoken
 - [x] T005 Run `uv sync` and verify all dependencies install correctly
-- [ ] T006 Verify Feature 001 streaming API functional: `docker compose up -d && curl http://localhost:8000/health`
-- [ ] T007 Verify Feature 003 guardrails functional: `uv run pytest tests/unit/test_guardrails.py -v`
+- [x] T006 Verify Feature 001 streaming API functional: `docker compose up -d && curl http://localhost:8000/health`
+- [x] T007 Verify Feature 003 guardrails functional: `uv run pytest tests/unit/test_guardrails.py -v`
 
 **Checkpoint**: Infrastructure ready - Postgres, Redis, and existing features operational.
 
@@ -40,7 +40,7 @@
 - [x] T012 Create migrations/004_seed_test_memories.sql with 5-10 test memory items for user_id='test-user' covering all types (fact, preference, decision, note)
 - [x] T013 Create src/database.py with async connection pool (asyncpg) and migration runner function
 - [x] T014 Add database initialization to src/main.py lifespan: run migrations on startup
-- [ ] T015 Verify migrations run successfully: `docker compose up -d` and check tables exist via psql
+- [x] T015 Verify migrations run successfully: `docker compose up -d` and check tables exist via psql
 
 **Checkpoint**: Database schema complete - all tables created with correct indexes.
 
@@ -103,7 +103,7 @@
 - [x] T041 [US2] Create src/services/conversation_service.py with ConversationService class
 - [x] T042 [US2] Implement `async def get_or_create_conversation(user_id: str, conversation_id: str | None) -> Conversation` in conversation_service.py
 - [x] T043 [US2] Implement `async def add_message(conversation_id: UUID, role: str, content: str, correlation_id: UUID, embedding: list[float] | None) -> Message` in conversation_service.py
-- [ ] T044 [US2] Implement `async def get_conversation_messages(conversation_id: UUID, limit: int = 20) -> list[Message]` in conversation_service.py
+- [x] T044 [US2] Implement `async def get_conversation_messages(conversation_id: UUID, limit: int = 20) -> list[Message]` in conversation_service.py
 - [x] T045 [US2] Add database error handling: connection failure → raise explicit exception (fail closed)
 
 ### Integration with Chat Service
@@ -121,8 +121,8 @@
 - [x] T053 [P] [US2] Add test_get_or_create_conversation_returns_existing() to tests/unit/test_conversation_service.py - mock existing row, verify no INSERT
 - [x] T054 [P] [US2] Add test_add_message_persists_correctly() to tests/unit/test_conversation_service.py - verify all fields stored
 - [x] T055 [P] [US2] Add test_database_unavailable_raises_exception() to tests/unit/test_conversation_service.py - mock connection error, verify exception
-- [ ] T056 [US2] Create tests/integration/test_conversation_persistence.py with test_message_persisted_after_request() - send message, query DB, verify row exists
-- [ ] T057 [US2] Add test_conversation_survives_restart() to tests/integration/test_conversation_persistence.py - send message, restart container, verify data persists
+- [x] T056 [US2] Create tests/integration/test_conversation_persistence.py with test_message_persisted_after_request() - send message, query DB, verify row exists
+- [x] T057 [US2] Add test_conversation_survives_restart() to tests/integration/test_conversation_persistence.py - send message, restart container, verify data persists
 
 **Checkpoint**: User Story 2 complete - conversations and messages persisted durably.
 
@@ -192,7 +192,7 @@
 - [x] T090 [P] [US3] Add test_tool_formats_response_correctly() to tests/unit/test_query_memory_tool.py - verify output matches spec schema
 - [x] T091 [P] [US3] Add test_tool_rate_limit_returns_empty() to tests/unit/test_query_memory_tool.py - mock rate limit exceeded, verify empty response
 - [x] T092 [P] [US3] Add test_tool_error_returns_empty_with_flag() to tests/unit/test_query_memory_tool.py - mock exception, verify graceful degradation
-- [ ] T093 [US3] Add test_agent_can_invoke_query_memory() to tests/integration/test_memory_retrieval.py - verify Agent tool invocation works
+- [x] T093 [US3] Add test_agent_can_invoke_query_memory() to tests/integration/test_memory_retrieval.py - verify Agent tool invocation works
 
 **Checkpoint**: User Story 3 complete - Agent can invoke query_memory tool.
 
@@ -209,15 +209,15 @@
 
 ### Guardrail Integration
 
-- [ ] T096 [US1] Verify output guardrails in src/services/guardrails.py apply to memory-grounded responses (no code changes expected, just verification)
-- [ ] T097 [US1] Add test case to verify guardrails check memory-derived content
+- [x] T096 [US1] Verify output guardrails in src/services/guardrails.py apply to memory-grounded responses (no code changes expected, just verification)
+- [x] T097 [US1] Add test case to verify guardrails check memory-derived content
 
 ### Tests for User Story 1
 
-- [ ] T098 [US1] Create tests/integration/test_memory_grounded_response.py with test_response_references_retrieved_memory() - seed memory, query, verify response mentions memory content
-- [ ] T099 [US1] Add test_response_cites_memory_naturally() to tests/integration/test_memory_grounded_response.py - verify phrasing like "Based on what you mentioned..."
-- [ ] T100 [US1] Add test_no_hallucinated_memories_when_empty() to tests/integration/test_memory_grounded_response.py - query with no matching memories, verify no fabricated references
-- [ ] T101 [US1] Add test_multiple_memories_synthesized() to tests/integration/test_memory_grounded_response.py - seed multiple relevant memories, verify response incorporates multiple
+- [x] T098 [US1] Create tests/integration/test_memory_grounded_response.py with test_response_references_retrieved_memory() - seed memory, query, verify response mentions memory content
+- [x] T099 [US1] Add test_response_cites_memory_naturally() to tests/integration/test_memory_grounded_response.py - verify phrasing like "Based on what you mentioned..."
+- [x] T100 [US1] Add test_no_hallucinated_memories_when_empty() to tests/integration/test_memory_grounded_response.py - query with no matching memories, verify no fabricated references
+- [x] T101 [US1] Add test_multiple_memories_synthesized() to tests/integration/test_memory_grounded_response.py - seed multiple relevant memories, verify response incorporates multiple
 
 **Checkpoint**: User Story 1 complete - memory-grounded responses working end-to-end.
 

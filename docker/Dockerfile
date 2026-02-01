@@ -18,6 +18,7 @@ RUN uv sync --frozen --no-dev
 # Copy application code
 COPY src/ ./src/
 COPY eval/ ./eval/
+COPY migrations/ ./migrations/
 
 # Set Python path to include src directory
 ENV PYTHONPATH=/app
