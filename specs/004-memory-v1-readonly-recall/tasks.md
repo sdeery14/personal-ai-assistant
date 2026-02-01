@@ -17,11 +17,11 @@
 
 **Purpose**: Set up Postgres with pgvector, Redis, and verify existing features functional.
 
-- [ ] T001 Add Postgres service with pgvector to docker/docker-compose.api.yml (image: pgvector/pgvector:pg16, port 5432, volume for persistence)
-- [ ] T002 [P] Add Redis service to docker/docker-compose.api.yml (image: redis:7-alpine, port 6379)
-- [ ] T003 Create docker/init-pgvector.sql with `CREATE EXTENSION IF NOT EXISTS vector;`
-- [ ] T004 Add new dependencies to pyproject.toml: asyncpg, pgvector, redis, tiktoken
-- [ ] T005 Run `uv sync` and verify all dependencies install correctly
+- [x] T001 Add Postgres service with pgvector to docker/docker-compose.api.yml (image: pgvector/pgvector:pg16, port 5432, volume for persistence)
+- [x] T002 [P] Add Redis service to docker/docker-compose.api.yml (image: redis:7-alpine, port 6379)
+- [x] T003 Create docker/init-pgvector.sql with `CREATE EXTENSION IF NOT EXISTS vector;`
+- [x] T004 Add new dependencies to pyproject.toml: asyncpg, pgvector, redis, tiktoken
+- [x] T005 Run `uv sync` and verify all dependencies install correctly
 - [ ] T006 Verify Feature 001 streaming API functional: `docker compose up -d && curl http://localhost:8000/health`
 - [ ] T007 Verify Feature 003 guardrails functional: `uv run pytest tests/unit/test_guardrails.py -v`
 
@@ -33,13 +33,13 @@
 
 **Purpose**: Create database tables with proper indexes for conversations, messages, and memory items.
 
-- [ ] T008 Create migrations/ directory at repository root
-- [ ] T009 Create migrations/001_create_conversations.sql with conversations table schema per spec (id, user_id, title, created_at, updated_at) and indexes
-- [ ] T010 Create migrations/002_create_messages.sql with messages table schema per spec (id, conversation_id, role, content, embedding VECTOR(1536), correlation_id, created_at) and indexes (FK, ivfflat, GIN for FTS)
-- [ ] T011 Create migrations/003_create_memory_items.sql with memory_items table schema per spec (id, user_id, content, type, embedding, source_message_id, importance, created_at, expires_at, deleted_at) and indexes
-- [ ] T012 Create migrations/004_seed_test_memories.sql with 5-10 test memory items for user_id='test-user' covering all types (fact, preference, decision, note)
-- [ ] T013 Create src/database.py with async connection pool (asyncpg) and migration runner function
-- [ ] T014 Add database initialization to src/main.py lifespan: run migrations on startup
+- [x] T008 Create migrations/ directory at repository root
+- [x] T009 Create migrations/001_create_conversations.sql with conversations table schema per spec (id, user_id, title, created_at, updated_at) and indexes
+- [x] T010 Create migrations/002_create_messages.sql with messages table schema per spec (id, conversation_id, role, content, embedding VECTOR(1536), correlation_id, created_at) and indexes (FK, ivfflat, GIN for FTS)
+- [x] T011 Create migrations/003_create_memory_items.sql with memory_items table schema per spec (id, user_id, content, type, embedding, source_message_id, importance, created_at, expires_at, deleted_at) and indexes
+- [x] T012 Create migrations/004_seed_test_memories.sql with 5-10 test memory items for user_id='test-user' covering all types (fact, preference, decision, note)
+- [x] T013 Create src/database.py with async connection pool (asyncpg) and migration runner function
+- [x] T014 Add database initialization to src/main.py lifespan: run migrations on startup
 - [ ] T015 Verify migrations run successfully: `docker compose up -d` and check tables exist via psql
 
 **Checkpoint**: Database schema complete - all tables created with correct indexes.
@@ -52,35 +52,35 @@
 
 ### Configuration
 
-- [ ] T016 Add memory config to src/config.py: REDIS_URL, POSTGRES_URL, EMBEDDING_MODEL (text-embedding-3-small), TOKEN_BUDGET (1000), MIN_RELEVANCE (0.3), MAX_RESULTS (10), MEMORY_RATE_LIMIT (10), EMBEDDING_CACHE_TTL (604800), SESSION_TTL (86400)
+- [x] T016 Add memory config to src/config.py: REDIS_URL, POSTGRES_URL, EMBEDDING_MODEL (text-embedding-3-small), TOKEN_BUDGET (1000), MIN_RELEVANCE (0.3), MAX_RESULTS (10), MEMORY_RATE_LIMIT (10), EMBEDDING_CACHE_TTL (604800), SESSION_TTL (86400)
 
 ### Redis Service
 
-- [ ] T017 Create src/services/redis_service.py with RedisService class and async connection pool
-- [ ] T018 Implement `async def get_session(user_id: str, conversation_id: str) -> dict | None` in redis_service.py - retrieve session hash
-- [ ] T019 Implement `async def set_session(user_id: str, conversation_id: str, state: dict)` in redis_service.py - store with SESSION_TTL
-- [ ] T020 Implement `async def check_rate_limit(user_id: str, limit: int) -> tuple[bool, int]` in redis_service.py - increment counter, return (allowed, remaining)
-- [ ] T021 Implement `async def get_cached_embedding(content_hash: str) -> list[float] | None` in redis_service.py
-- [ ] T022 Implement `async def cache_embedding(content_hash: str, embedding: list[float])` in redis_service.py with EMBEDDING_CACHE_TTL
-- [ ] T023 Add graceful degradation: Redis unavailable → log warning, return None/True (don't block requests)
+- [x] T017 Create src/services/redis_service.py with RedisService class and async connection pool
+- [x] T018 Implement `async def get_session(user_id: str, conversation_id: str) -> dict | None` in redis_service.py - retrieve session hash
+- [x] T019 Implement `async def set_session(user_id: str, conversation_id: str, state: dict)` in redis_service.py - store with SESSION_TTL
+- [x] T020 Implement `async def check_rate_limit(user_id: str, limit: int) -> tuple[bool, int]` in redis_service.py - increment counter, return (allowed, remaining)
+- [x] T021 Implement `async def get_cached_embedding(content_hash: str) -> list[float] | None` in redis_service.py
+- [x] T022 Implement `async def cache_embedding(content_hash: str, embedding: list[float])` in redis_service.py with EMBEDDING_CACHE_TTL
+- [x] T023 Add graceful degradation: Redis unavailable → log warning, return None/True (don't block requests)
 
 ### Embedding Service
 
-- [ ] T024 Create src/services/embedding_service.py with EmbeddingService class
-- [ ] T025 Implement `async def generate_embedding(text: str) -> list[float]` in embedding_service.py - call OpenAI text-embedding-3-small API
-- [ ] T026 Implement `async def get_embedding(text: str) -> list[float]` in embedding_service.py - check cache first, generate if miss, cache result
-- [ ] T027 Add query preprocessing: truncate to 8192 chars, compute content_hash (SHA256)
-- [ ] T028 Add graceful degradation: OpenAI API timeout → return None, log error
+- [x] T024 Create src/services/embedding_service.py with EmbeddingService class
+- [x] T025 Implement `async def generate_embedding(text: str) -> list[float]` in embedding_service.py - call OpenAI text-embedding-3-small API
+- [x] T026 Implement `async def get_embedding(text: str) -> list[float]` in embedding_service.py - check cache first, generate if miss, cache result
+- [x] T027 Add query preprocessing: truncate to 8192 chars, compute content_hash (SHA256)
+- [x] T028 Add graceful degradation: OpenAI API timeout → return None, log error
 
 ### Tests for Phase 2
 
-- [ ] T029 [P] Create tests/unit/test_redis_service.py with test_check_rate_limit_allows_under_limit() - mock Redis, verify returns (True, remaining)
-- [ ] T030 [P] Add test_check_rate_limit_blocks_over_limit() to tests/unit/test_redis_service.py - verify returns (False, 0) after limit exceeded
-- [ ] T031 [P] Add test_session_storage_and_retrieval() to tests/unit/test_redis_service.py - verify round-trip
-- [ ] T032 [P] Add test_redis_unavailable_graceful_degradation() to tests/unit/test_redis_service.py - mock connection error, verify no exception raised
-- [ ] T033 [P] Create tests/unit/test_embedding_service.py with test_generate_embedding_calls_openai() - mock OpenAI, verify API called
-- [ ] T034 [P] Add test_get_embedding_cache_hit() to tests/unit/test_embedding_service.py - mock cache hit, verify no API call
-- [ ] T035 [P] Add test_get_embedding_cache_miss() to tests/unit/test_embedding_service.py - mock cache miss, verify API called and result cached
+- [x] T029 [P] Create tests/unit/test_redis_service.py with test_check_rate_limit_allows_under_limit() - mock Redis, verify returns (True, remaining)
+- [x] T030 [P] Add test_check_rate_limit_blocks_over_limit() to tests/unit/test_redis_service.py - verify returns (False, 0) after limit exceeded
+- [x] T031 [P] Add test_session_storage_and_retrieval() to tests/unit/test_redis_service.py - verify round-trip
+- [x] T032 [P] Add test_redis_unavailable_graceful_degradation() to tests/unit/test_redis_service.py - mock connection error, verify no exception raised
+- [x] T033 [P] Create tests/unit/test_embedding_service.py with test_generate_embedding_calls_openai() - mock OpenAI, verify API called
+- [x] T034 [P] Add test_get_embedding_cache_hit() to tests/unit/test_embedding_service.py - mock cache hit, verify no API call
+- [x] T035 [P] Add test_get_embedding_cache_miss() to tests/unit/test_embedding_service.py - mock cache miss, verify API called and result cached
 
 **Checkpoint**: Core services ready - embedding generation and Redis operations functional.
 
@@ -92,35 +92,35 @@
 
 ### Models
 
-- [ ] T036 [US2] Create src/models/memory.py with Conversation Pydantic model (id, user_id, title, created_at, updated_at)
-- [ ] T037 [US2] Add Message Pydantic model to src/models/memory.py (id, conversation_id, role, content, embedding, correlation_id, created_at)
-- [ ] T038 [US2] Add MemoryItem Pydantic model to src/models/memory.py (id, user_id, content, type, relevance_score, source, created_at, importance)
-- [ ] T039 [US2] Add MemoryQueryRequest model to src/models/memory.py (user_id, query, limit, types, min_score)
-- [ ] T040 [US2] Add MemoryQueryResponse model to src/models/memory.py (items, total_count, query_embedding_ms, retrieval_ms, token_count, truncated)
+- [x] T036 [US2] Create src/models/memory.py with Conversation Pydantic model (id, user_id, title, created_at, updated_at)
+- [x] T037 [US2] Add Message Pydantic model to src/models/memory.py (id, conversation_id, role, content, embedding, correlation_id, created_at)
+- [x] T038 [US2] Add MemoryItem Pydantic model to src/models/memory.py (id, user_id, content, type, relevance_score, source, created_at, importance)
+- [x] T039 [US2] Add MemoryQueryRequest model to src/models/memory.py (user_id, query, limit, types, min_score)
+- [x] T040 [US2] Add MemoryQueryResponse model to src/models/memory.py (items, total_count, query_embedding_ms, retrieval_ms, token_count, truncated)
 
 ### Conversation Service
 
-- [ ] T041 [US2] Create src/services/conversation_service.py with ConversationService class
-- [ ] T042 [US2] Implement `async def get_or_create_conversation(user_id: str, conversation_id: str | None) -> Conversation` in conversation_service.py
-- [ ] T043 [US2] Implement `async def add_message(conversation_id: UUID, role: str, content: str, correlation_id: UUID, embedding: list[float] | None) -> Message` in conversation_service.py
+- [x] T041 [US2] Create src/services/conversation_service.py with ConversationService class
+- [x] T042 [US2] Implement `async def get_or_create_conversation(user_id: str, conversation_id: str | None) -> Conversation` in conversation_service.py
+- [x] T043 [US2] Implement `async def add_message(conversation_id: UUID, role: str, content: str, correlation_id: UUID, embedding: list[float] | None) -> Message` in conversation_service.py
 - [ ] T044 [US2] Implement `async def get_conversation_messages(conversation_id: UUID, limit: int = 20) -> list[Message]` in conversation_service.py
-- [ ] T045 [US2] Add database error handling: connection failure → raise explicit exception (fail closed)
+- [x] T045 [US2] Add database error handling: connection failure → raise explicit exception (fail closed)
 
 ### Integration with Chat Service
 
-- [ ] T046 [US2] Modify src/models/request.py: add optional user_id and conversation_id fields to ChatRequest
-- [ ] T047 [US2] Modify src/api/routes.py POST /chat: extract user_id and conversation_id from request, pass to chat_service
-- [ ] T048 [US2] Modify src/services/chat_service.py: accept user_id and conversation_id parameters
-- [ ] T049 [US2] In chat_service.py stream_completion(): call get_or_create_conversation() at start
-- [ ] T050 [US2] In chat_service.py stream_completion(): persist user message with embedding before Agent processing
-- [ ] T051 [US2] In chat_service.py stream_completion(): accumulate assistant response, persist after streaming completes
+- [x] T046 [US2] Modify src/models/request.py: add optional user_id and conversation_id fields to ChatRequest
+- [x] T047 [US2] Modify src/api/routes.py POST /chat: extract user_id and conversation_id from request, pass to chat_service
+- [x] T048 [US2] Modify src/services/chat_service.py: accept user_id and conversation_id parameters
+- [x] T049 [US2] In chat_service.py stream_completion(): call get_or_create_conversation() at start
+- [x] T050 [US2] In chat_service.py stream_completion(): persist user message with embedding before Agent processing
+- [x] T051 [US2] In chat_service.py stream_completion(): accumulate assistant response, persist after streaming completes
 
 ### Tests for User Story 2
 
-- [ ] T052 [P] [US2] Create tests/unit/test_conversation_service.py with test_get_or_create_conversation_creates_new() - mock DB, verify INSERT called
-- [ ] T053 [P] [US2] Add test_get_or_create_conversation_returns_existing() to tests/unit/test_conversation_service.py - mock existing row, verify no INSERT
-- [ ] T054 [P] [US2] Add test_add_message_persists_correctly() to tests/unit/test_conversation_service.py - verify all fields stored
-- [ ] T055 [P] [US2] Add test_database_unavailable_raises_exception() to tests/unit/test_conversation_service.py - mock connection error, verify exception
+- [x] T052 [P] [US2] Create tests/unit/test_conversation_service.py with test_get_or_create_conversation_creates_new() - mock DB, verify INSERT called
+- [x] T053 [P] [US2] Add test_get_or_create_conversation_returns_existing() to tests/unit/test_conversation_service.py - mock existing row, verify no INSERT
+- [x] T054 [P] [US2] Add test_add_message_persists_correctly() to tests/unit/test_conversation_service.py - verify all fields stored
+- [x] T055 [P] [US2] Add test_database_unavailable_raises_exception() to tests/unit/test_conversation_service.py - mock connection error, verify exception
 - [ ] T056 [US2] Create tests/integration/test_conversation_persistence.py with test_message_persisted_after_request() - send message, query DB, verify row exists
 - [ ] T057 [US2] Add test_conversation_survives_restart() to tests/integration/test_conversation_persistence.py - send message, restart container, verify data persists
 
@@ -134,33 +134,33 @@
 
 ### Memory Service
 
-- [ ] T058 [US4] Create src/services/memory_service.py with MemoryService class
-- [ ] T059 [US4] Implement `async def keyword_search(user_id: str, query: str, limit: int = 20) -> list[tuple[MemoryItem, int]]` in memory_service.py - FTS with ts_rank, return (item, rank)
-- [ ] T060 [US4] Implement `async def semantic_search(user_id: str, embedding: list[float], limit: int = 20) -> list[tuple[MemoryItem, int]]` in memory_service.py - cosine similarity via pgvector, return (item, rank)
-- [ ] T061 [US4] Implement `def rrf_fusion(keyword_results: list, semantic_results: list, k: int = 60) -> list[MemoryItem]` in memory_service.py - standard RRF algorithm
-- [ ] T062 [US4] Implement `def count_tokens(text: str) -> int` in memory_service.py - use tiktoken cl100k_base
-- [ ] T063 [US4] Implement `def enforce_token_budget(items: list[MemoryItem], budget: int) -> tuple[list[MemoryItem], bool]` in memory_service.py - return (truncated_items, was_truncated)
-- [ ] T064 [US4] Implement `async def hybrid_search(request: MemoryQueryRequest) -> MemoryQueryResponse` in memory_service.py - orchestrate full flow: embed query → parallel search → RRF → filter min_score → enforce budget
-- [ ] T065 [US4] Add mandatory user_id filtering in ALL queries (WHERE user_id = $1) - CRITICAL for security
-- [ ] T066 [US4] Add graceful degradation: database error → return empty MemoryQueryResponse with error logged
+- [x] T058 [US4] Create src/services/memory_service.py with MemoryService class
+- [x] T059 [US4] Implement `async def keyword_search(user_id: str, query: str, limit: int = 20) -> list[tuple[MemoryItem, int]]` in memory_service.py - FTS with ts_rank, return (item, rank)
+- [x] T060 [US4] Implement `async def semantic_search(user_id: str, embedding: list[float], limit: int = 20) -> list[tuple[MemoryItem, int]]` in memory_service.py - cosine similarity via pgvector, return (item, rank)
+- [x] T061 [US4] Implement `def rrf_fusion(keyword_results: list, semantic_results: list, k: int = 60) -> list[MemoryItem]` in memory_service.py - standard RRF algorithm
+- [x] T062 [US4] Implement `def count_tokens(text: str) -> int` in memory_service.py - use tiktoken cl100k_base
+- [x] T063 [US4] Implement `def enforce_token_budget(items: list[MemoryItem], budget: int) -> tuple[list[MemoryItem], bool]` in memory_service.py - return (truncated_items, was_truncated)
+- [x] T064 [US4] Implement `async def hybrid_search(request: MemoryQueryRequest) -> MemoryQueryResponse` in memory_service.py - orchestrate full flow: embed query → parallel search → RRF → filter min_score → enforce budget
+- [x] T065 [US4] Add mandatory user_id filtering in ALL queries (WHERE user_id = $1) - CRITICAL for security
+- [x] T066 [US4] Add graceful degradation: database error → return empty MemoryQueryResponse with error logged
 
 ### Logging
 
-- [ ] T067 [US4] Add `log_memory_retrieval()` function to src/services/logging_service.py with fields: correlation_id, query_hash (SHA256, NOT raw query), result_count, latency_ms, truncated
-- [ ] T068 [US4] Call log_memory_retrieval() in memory_service.py hybrid_search() after retrieval completes
+- [x] T067 [US4] Add `log_memory_retrieval()` function to src/services/logging_service.py with fields: correlation_id, query_hash (SHA256, NOT raw query), result_count, latency_ms, truncated
+- [x] T068 [US4] Call log_memory_retrieval() in memory_service.py hybrid_search() after retrieval completes
 
 ### Tests for User Story 4
 
-- [ ] T069 [P] [US4] Create tests/unit/test_memory_service.py with test_keyword_search_returns_ranked_results() - mock DB, verify ts_rank ordering
-- [ ] T070 [P] [US4] Add test_semantic_search_returns_ranked_results() to tests/unit/test_memory_service.py - mock DB, verify cosine similarity ordering
-- [ ] T071 [P] [US4] Add test_rrf_fusion_combines_rankings() to tests/unit/test_memory_service.py - provide known inputs, verify RRF scores correct
-- [ ] T072 [P] [US4] Add test_rrf_fusion_handles_disjoint_results() to tests/unit/test_memory_service.py - items only in one list still ranked
-- [ ] T073 [P] [US4] Add test_enforce_token_budget_truncates() to tests/unit/test_memory_service.py - verify items removed when over budget
-- [ ] T074 [P] [US4] Add test_enforce_token_budget_returns_truncated_flag() to tests/unit/test_memory_service.py - verify boolean flag
-- [ ] T075 [P] [US4] Add test_hybrid_search_enforces_user_id_filter() to tests/unit/test_memory_service.py - verify user_id in WHERE clause (CRITICAL)
-- [ ] T076 [P] [US4] Add test_hybrid_search_filters_by_min_score() to tests/unit/test_memory_service.py - verify low-score items excluded
-- [ ] T077 [P] [US4] Add test_database_error_returns_empty_response() to tests/unit/test_memory_service.py - mock error, verify empty response
-- [ ] T078 [US4] Create tests/integration/test_memory_retrieval.py with test_hybrid_search_returns_relevant_memories() - seed data, query, verify correct items returned
+- [x] T069 [P] [US4] Create tests/unit/test_memory_service.py with test_keyword_search_returns_ranked_results() - mock DB, verify ts_rank ordering
+- [x] T070 [P] [US4] Add test_semantic_search_returns_ranked_results() to tests/unit/test_memory_service.py - mock DB, verify cosine similarity ordering
+- [x] T071 [P] [US4] Add test_rrf_fusion_combines_rankings() to tests/unit/test_memory_service.py - provide known inputs, verify RRF scores correct
+- [x] T072 [P] [US4] Add test_rrf_fusion_handles_disjoint_results() to tests/unit/test_memory_service.py - items only in one list still ranked
+- [x] T073 [P] [US4] Add test_enforce_token_budget_truncates() to tests/unit/test_memory_service.py - verify items removed when over budget
+- [x] T074 [P] [US4] Add test_enforce_token_budget_returns_truncated_flag() to tests/unit/test_memory_service.py - verify boolean flag
+- [x] T075 [P] [US4] Add test_hybrid_search_enforces_user_id_filter() to tests/unit/test_memory_service.py - verify user_id in WHERE clause (CRITICAL)
+- [x] T076 [P] [US4] Add test_hybrid_search_filters_by_min_score() to tests/unit/test_memory_service.py - verify low-score items excluded
+- [x] T077 [P] [US4] Add test_database_error_returns_empty_response() to tests/unit/test_memory_service.py - mock error, verify empty response
+- [x] T078 [US4] Create tests/integration/test_memory_retrieval.py with test_hybrid_search_returns_relevant_memories() - seed data, query, verify correct items returned
 
 **Checkpoint**: User Story 4 complete - hybrid retrieval with RRF fusion operational.
 
@@ -172,26 +172,26 @@
 
 ### Tool Implementation
 
-- [ ] T079 [US3] Create src/tools/ directory
-- [ ] T080 [US3] Create src/tools/query_memory.py with tool function definition
-- [ ] T081 [US3] Define tool schema in query_memory.py matching spec: name="query_memory", parameters (query: str required, types: list[str] optional)
-- [ ] T082 [US3] Implement tool function: extract user_id from context, call memory_service.hybrid_search(), format response
-- [ ] T083 [US3] Add rate limiting check in tool function: call redis_service.check_rate_limit(), return empty if exceeded
-- [ ] T084 [US3] Format tool response per spec: memories array (content, type, relevance, context) + metadata (count, truncated)
-- [ ] T085 [US3] Handle tool errors: catch exceptions, return empty memories with error flag, log error
+- [x] T079 [US3] Create src/tools/ directory
+- [x] T080 [US3] Create src/tools/query_memory.py with tool function definition
+- [x] T081 [US3] Define tool schema in query_memory.py matching spec: name="query_memory", parameters (query: str required, types: list[str] optional)
+- [x] T082 [US3] Implement tool function: extract user_id from context, call memory_service.hybrid_search(), format response
+- [x] T083 [US3] Add rate limiting check in tool function: call redis_service.check_rate_limit(), return empty if exceeded
+- [x] T084 [US3] Format tool response per spec: memories array (content, type, relevance, context) + metadata (count, truncated)
+- [x] T085 [US3] Handle tool errors: catch exceptions, return empty memories with error flag, log error
 
 ### Agent Integration
 
-- [ ] T086 [US3] Modify src/services/chat_service.py: import query_memory tool
-- [ ] T087 [US3] In chat_service.py create_agent(): attach tool via `Agent(tools=[query_memory], ...)`
-- [ ] T088 [US3] Add user_id to tool context so tool function can access it
+- [x] T086 [US3] Modify src/services/chat_service.py: import query_memory tool
+- [x] T087 [US3] In chat_service.py create_agent(): attach tool via `Agent(tools=[query_memory], ...)`
+- [x] T088 [US3] Add user_id to tool context so tool function can access it
 
 ### Tests for User Story 3
 
-- [ ] T089 [P] [US3] Create tests/unit/test_query_memory_tool.py with test_tool_calls_memory_service() - mock memory_service, verify hybrid_search called
-- [ ] T090 [P] [US3] Add test_tool_formats_response_correctly() to tests/unit/test_query_memory_tool.py - verify output matches spec schema
-- [ ] T091 [P] [US3] Add test_tool_rate_limit_returns_empty() to tests/unit/test_query_memory_tool.py - mock rate limit exceeded, verify empty response
-- [ ] T092 [P] [US3] Add test_tool_error_returns_empty_with_flag() to tests/unit/test_query_memory_tool.py - mock exception, verify graceful degradation
+- [x] T089 [P] [US3] Create tests/unit/test_query_memory_tool.py with test_tool_calls_memory_service() - mock memory_service, verify hybrid_search called
+- [x] T090 [P] [US3] Add test_tool_formats_response_correctly() to tests/unit/test_query_memory_tool.py - verify output matches spec schema
+- [x] T091 [P] [US3] Add test_tool_rate_limit_returns_empty() to tests/unit/test_query_memory_tool.py - mock rate limit exceeded, verify empty response
+- [x] T092 [P] [US3] Add test_tool_error_returns_empty_with_flag() to tests/unit/test_query_memory_tool.py - mock exception, verify graceful degradation
 - [ ] T093 [US3] Add test_agent_can_invoke_query_memory() to tests/integration/test_memory_retrieval.py - verify Agent tool invocation works
 
 **Checkpoint**: User Story 3 complete - Agent can invoke query_memory tool.
@@ -204,8 +204,8 @@
 
 ### System Prompt
 
-- [ ] T094 [US1] Create memory usage guidance text in src/services/chat_service.py matching spec (when to use memory, how to cite)
-- [ ] T095 [US1] Modify create_agent() in chat_service.py: append memory guidance to system prompt
+- [x] T094 [US1] Create memory usage guidance text in src/services/chat_service.py matching spec (when to use memory, how to cite)
+- [x] T095 [US1] Modify create_agent() in chat_service.py: append memory guidance to system prompt
 
 ### Guardrail Integration
 
