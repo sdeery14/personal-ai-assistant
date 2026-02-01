@@ -1,6 +1,8 @@
 # Personal AI Assistant - Chat API with Memory Infrastructure
 # Usage: docker compose -f docker/docker-compose.api.yml up -d
 
+name: assistant
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
