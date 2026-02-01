@@ -844,21 +844,28 @@ def _query_memory(
     import asyncio
 
     async def _do_query():
+        from src.database import init_database, close_database
         from src.services.memory_service import MemoryService
         from src.models.memory import MemoryQueryRequest
 
-        service = MemoryService()
-        request = MemoryQueryRequest(
-            user_id=user_id,
-            query=query,
-        )
-        response = await service.hybrid_search(request)
+        # Initialize database connection
+        await init_database()
 
-        contents = [item.content for item in response.items]
-        user_ids = [item.user_id for item in response.items]
-        token_count = response.token_count
+        try:
+            service = MemoryService()
+            request = MemoryQueryRequest(
+                user_id=user_id,
+                query=query,
+            )
+            response = await service.hybrid_search(request)
 
-        return contents, user_ids, token_count
+            contents = [item.content for item in response.items]
+            user_ids = [item.user_id for item in response.items]
+            token_count = response.token_count
+
+            return contents, user_ids, token_count
+        finally:
+            await close_database()
 
     return asyncio.run(_do_query())
 

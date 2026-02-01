@@ -243,3 +243,33 @@ class TestHybridSearch:
                 # Should return empty response, not raise exception
                 assert response.items == []
                 assert response.total_count == 0
+
+    @pytest.mark.asyncio
+    async def test_memory_retrieval_includes_correlation_id(
+        self, memory_service, sample_memory_items
+    ):
+        """T129: Verify correlation_id is passed through and available for logging."""
+        from uuid import uuid4
+
+        correlation_id = uuid4()
+        request = MemoryQueryRequest(
+            user_id="test-user",
+            query="test query",
+        )
+
+        with patch.object(
+            memory_service.embedding_service, "get_embedding", return_value=[0.1] * 1536
+        ):
+            with patch.object(memory_service, "keyword_search", return_value=[]):
+                with patch.object(memory_service, "semantic_search", return_value=[]):
+                    with patch(
+                        "src.services.memory_service.logger"
+                    ) as mock_logger:
+                        response = await memory_service.hybrid_search(
+                            request, correlation_id=correlation_id
+                        )
+
+                        # Verify logger.info was called with correlation_id
+                        mock_logger.info.assert_called()
+                        call_kwargs = mock_logger.info.call_args.kwargs
+                        assert call_kwargs["correlation_id"] == str(correlation_id)

@@ -22,6 +22,17 @@ from src.services.redis_service import RedisService
 
 logger = structlog.get_logger(__name__)
 
+
+def embedding_to_pgvector(embedding: list[float] | None) -> str | None:
+    """Convert embedding list to pgvector string format.
+
+    pgvector expects embeddings as '[0.1, 0.2, ...]' string format.
+    """
+    if embedding is None:
+        return None
+    return "[" + ",".join(str(x) for x in embedding) + "]"
+
+
 # Tiktoken encoding for token counting
 _encoding: Optional[tiktoken.Encoding] = None
 
@@ -166,8 +177,10 @@ class MemoryService:
         pool = await get_pool()
 
         # Build query with optional type filter
+        # Convert embedding to pgvector string format
+        embedding_str = embedding_to_pgvector(embedding)
         type_filter = ""
-        params = [user_id, embedding, limit]
+        params = [user_id, embedding_str, limit]
         if types:
             type_values = [t.value for t in types]
             type_filter = f"AND type = ANY($4)"
@@ -192,12 +205,16 @@ class MemoryService:
 
         results = []
         for idx, row in enumerate(rows):
+            # Handle NaN similarity (e.g., from zero-vector embeddings)
+            similarity = float(row["similarity"])
+            if similarity != similarity:  # NaN check
+                similarity = 0.0
             item = MemoryItem(
                 id=row["id"],
                 user_id=row["user_id"],
                 content=row["content"],
                 type=MemoryType(row["type"]),
-                relevance_score=float(row["similarity"]),
+                relevance_score=similarity,
                 source=str(row["source_message_id"]) if row["source_message_id"] else None,
                 created_at=row["created_at"],
                 importance=row["importance"],

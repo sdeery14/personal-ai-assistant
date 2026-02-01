@@ -13,6 +13,16 @@ from src.services.embedding_service import EmbeddingService
 logger = structlog.get_logger(__name__)
 
 
+def embedding_to_pgvector(embedding: list[float] | None) -> str | None:
+    """Convert embedding list to pgvector string format.
+
+    pgvector expects embeddings as '[0.1, 0.2, ...]' string format.
+    """
+    if embedding is None:
+        return None
+    return "[" + ",".join(str(x) for x in embedding) + "]"
+
+
 class ConversationService:
     """Service for conversation and message CRUD operations."""
 
@@ -123,6 +133,8 @@ class ConversationService:
 
         async with pool.acquire() as conn:
             # Insert message
+            # Convert embedding to pgvector string format
+            embedding_str = embedding_to_pgvector(embedding)
             await conn.execute(
                 """
                 INSERT INTO messages (id, conversation_id, role, content, embedding, correlation_id, created_at)
@@ -132,7 +144,7 @@ class ConversationService:
                 conversation_id,
                 role,
                 content,
-                embedding,
+                embedding_str,
                 correlation_id,
                 now,
             )
