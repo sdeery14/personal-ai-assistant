@@ -18,6 +18,10 @@
 
 Enable the assistant to retrieve relevant past information from durable storage and use it as advisory context when answering user questions. This establishes the foundation for memory-grounded responses while maintaining strict safety boundaries.
 
+### Clarification on "Read-Only"
+
+This feature enables **read-only access to the curated memory store** (`memory_items` table). Conversation and message persistence—including embedding generation and Redis session state—is explicitly in-scope as foundational infrastructure required for future retrieval. The "read-only" constraint means that **automatic creation or modification of memory items is deferred to Memory v2**; the `memory_items` table is queried but never written to by the running system in this phase.
+
 ### User Capability
 
 > "I can ask questions and the assistant can retrieve relevant past information when answering."
@@ -26,7 +30,8 @@ Enable the assistant to retrieve relevant past information from durable storage 
 
 This feature explicitly does **not** include:
 
-- **Automatic memory writes**: No summarization, insight extraction, or automatic persistence
+- **Automatic memory writes**: No summarization, insight extraction, or automatic persistence of memory items
+- **Automatic memory item creation**: Memory items are manually seeded via migration, fixture, or admin script; automatic extraction from conversations is v2 scope
 - **Background jobs**: No offline processing or scheduled tasks
 - **Proactive behavior**: No unsolicited suggestions or notifications
 - **Personalization logic**: No user modeling or preference learning
@@ -88,7 +93,7 @@ As a developer, I can expose a memory query tool to the Agent that retrieves rel
 
 1. **Given** the Agent is processing a user message, **When** the Agent determines memory context would be helpful, **Then** the Agent can invoke the `query_memory` tool with a search query.
 
-2. **Given** the `query_memory` tool is invoked, **When** the tool executes, **Then** it returns a list of memory items with: content, type (Fact/Preference/Decision/Note), relevance score, source reference, and created timestamp.
+2. **Given** the `query_memory` tool is invoked, **When** the tool executes, **Then** it returns a list of memory items with: content, type (`fact`/`preference`/`decision`/`note`), relevance score, source reference, and created timestamp.
 
 3. **Given** the tool returns results, **When** the Agent incorporates them into the response, **Then** the total injected memory content respects the token budget (≤1000 tokens default).
 
@@ -150,7 +155,7 @@ As a developer, I can run memory retrieval evaluations to measure quality and de
 ### Functional Requirements
 
 - **FR-001**: System MUST persist all conversations and messages to Postgres with user ID, correlation ID, and timestamps.
-- **FR-002**: System MUST support typed memory items: Fact, Preference, Decision, Note.
+- **FR-002**: System MUST support typed memory items: `fact`, `preference`, `decision`, `note`.
 - **FR-003**: System MUST provide a `query_memory` tool callable by the Agent via OpenAI Agents SDK.
 - **FR-004**: System MUST implement hybrid retrieval combining keyword search (full-text) and semantic search (pgvector).
 - **FR-005**: System MUST enforce per-user memory scoping – users can only retrieve their own memories.
@@ -164,7 +169,7 @@ As a developer, I can run memory retrieval evaluations to measure quality and de
 
 - **Conversation**: A logical grouping of messages between a user and the assistant. Has user_id, created_at, updated_at, and optional title.
 - **Message**: A single turn in a conversation. Has role (user/assistant/system), content, embedding vector, timestamp, and correlation_id.
-- **MemoryItem**: A typed, curated piece of information. Has content, type (Fact/Preference/Decision/Note), source_message_id, importance score, created_at, and optional expires_at.
+- **MemoryItem**: A typed, curated piece of information. Has content, type (`fact`/`preference`/`decision`/`note`), source_message_id, importance score, created_at, and optional expires_at.
 - **User**: The authenticated user. Has user_id and any auth metadata. (Authentication implementation deferred – assume user_id is available.)
 
 ---
@@ -376,14 +381,12 @@ When using retrieved memories:
 
 ### Retrieval Parameters
 
-| Parameter       | Default | Configurable | Description                        |
-| --------------- | ------- | ------------ | ---------------------------------- |
-| TOKEN_BUDGET    | 1000    | Yes (env)    | Max tokens for memory injection    |
-| KEYWORD_WEIGHT  | 0.4     | Yes (env)    | Weight for keyword results in RRF  |
-| SEMANTIC_WEIGHT | 0.6     | Yes (env)    | Weight for semantic results in RRF |
-| MIN_RELEVANCE   | 0.3     | Yes (env)    | Minimum score threshold            |
-| MAX_RESULTS     | 10      | Yes (env)    | Maximum items to return            |
-| RRF_K           | 60      | No           | RRF constant (standard value)      |
+| Parameter     | Default | Configurable | Description                     |
+| ------------- | ------- | ------------ | ------------------------------- |
+| TOKEN_BUDGET  | 1000    | Yes (env)    | Max tokens for memory injection |
+| MIN_RELEVANCE | 0.3     | Yes (env)    | Minimum score threshold         |
+| MAX_RESULTS   | 10      | Yes (env)    | Maximum items to return         |
+| RRF_K         | 60      | No           | RRF constant (standard value)   |
 
 ---
 
