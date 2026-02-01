@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     session_ttl: int = 86400  # 24 hours in seconds
     rrf_k: int = 60  # RRF constant (standard value, not configurable)
 
+    # Weather API Configuration (Feature 005)
+    openweathermap_api_key: str = ""  # Required for weather tool
+    weather_api_base_url: str = "https://api.openweathermap.org/data/2.5"
+    weather_cache_ttl_current: int = 600  # 10 minutes for current weather
+    weather_cache_ttl_forecast: int = 1800  # 30 minutes for forecast
+    weather_api_timeout: int = 5  # 5 second timeout per request
+
     @property
     def allowed_models_list(self) -> List[str]:
         """Parse comma-separated allowed models into a list."""

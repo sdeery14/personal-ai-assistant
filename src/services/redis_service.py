@@ -239,3 +239,58 @@ class RedisService:
             Hex-encoded SHA256 hash
         """
         return hashlib.sha256(content.encode()).hexdigest()
+
+    # Weather cache methods (Feature 005)
+
+    async def get_weather_cache(
+        self, location: str, query_type: str
+    ) -> Optional[dict | list]:
+        """Retrieve cached weather data.
+
+        Args:
+            location: Normalized location string
+            query_type: Type of query ('current' or 'forecast_N')
+
+        Returns:
+            Cached weather data or None if not cached
+        """
+        client = await get_redis()
+        if client is None:
+            return None
+
+        try:
+            key = f"weather:{location}:{query_type}"
+            data = await client.get(key)
+            if data:
+                return json.loads(data)
+            return None
+        except Exception as e:
+            logger.warning("redis_get_weather_cache_failed", error=str(e))
+            return None
+
+    async def set_weather_cache(
+        self, location: str, query_type: str, data: dict | list, ttl: int
+    ) -> bool:
+        """Cache weather data with TTL.
+
+        Args:
+            location: Normalized location string
+            query_type: Type of query ('current' or 'forecast_N')
+            data: Weather data to cache
+            ttl: Time-to-live in seconds
+
+        Returns:
+            True if successful, False otherwise
+        """
+        client = await get_redis()
+        if client is None:
+            return False
+
+        try:
+            key = f"weather:{location}:{query_type}"
+            await client.setex(key, ttl, json.dumps(data, default=str))
+            logger.debug("weather_cached", location=location, query_type=query_type, ttl=ttl)
+            return True
+        except Exception as e:
+            logger.warning("redis_set_weather_cache_failed", error=str(e))
+            return False

@@ -339,3 +339,143 @@ class MemoryMetrics(BaseModel):
         ...,
         description="True if recall >= 0.80 AND precision >= 0.70 AND violations == 0",
     )
+
+
+# Weather-specific models for Feature 005 evaluation
+
+
+class WeatherTestCase(BaseModel):
+    """A test case for weather tool evaluation."""
+
+    id: str = Field(
+        ...,
+        pattern=r"^[a-z0-9-]+$",
+        description="Unique case identifier (e.g., 'weather-001')",
+    )
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Weather query to send to assistant",
+    )
+    expected_behavior: str = Field(
+        ...,
+        pattern=r"^(success|error|clarification)$",
+        description="Expected response type: success (weather data), error (user-friendly error), clarification (ask for more info)",
+    )
+    expected_fields: list[str] = Field(
+        default_factory=list,
+        description="Fields expected in successful response (e.g., 'temperature', 'conditions')",
+    )
+    expected_error_keywords: list[str] = Field(
+        default_factory=list,
+        description="Keywords expected in error response (e.g., 'couldn't find', 'try again')",
+    )
+    rubric: str = Field(
+        ...,
+        min_length=10,
+        max_length=1000,
+        description="Evaluation criteria for judging response quality",
+    )
+    context: Optional[str] = Field(
+        default=None,
+        description="Optional notes about the test case",
+    )
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Categorization tags (e.g., 'current', 'forecast', 'error-handling')",
+    )
+
+
+class WeatherGoldenDataset(BaseModel):
+    """Complete weather evaluation dataset."""
+
+    version: str = Field(
+        ...,
+        pattern=r"^\d+\.\d+\.\d+$",
+        description="Dataset schema version (semver)",
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Dataset purpose description",
+    )
+    cases: list[WeatherTestCase] = Field(
+        ...,
+        min_length=5,
+        max_length=30,
+        description="Array of weather test cases (5-30)",
+    )
+
+    @field_validator("cases")
+    @classmethod
+    def unique_ids(cls, v: list[WeatherTestCase]) -> list[WeatherTestCase]:
+        """Validate that all case IDs are unique."""
+        ids = [case.id for case in v]
+        if len(ids) != len(set(ids)):
+            duplicates = [id_ for id_ in ids if ids.count(id_) > 1]
+            raise ValueError(f"Case IDs must be unique. Duplicates: {set(duplicates)}")
+        return v
+
+
+class WeatherEvalResult(BaseModel):
+    """Result of evaluating one weather test case."""
+
+    case_id: str = Field(..., description="Reference to WeatherTestCase.id")
+    query: str = Field(..., description="Original weather query")
+    response: str = Field(..., description="Assistant's response")
+    expected_behavior: str = Field(..., description="Expected behavior type")
+    actual_behavior: str = Field(
+        ...,
+        pattern=r"^(success|error|clarification|unknown)$",
+        description="Detected behavior type",
+    )
+    behavior_match: bool = Field(..., description="Whether actual matches expected")
+    fields_found: list[str] = Field(
+        default_factory=list,
+        description="Expected fields that were found in response",
+    )
+    fields_missing: list[str] = Field(
+        default_factory=list,
+        description="Expected fields that were missing",
+    )
+    latency_ms: int = Field(..., gt=0, description="Response latency in milliseconds")
+    cache_hit: bool = Field(default=False, description="Whether response came from cache")
+    error: Optional[str] = Field(default=None, description="Error message if evaluation failed")
+
+
+class WeatherMetrics(BaseModel):
+    """Aggregate metrics for a weather evaluation run."""
+
+    total_cases: int = Field(..., description="Total number of test cases")
+    success_cases: int = Field(..., description="Cases where behavior matched expected")
+    success_rate: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Percentage of cases where behavior matched",
+    )
+    error_rate: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Percentage of cases that returned errors",
+    )
+    cache_hit_rate: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Percentage of responses from cache",
+    )
+    latency_p50: float = Field(..., ge=0.0, description="Median latency in ms")
+    latency_p95: float = Field(..., ge=0.0, description="95th percentile latency in ms")
+    valid_response_rate: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Percentage of responses with all expected fields",
+    )
+    error_cases: int = Field(..., ge=0, description="Cases that errored during evaluation")
+    overall_passed: bool = Field(
+        ...,
+        description="True if success_rate >= 0.95 AND latency_p95 < 3000ms",
+    )

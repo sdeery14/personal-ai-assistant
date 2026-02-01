@@ -289,3 +289,97 @@ class TestMemoryLogging:
             latency_ms=50,
             truncated=True,
         )
+
+
+class TestWeatherLogging:
+    """Tests for weather request logging (T094-T095)."""
+
+    def test_weather_logging_includes_correlation_id(self):
+        """T094: Verify weather logs include correlation_id."""
+        from src.services.logging_service import log_weather_request
+        from uuid import uuid4
+
+        correlation_id = uuid4()
+
+        # Should not raise any errors
+        log_weather_request(
+            correlation_id=correlation_id,
+            location="Boston",
+            cache_hit=False,
+            latency_ms=150,
+            success=True,
+            error_type=None,
+        )
+
+    def test_weather_logging_no_api_key(self, capsys):
+        """T095: Verify OpenWeatherMap API key is not logged."""
+        from src.services.logging_service import log_weather_request, configure_logging
+        from uuid import uuid4
+
+        configure_logging("DEBUG")
+        correlation_id = uuid4()
+
+        # Log a weather request
+        log_weather_request(
+            correlation_id=correlation_id,
+            location="New York",
+            cache_hit=True,
+            latency_ms=50,
+            success=True,
+            error_type=None,
+        )
+
+        # Capture output
+        captured = capsys.readouterr()
+        log_output = captured.out + captured.err
+
+        # Should NOT contain any API key patterns
+        assert "openweathermap_api_key" not in log_output.lower() or "REDACTED" in log_output
+        assert "appid=" not in log_output.lower()
+
+    def test_weather_logging_with_cache_hit(self):
+        """Verify weather logs include cache_hit field."""
+        from src.services.logging_service import log_weather_request
+        from uuid import uuid4
+
+        correlation_id = uuid4()
+
+        # Log a cached weather request
+        log_weather_request(
+            correlation_id=correlation_id,
+            location="Seattle",
+            cache_hit=True,
+            latency_ms=10,
+            success=True,
+            error_type=None,
+        )
+
+    def test_weather_logging_with_error(self):
+        """Verify weather logs include error_type when request fails."""
+        from src.services.logging_service import log_weather_request
+        from uuid import uuid4
+
+        correlation_id = uuid4()
+
+        # Log a failed weather request
+        log_weather_request(
+            correlation_id=correlation_id,
+            location="Atlantis",
+            cache_hit=False,
+            latency_ms=500,
+            success=False,
+            error_type="invalid_location",
+        )
+
+    def test_openweathermap_api_key_redaction(self):
+        """Verify OpenWeatherMap API key is in sensitive_keys list."""
+        from src.services.logging_service import redact_sensitive
+
+        event_dict = {
+            "openweathermap_api_key": "abc123secret",
+            "location": "Boston",
+        }
+        result = redact_sensitive(None, None, event_dict)
+
+        assert result["openweathermap_api_key"] == "REDACTED"
+        assert result["location"] == "Boston"

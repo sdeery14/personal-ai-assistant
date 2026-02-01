@@ -22,6 +22,7 @@ def redact_sensitive(
     sensitive_keys = {
         "api_key",
         "openai_api_key",
+        "openweathermap_api_key",
         "authorization",
         "secret",
         "password",
@@ -115,4 +116,34 @@ def log_memory_retrieval(
         result_count=result_count,
         latency_ms=latency_ms,
         truncated=truncated,
+    )
+
+
+def log_weather_request(
+    correlation_id: Optional[UUID],
+    location: str,
+    cache_hit: bool,
+    latency_ms: int,
+    success: bool,
+    error_type: Optional[str] = None,
+) -> None:
+    """Log weather request event.
+
+    Args:
+        correlation_id: Request correlation ID
+        location: Location queried (city name or coordinates)
+        cache_hit: Whether response came from cache
+        latency_ms: Request latency in milliseconds
+        success: Whether request was successful
+        error_type: Error type if request failed
+    """
+    logger = get_logger("weather")
+    logger.info(
+        "weather_request",
+        correlation_id=str(correlation_id) if correlation_id else None,
+        location=location,
+        cache_hit=cache_hit,
+        latency_ms=latency_ms,
+        success=success,
+        error_type=error_type,
     )
