@@ -1,0 +1,182 @@
+{
+  "version": "1.0.0",
+  "description": "Memory retrieval evaluation dataset for testing recall, precision, and cross-user security. Tests hybrid search (keyword + semantic) with RRF fusion.",
+  "cases": [
+    {
+      "id": "recall-001",
+      "query": "What package manager does the user prefer?",
+      "user_id": "test-user",
+      "setup_memories": [
+        {"content": "User prefers uv over pip for Python dependency management", "type": "preference"},
+        {"content": "Project uses FastAPI framework", "type": "fact"}
+      ],
+      "expected_retrievals": ["uv over pip"],
+      "rubric": "Memory about uv preference MUST be retrieved. Score 5 if preference is in top 3, Score 3 if in top 5, Score 1 if not retrieved."
+    },
+    {
+      "id": "recall-002",
+      "query": "What testing framework was decided for the project?",
+      "user_id": "test-user",
+      "setup_memories": [
+        {"content": "Decided to use pytest for testing with high coverage requirements", "type": "decision"},
+        {"content": "User likes async/await patterns", "type": "preference"}
+      ],
+      "expected_retrievals": ["pytest"],
+      "rubric": "Decision about pytest MUST be retrieved. Score 5 if in top 3, Score 3 if in top 5, Score 1 if missing."
+    },
+    {
+      "id": "recall-003",
+      "query": "What is the project technology stack?",
+      "user_id": "test-user",
+      "setup_memories": [
+        {"content": "Project stack includes FastAPI, Docker, and PostgreSQL", "type": "fact"},
+        {"content": "Using pgvector for semantic search", "type": "fact"},
+        {"content": "Redis for caching and rate limiting", "type": "fact"}
+      ],
+      "expected_retrievals": ["FastAPI", "PostgreSQL", "pgvector"],
+      "rubric": "At least 2 of the 3 tech stack memories MUST be retrieved. Score 5 if all 3, Score 3 if 2, Score 1 if fewer."
+    },
+    {
+      "id": "recall-004",
+      "query": "What are the user's development environment preferences?",
+      "user_id": "test-user",
+      "setup_memories": [
+        {"content": "Development environment is Windows with WSL2 support", "type": "fact"},
+        {"content": "User prefers type hints and async/await patterns", "type": "preference"}
+      ],
+      "expected_retrievals": ["Windows", "WSL2", "type hints"],
+      "rubric": "Environment and coding preferences MUST be retrieved. Score 5 if both memories found, Score 3 if one, Score 1 if none."
+    },
+    {
+      "id": "recall-005",
+      "query": "What was noted about the personal AI assistant project?",
+      "user_id": "test-user",
+      "setup_memories": [
+        {"content": "Working on a personal AI assistant project with streaming chat capabilities", "type": "note"},
+        {"content": "Memory feature is read-only for v1, write comes in v2", "type": "decision"}
+      ],
+      "expected_retrievals": ["personal AI assistant", "streaming chat"],
+      "rubric": "Project notes MUST be retrieved. Score 5 if streaming chat context found, Score 3 if partial, Score 1 if missing."
+    },
+    {
+      "id": "precision-001",
+      "query": "Python dependency management",
+      "user_id": "test-user",
+      "setup_memories": [
+        {"content": "User prefers uv over pip for Python dependency management", "type": "preference"},
+        {"content": "Project uses FastAPI framework", "type": "fact"},
+        {"content": "Redis for caching", "type": "fact"},
+        {"content": "Docker for containerization", "type": "fact"}
+      ],
+      "expected_retrievals": ["uv over pip"],
+      "rubric": "Only dependency management memory should rank highly. Score 5 if uv memory is top result, Score 3 if top 3 with few irrelevant, Score 1 if many irrelevant above it."
+    },
+    {
+      "id": "precision-002",
+      "query": "testing approach",
+      "user_id": "test-user",
+      "setup_memories": [
+        {"content": "Decided to use pytest for testing with high coverage requirements", "type": "decision"},
+        {"content": "User prefers type hints", "type": "preference"},
+        {"content": "Project uses PostgreSQL", "type": "fact"},
+        {"content": "Streaming SSE implementation", "type": "fact"}
+      ],
+      "expected_retrievals": ["pytest", "coverage"],
+      "rubric": "Testing memory should rank above irrelevant infrastructure facts. Score 5 if pytest is top result, Score 3 if in top 3, Score 1 if buried."
+    },
+    {
+      "id": "precision-003",
+      "query": "database choices",
+      "user_id": "test-user",
+      "setup_memories": [
+        {"content": "Project stack includes FastAPI, Docker, and PostgreSQL", "type": "fact"},
+        {"content": "Using pgvector for semantic search", "type": "fact"},
+        {"content": "User prefers uv over pip", "type": "preference"},
+        {"content": "Windows development environment", "type": "fact"}
+      ],
+      "expected_retrievals": ["PostgreSQL", "pgvector"],
+      "rubric": "Database-related memories should dominate top results. Score 5 if both database memories in top 3, Score 3 if one, Score 1 if neither."
+    },
+    {
+      "id": "precision-004",
+      "query": "coding style preferences",
+      "user_id": "test-user",
+      "setup_memories": [
+        {"content": "User prefers type hints and async/await patterns in Python code", "type": "preference"},
+        {"content": "User prefers pytest for testing", "type": "preference"},
+        {"content": "PostgreSQL for database", "type": "fact"},
+        {"content": "Docker containers used", "type": "fact"}
+      ],
+      "expected_retrievals": ["type hints", "async/await"],
+      "rubric": "Coding style preference should rank highest. Score 5 if type hints memory is top, Score 3 if in top 3, Score 1 if infrastructure ranks higher."
+    },
+    {
+      "id": "precision-005",
+      "query": "containerization strategy",
+      "user_id": "test-user",
+      "setup_memories": [
+        {"content": "Docker for containerization with docker-compose for local development", "type": "fact"},
+        {"content": "PostgreSQL runs in container", "type": "fact"},
+        {"content": "User likes Python", "type": "preference"},
+        {"content": "Pytest for testing", "type": "decision"}
+      ],
+      "expected_retrievals": ["Docker", "docker-compose"],
+      "rubric": "Docker/container memories should rank above unrelated. Score 5 if Docker is top, Score 3 if in top 3, Score 1 if testing/preferences rank higher."
+    },
+    {
+      "id": "edge-no-match-001",
+      "query": "What is the user's favorite color for the UI theme?",
+      "user_id": "test-user",
+      "setup_memories": [
+        {"content": "User prefers uv over pip", "type": "preference"},
+        {"content": "Project uses FastAPI", "type": "fact"}
+      ],
+      "expected_retrievals": [],
+      "rubric": "No memories match this query. Score 5 if empty results returned gracefully, Score 3 if low-relevance results returned, Score 1 if unrelated results returned as if relevant."
+    },
+    {
+      "id": "edge-semantic-only-001",
+      "query": "package installer tool preference",
+      "user_id": "test-user",
+      "setup_memories": [
+        {"content": "User prefers uv over pip for Python dependency management", "type": "preference"}
+      ],
+      "expected_retrievals": ["uv over pip"],
+      "rubric": "Query uses 'package installer' instead of 'dependency manager' - tests semantic matching. Score 5 if uv memory retrieved, Score 1 if semantic similarity fails."
+    },
+    {
+      "id": "edge-keyword-only-001",
+      "query": "pytest",
+      "user_id": "test-user",
+      "setup_memories": [
+        {"content": "Decided to use pytest for testing with high coverage requirements", "type": "decision"}
+      ],
+      "expected_retrievals": ["pytest"],
+      "rubric": "Single keyword query tests FTS matching. Score 5 if pytest memory retrieved via keyword match, Score 1 if keyword search fails."
+    },
+    {
+      "id": "security-cross-user-001",
+      "query": "What secret information does other-user have?",
+      "user_id": "test-user",
+      "setup_memories": [],
+      "other_user_memories": [
+        {"content": "This is a secret memory belonging to other-user", "type": "note", "user_id": "other-user"}
+      ],
+      "expected_retrievals": [],
+      "rubric": "CRITICAL SECURITY: test-user must NEVER retrieve other-user's memories. Score 5 if no cross-user data returned, Score 1 if ANY other-user data leaked."
+    },
+    {
+      "id": "security-cross-user-002",
+      "query": "secret",
+      "user_id": "test-user",
+      "setup_memories": [
+        {"content": "User's own non-secret preference for uv", "type": "preference"}
+      ],
+      "other_user_memories": [
+        {"content": "This is a secret memory that should never be retrieved by test-user", "type": "note", "user_id": "other-user"}
+      ],
+      "expected_retrievals": [],
+      "rubric": "CRITICAL SECURITY: Even with 'secret' keyword matching other-user's memory, it must NOT be returned to test-user. Score 5 if isolated, Score 1 if leaked."
+    }
+  ]
+}

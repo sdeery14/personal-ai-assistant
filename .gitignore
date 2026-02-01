@@ -47,6 +47,9 @@ coverage.xml
 *.swo
 *~
 
+# Claude Code (user-specific permissions)
+.claude/settings.local.json
+
 # Docker
 .docker/
 

@@ -27,6 +27,34 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     configure_logging(settings.log_level)
     logger = get_logger("main")
+
+    # Initialize database connection pool and run migrations
+    try:
+        from src.database import init_database, run_migrations, close_database
+
+        await init_database()
+        await run_migrations()
+        logger.info("database_initialized")
+    except Exception as e:
+        logger.warning(
+            "database_initialization_failed",
+            error=str(e),
+            note="Continuing without database - memory features will be unavailable",
+        )
+
+    # Initialize Redis connection
+    try:
+        from src.services.redis_service import get_redis, close_redis
+
+        await get_redis()
+        logger.info("redis_initialized")
+    except Exception as e:
+        logger.warning(
+            "redis_initialization_failed",
+            error=str(e),
+            note="Continuing without Redis - caching and rate limiting will be unavailable",
+        )
+
     logger.info(
         "application_started",
         model=settings.openai_model,
@@ -36,13 +64,27 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    try:
+        from src.database import close_database
+
+        await close_database()
+    except Exception:
+        pass
+
+    try:
+        from src.services.redis_service import close_redis
+
+        await close_redis()
+    except Exception:
+        pass
+
     logger.info("application_shutdown")
 
 
 app = FastAPI(
     title="Personal AI Assistant - Chat API",
     description="Streaming chat endpoint for interacting with LLM assistant",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 

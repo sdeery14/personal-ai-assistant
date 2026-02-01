@@ -3,6 +3,8 @@
 #
 # Usage:
 #   docker compose -f docker/docker-compose.mlflow.yml up -d
+
+name: mlflow
 #   Open MLflow UI at http://localhost:5000
 #   MinIO Console at http://localhost:9001 (minioadmin/minioadmin)
 
@@ -15,9 +17,9 @@ services:
       POSTGRES_PASSWORD: mlflow
       POSTGRES_DB: mlflow
     ports:
-      - "5432:5432"
+      - "5433:5432" # Use 5433 to avoid conflict with API's Postgres on 5432
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mlflow_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "mlflow"]
       interval: 5s
@@ -90,5 +92,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
+  mlflow_postgres_data:
   minio_data:

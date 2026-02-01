@@ -25,9 +25,17 @@ from mlflow.genai import evaluate as genai_evaluate
 
 from eval.assistant import get_response, get_response_with_guardrails
 from eval.config import EvalSettings, get_eval_settings
-from eval.dataset import DatasetError, load_dataset
+from eval.dataset import DatasetError, load_dataset, load_memory_dataset
 from eval.judge import create_quality_judge, score_to_label, score_to_passed
-from eval.models import EvalResult, EvalRunMetrics, GoldenDataset
+from eval.memory_judge import MemoryJudge
+from eval.models import (
+    EvalResult,
+    EvalRunMetrics,
+    GoldenDataset,
+    MemoryEvalResult,
+    MemoryGoldenDataset,
+    MemoryMetrics,
+)
 
 
 @dataclass
@@ -36,6 +44,17 @@ class EvaluationResult:
 
     metrics: EvalRunMetrics
     results: list[EvalResult]
+    mlflow_run_id: str | None
+    dataset_version: str
+    error: str | None = None
+
+
+@dataclass
+class MemoryEvaluationResult:
+    """Complete results from a memory evaluation run."""
+
+    metrics: MemoryMetrics
+    results: list[MemoryEvalResult]
     mlflow_run_id: str | None
     dataset_version: str
     error: str | None = None
@@ -580,3 +599,333 @@ def format_summary(result: EvaluationResult, settings: EvalSettings) -> str:
     lines.append("=" * 60)
 
     return "\n".join(lines)
+
+
+# Memory Evaluation Functions
+
+
+def run_memory_evaluation(
+    dataset_path: str | Path = "eval/memory_golden_dataset.json",
+    verbose: bool = False,
+    dry_run: bool = False,
+) -> MemoryEvaluationResult:
+    """
+    Run memory retrieval evaluation.
+
+    Args:
+        dataset_path: Path to the memory golden dataset JSON file.
+        verbose: If True, print per-case details during evaluation.
+        dry_run: If True, validate dataset only without running evaluation.
+
+    Returns:
+        MemoryEvaluationResult with metrics, per-case results, and MLflow run ID.
+
+    Raises:
+        DatasetError: If the dataset cannot be loaded or is invalid.
+    """
+    import statistics
+    import time
+
+    settings = get_eval_settings()
+
+    # Load memory dataset
+    dataset = load_memory_dataset(dataset_path)
+
+    if verbose:
+        print(f"📂 Loaded memory dataset v{dataset.version} with {len(dataset.cases)} cases")
+
+    # Dry run: just validate and return
+    if dry_run:
+        return MemoryEvaluationResult(
+            metrics=MemoryMetrics(
+                total_cases=len(dataset.cases),
+                recall_at_5=0.0,
+                precision_at_5=0.0,
+                latency_p50=0.0,
+                latency_p95=0.0,
+                token_compliance=0.0,
+                cross_user_violations=0,
+                error_cases=0,
+                overall_passed=False,
+            ),
+            results=[],
+            mlflow_run_id=None,
+            dataset_version=dataset.version,
+        )
+
+    # Set up MLflow
+    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+    mlflow.set_experiment(settings.mlflow_experiment_name + "-memory")
+
+    # Run evaluation
+    results: list[MemoryEvalResult] = []
+    latencies: list[int] = []
+    judge = MemoryJudge(k=5)
+
+    with mlflow.start_run() as run:
+        run_id = run.info.run_id
+
+        # Log parameters
+        mlflow.log_params(
+            {
+                "dataset_type": "memory",
+                "dataset_version": dataset.version,
+                "total_cases": len(dataset.cases),
+                "recall_threshold": 0.80,
+                "precision_threshold": 0.70,
+            }
+        )
+
+        for case in dataset.cases:
+            try:
+                start_time = time.perf_counter()
+
+                # Call the memory service directly
+                retrieved_contents, retrieved_user_ids, token_count = _query_memory(
+                    query=case.query,
+                    user_id=case.user_id,
+                    settings=settings,
+                )
+
+                latency_ms = int((time.perf_counter() - start_time) * 1000)
+                latencies.append(latency_ms)
+
+                # Evaluate recall and precision
+                recall = judge.evaluate_recall(retrieved_contents, case.expected_retrievals)
+                precision = judge.evaluate_precision(retrieved_contents, case.expected_retrievals)
+
+                # Check cross-user violation
+                cross_user_violation = judge.check_cross_user_violation(
+                    retrieved_user_ids, case.user_id
+                )
+
+                # Check token budget (default 1000 tokens)
+                within_budget = token_count <= settings.token_budget
+
+                # Count expected items found
+                expected_found = sum(
+                    1 for exp in case.expected_retrievals
+                    if any(exp.lower() in r.lower() for r in retrieved_contents)
+                )
+
+                result = MemoryEvalResult(
+                    case_id=case.id,
+                    query=case.query,
+                    retrieved_contents=retrieved_contents,
+                    retrieved_count=len(retrieved_contents),
+                    expected_found=expected_found,
+                    expected_total=len(case.expected_retrievals),
+                    recall=recall,
+                    precision=precision,
+                    latency_ms=latency_ms,
+                    token_count=token_count,
+                    within_budget=within_budget,
+                    cross_user_violation=cross_user_violation,
+                )
+                results.append(result)
+
+                if verbose:
+                    status = "✅" if recall >= 0.8 and not cross_user_violation else "❌"
+                    print(f"  {case.id}: {status} R={recall:.2f} P={precision:.2f} {latency_ms}ms")
+
+            except Exception as e:
+                results.append(
+                    MemoryEvalResult(
+                        case_id=case.id,
+                        query=case.query,
+                        retrieved_contents=[],
+                        retrieved_count=0,
+                        expected_found=0,
+                        expected_total=len(case.expected_retrievals),
+                        recall=0.0,
+                        precision=0.0,
+                        latency_ms=1,
+                        token_count=0,
+                        within_budget=True,
+                        cross_user_violation=False,
+                        error=str(e),
+                    )
+                )
+                if verbose:
+                    print(f"  {case.id}: ⚠️ ERROR - {str(e)}")
+
+        # Compute aggregate metrics
+        valid_results = [r for r in results if r.error is None]
+        error_count = len(results) - len(valid_results)
+
+        if valid_results:
+            avg_recall = statistics.mean(r.recall for r in valid_results)
+            avg_precision = statistics.mean(r.precision for r in valid_results)
+            latency_p50 = statistics.median(latencies) if latencies else 0.0
+            latency_p95 = (
+                statistics.quantiles(latencies, n=20)[18] if len(latencies) >= 20
+                else max(latencies) if latencies else 0.0
+            )
+            token_compliance = (
+                sum(1 for r in valid_results if r.within_budget) / len(valid_results)
+            )
+            cross_user_violations = sum(1 for r in valid_results if r.cross_user_violation)
+        else:
+            avg_recall = 0.0
+            avg_precision = 0.0
+            latency_p50 = 0.0
+            latency_p95 = 0.0
+            token_compliance = 0.0
+            cross_user_violations = 0
+
+        # Check overall pass criteria
+        overall_passed = (
+            avg_recall >= 0.80
+            and avg_precision >= 0.70
+            and cross_user_violations == 0
+        )
+
+        metrics = MemoryMetrics(
+            total_cases=len(dataset.cases),
+            recall_at_5=avg_recall,
+            precision_at_5=avg_precision,
+            latency_p50=latency_p50,
+            latency_p95=latency_p95,
+            token_compliance=token_compliance,
+            cross_user_violations=cross_user_violations,
+            error_cases=error_count,
+            overall_passed=overall_passed,
+        )
+
+        # Log metrics to MLflow
+        mlflow.log_metrics(
+            {
+                "memory_recall_at_5": avg_recall,
+                "memory_precision_at_5": avg_precision,
+                "memory_latency_p50": latency_p50,
+                "memory_latency_p95": latency_p95,
+                "memory_token_compliance": token_compliance,
+                "memory_cross_user_violations": cross_user_violations,
+                "memory_error_cases": error_count,
+                "memory_overall_passed": 1 if overall_passed else 0,
+            }
+        )
+
+        # Log per-case results as artifact
+        results_json = [r.model_dump() for r in results]
+        results_path = Path("memory_eval_results.json")
+        with open(results_path, "w") as f:
+            json.dump(results_json, f, indent=2, default=str)
+        mlflow.log_artifact(str(results_path))
+        results_path.unlink()
+
+        # Log dataset as artifact
+        mlflow.log_artifact(str(dataset_path))
+
+    return MemoryEvaluationResult(
+        metrics=metrics,
+        results=results,
+        mlflow_run_id=run_id,
+        dataset_version=dataset.version,
+    )
+
+
+def _query_memory(
+    query: str,
+    user_id: str,
+    settings: EvalSettings,
+) -> tuple[list[str], list[str], int]:
+    """
+    Query the memory service for evaluation.
+
+    Args:
+        query: Search query.
+        user_id: User ID for scoping.
+        settings: Evaluation settings.
+
+    Returns:
+        Tuple of (retrieved_contents, retrieved_user_ids, token_count)
+    """
+    import asyncio
+
+    async def _do_query():
+        from src.database import init_database, close_database
+        from src.services.memory_service import MemoryService
+        from src.models.memory import MemoryQueryRequest
+
+        # Initialize database connection
+        await init_database()
+
+        try:
+            service = MemoryService()
+            request = MemoryQueryRequest(
+                user_id=user_id,
+                query=query,
+            )
+            response = await service.hybrid_search(request)
+
+            contents = [item.content for item in response.items]
+            user_ids = [item.user_id for item in response.items]
+            token_count = response.token_count
+
+            return contents, user_ids, token_count
+        finally:
+            await close_database()
+
+    return asyncio.run(_do_query())
+
+
+def format_memory_summary(result: MemoryEvaluationResult) -> str:
+    """
+    Format memory evaluation results as a summary string.
+
+    Args:
+        result: MemoryEvaluationResult from run_memory_evaluation()
+
+    Returns:
+        Formatted summary string for console output.
+    """
+    m = result.metrics
+    lines = [
+        "",
+        "=" * 60,
+        "MEMORY EVALUATION SUMMARY",
+        "=" * 60,
+        f"Dataset Version: {result.dataset_version}",
+        f"MLflow Run ID:   {result.mlflow_run_id or 'N/A'}",
+        "",
+        f"Total Cases:          {m.total_cases}",
+        f"Error Cases:          {m.error_cases}",
+        "",
+        "RETRIEVAL METRICS:",
+        f"  Recall@5:           {m.recall_at_5:.1%} (threshold: >=80%)",
+        f"  Precision@5:        {m.precision_at_5:.1%} (threshold: >=70%)",
+        f"  Token Compliance:   {m.token_compliance:.1%}",
+        "",
+        "LATENCY METRICS:",
+        f"  P50:                {m.latency_p50:.0f}ms",
+        f"  P95:                {m.latency_p95:.0f}ms",
+        "",
+        "SECURITY METRICS:",
+        f"  Cross-User Violations: {m.cross_user_violations} (threshold: 0)",
+        "",
+    ]
+
+    if m.overall_passed:
+        lines.append("🎉 MEMORY GATE: PASS")
+    else:
+        lines.append("❌ MEMORY GATE: FAIL")
+        reasons = []
+        if m.recall_at_5 < 0.80:
+            reasons.append(f"Recall {m.recall_at_5:.1%} < 80%")
+        if m.precision_at_5 < 0.70:
+            reasons.append(f"Precision {m.precision_at_5:.1%} < 70%")
+        if m.cross_user_violations > 0:
+            reasons.append(f"{m.cross_user_violations} cross-user violations")
+        if reasons:
+            lines.append(f"   Reasons: {'; '.join(reasons)}")
+
+    lines.append("=" * 60)
+
+    return "\n".join(lines)
+
+
+def is_memory_dataset(path: str | Path) -> bool:
+    """Check if a dataset path is a memory evaluation dataset."""
+    path_str = str(path)
+    return "memory" in path_str.lower()
