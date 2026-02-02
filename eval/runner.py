@@ -25,7 +25,7 @@ from mlflow.genai import evaluate as genai_evaluate
 
 from eval.assistant import get_response, get_response_with_guardrails
 from eval.config import EvalSettings, get_eval_settings
-from eval.dataset import DatasetError, load_dataset, load_memory_dataset
+from eval.dataset import DatasetError, load_dataset, load_memory_dataset, load_weather_dataset
 from eval.judge import create_quality_judge, score_to_label, score_to_passed
 from eval.memory_judge import MemoryJudge
 from eval.models import (
@@ -35,6 +35,9 @@ from eval.models import (
     MemoryEvalResult,
     MemoryGoldenDataset,
     MemoryMetrics,
+    WeatherEvalResult,
+    WeatherGoldenDataset,
+    WeatherMetrics,
 )
 
 
@@ -55,6 +58,17 @@ class MemoryEvaluationResult:
 
     metrics: MemoryMetrics
     results: list[MemoryEvalResult]
+    mlflow_run_id: str | None
+    dataset_version: str
+    error: str | None = None
+
+
+@dataclass
+class WeatherEvaluationResult:
+    """Complete results from a weather evaluation run."""
+
+    metrics: WeatherMetrics
+    results: list[WeatherEvalResult]
     mlflow_run_id: str | None
     dataset_version: str
     error: str | None = None
@@ -929,3 +943,429 @@ def is_memory_dataset(path: str | Path) -> bool:
     """Check if a dataset path is a memory evaluation dataset."""
     path_str = str(path)
     return "memory" in path_str.lower()
+
+
+def is_weather_dataset(path: str | Path) -> bool:
+    """Check if a dataset path is a weather evaluation dataset."""
+    path_str = str(path)
+    return "weather" in path_str.lower()
+
+
+# Weather Evaluation Functions
+
+
+def run_weather_evaluation(
+    dataset_path: str | Path = "eval/weather_golden_dataset.json",
+    verbose: bool = False,
+    dry_run: bool = False,
+) -> WeatherEvaluationResult:
+    """
+    Run weather tool evaluation using MLflow GenAI evaluate.
+
+    This function tests weather queries through the full OpenAI Agents SDK agent flow,
+    using mlflow.genai.evaluate() with proper tracing enabled. The agent has the
+    get_weather tool attached and processes queries naturally.
+
+    Args:
+        dataset_path: Path to the weather golden dataset JSON file.
+        verbose: If True, print per-case details during evaluation.
+        dry_run: If True, validate dataset only without running evaluation.
+
+    Returns:
+        WeatherEvaluationResult with metrics, per-case results, and MLflow run ID.
+
+    Raises:
+        DatasetError: If the dataset cannot be loaded or is invalid.
+    """
+    import statistics
+    import time
+
+    from eval.assistant import get_response_with_weather
+    from mlflow.genai import scorer
+
+    settings = get_eval_settings()
+
+    # Load weather dataset
+    dataset = load_weather_dataset(dataset_path)
+
+    if verbose:
+        print(f"📂 Loaded weather dataset v{dataset.version} with {len(dataset.cases)} cases")
+
+    # Dry run: just validate and return
+    if dry_run:
+        return WeatherEvaluationResult(
+            metrics=WeatherMetrics(
+                total_cases=len(dataset.cases),
+                success_cases=0,
+                success_rate=0.0,
+                error_rate=0.0,
+                cache_hit_rate=0.0,
+                latency_p50=0.0,
+                latency_p95=0.0,
+                valid_response_rate=0.0,
+                error_cases=0,
+                overall_passed=False,
+            ),
+            results=[],
+            mlflow_run_id=None,
+            dataset_version=dataset.version,
+        )
+
+    # Set up MLflow
+    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+    mlflow.set_experiment(settings.mlflow_experiment_name + "-weather")
+
+    # Capture API key in closure for MLflow predict_fn
+    api_key = settings.openai_api_key
+    actual_model = settings.openai_model
+
+    # Create predict function that uses agent with weather tool
+    # Note: Parameter name must match the key in inputs dict
+    def predict_fn(query: str) -> str:
+        """Predict function for weather evaluation using agent with weather tool."""
+        import os
+        os.environ["OPENAI_API_KEY"] = api_key
+
+        try:
+            response = get_response_with_weather(
+                prompt=query, model=actual_model, api_key=api_key
+            )
+            return response
+        except Exception as e:
+            return f"[ERROR: {type(e).__name__}: {str(e)}]"
+
+    # Create custom scorer for weather behavior evaluation
+    # Returns a simple boolean for pass/fail
+    @scorer
+    def weather_behavior_scorer(inputs, outputs, expectations) -> bool:
+        """Score weather response based on expected behavior."""
+        response = outputs if isinstance(outputs, str) else str(outputs)
+        expected_behavior = expectations.get("expected_behavior", "success")
+
+        # Detect actual behavior from response
+        response_lower = response.lower()
+        if "[error" in response_lower:
+            actual_behavior = "error"
+        elif any(
+            kw in response_lower
+            for kw in ["couldn't find", "check spelling", "try a nearby", "not found", "unable to"]
+        ):
+            actual_behavior = "error"
+        elif any(
+            kw in response_lower
+            for kw in ["location", "where", "which city", "specify", "please provide"]
+        ):
+            actual_behavior = "clarification"
+        elif any(
+            kw in response_lower
+            for kw in ["temperature", "degrees", "°f", "°c", "weather", "conditions", "humidity", "forecast"]
+        ):
+            actual_behavior = "success"
+        else:
+            actual_behavior = "unknown"
+
+        # Return True if behavior matches expected
+        return actual_behavior == expected_behavior
+
+    # Prepare data for mlflow.genai.evaluate()
+    eval_data = []
+    for case in dataset.cases:
+        eval_data.append({
+            "inputs": {"query": case.query},
+            "expectations": {
+                "expected_behavior": case.expected_behavior,
+                "expected_fields": case.expected_fields,
+                "expected_error_keywords": case.expected_error_keywords,
+                "rubric": case.rubric,
+            },
+        })
+
+    # Run evaluation with MLflow
+    results: list[WeatherEvalResult] = []
+    latencies: list[int] = []
+
+    with mlflow.start_run() as run:
+        run_id = run.info.run_id
+
+        # Log parameters
+        mlflow.log_params(
+            {
+                "dataset_type": "weather",
+                "dataset_version": dataset.version,
+                "total_cases": len(dataset.cases),
+                "assistant_model": actual_model,
+                "success_rate_threshold": 0.95,
+                "latency_p95_threshold": 3000,
+            }
+        )
+
+        # Run evaluation using mlflow.genai.evaluate() with agent
+        start_time = time.perf_counter()
+
+        try:
+            eval_results = genai_evaluate(
+                data=eval_data,
+                predict_fn=predict_fn,
+                scorers=[weather_behavior_scorer],
+            )
+            eval_duration_ms = int((time.perf_counter() - start_time) * 1000)
+
+            # Process results from mlflow
+            results_df = eval_results.tables["eval_results"]
+
+            for idx, (_, row) in enumerate(results_df.iterrows()):
+                case = dataset.cases[idx]
+
+                # Extract output (agent response) from row
+                # MLflow stores the response in the 'response' column
+                response = str(row.get("response", "") or "")
+
+                # Get execution duration from trace data
+                exec_duration = row.get("execution_duration", 0)
+                latency_ms = int(exec_duration) if exec_duration else int(eval_duration_ms / len(dataset.cases))
+                latencies.append(latency_ms)
+
+                # Extract scorer result (boolean) - column name is 'weather_behavior_scorer/value'
+                scorer_result = row.get("weather_behavior_scorer/value", None)
+
+                # Scorer returns boolean - True means behavior matched
+                if scorer_result is True or scorer_result == "yes":
+                    behavior_match = True
+                elif scorer_result is False or scorer_result == "no":
+                    behavior_match = False
+                else:
+                    behavior_match = False
+
+                # Detect actual behavior from response for detailed logging
+                actual_behavior = _detect_weather_behavior(response, case)
+
+                # Check for expected fields in response
+                response_lower = response.lower()
+                fields_found = []
+                fields_missing = []
+                for field in case.expected_fields:
+                    if field.lower() in response_lower:
+                        fields_found.append(field)
+                    else:
+                        fields_missing.append(field)
+
+                result = WeatherEvalResult(
+                    case_id=case.id,
+                    query=case.query,
+                    response=response,
+                    expected_behavior=case.expected_behavior,
+                    actual_behavior=actual_behavior,
+                    behavior_match=behavior_match,
+                    fields_found=fields_found,
+                    fields_missing=fields_missing,
+                    latency_ms=latency_ms,
+                    cache_hit=False,  # Cannot determine from agent response
+                )
+                results.append(result)
+
+                if verbose:
+                    status = "✅" if behavior_match else "❌"
+                    print(f"  {case.id}: {status} [{actual_behavior}] {latency_ms}ms")
+
+        except Exception as e:
+            # If evaluation fails entirely, create error results
+            if verbose:
+                print(f"  ⚠️ Evaluation failed: {str(e)}")
+            for case in dataset.cases:
+                results.append(
+                    WeatherEvalResult(
+                        case_id=case.id,
+                        query=case.query,
+                        response="",
+                        expected_behavior=case.expected_behavior,
+                        actual_behavior="unknown",
+                        behavior_match=False,
+                        fields_found=[],
+                        fields_missing=case.expected_fields,
+                        latency_ms=0,
+                        cache_hit=False,
+                        error=str(e),
+                    )
+                )
+
+        # Compute aggregate metrics
+        valid_results = [r for r in results if r.error is None]
+        error_count = len(results) - len(valid_results)
+
+        if valid_results:
+            success_count = sum(1 for r in valid_results if r.behavior_match)
+            success_rate = success_count / len(valid_results)
+            error_rate = sum(1 for r in valid_results if r.actual_behavior == "error") / len(valid_results)
+            cache_hit_rate = 0.0  # Cannot determine from agent response
+            latency_p50 = statistics.median(latencies) if latencies else 0.0
+            latency_p95 = (
+                statistics.quantiles(latencies, n=20)[18] if len(latencies) >= 20
+                else max(latencies) if latencies else 0.0
+            )
+            # Valid response = has all expected fields
+            valid_response_count = sum(
+                1 for r in valid_results
+                if len(r.fields_missing) == 0 and r.expected_behavior == "success"
+            )
+            success_expected_count = sum(1 for r in valid_results if r.expected_behavior == "success")
+            valid_response_rate = (
+                valid_response_count / success_expected_count
+                if success_expected_count > 0 else 1.0
+            )
+        else:
+            success_count = 0
+            success_rate = 0.0
+            error_rate = 0.0
+            cache_hit_rate = 0.0
+            latency_p50 = 0.0
+            latency_p95 = 0.0
+            valid_response_rate = 0.0
+
+        # Check overall pass criteria
+        overall_passed = (
+            success_rate >= 0.95
+            and latency_p95 < 3000
+        )
+
+        metrics = WeatherMetrics(
+            total_cases=len(dataset.cases),
+            success_cases=success_count,
+            success_rate=success_rate,
+            error_rate=error_rate,
+            cache_hit_rate=cache_hit_rate,
+            latency_p50=latency_p50,
+            latency_p95=latency_p95,
+            valid_response_rate=valid_response_rate,
+            error_cases=error_count,
+            overall_passed=overall_passed,
+        )
+
+        # Log metrics to MLflow
+        mlflow.log_metrics(
+            {
+                "weather_success_rate": success_rate,
+                "weather_error_rate": error_rate,
+                "weather_latency_p50": latency_p50,
+                "weather_latency_p95": latency_p95,
+                "weather_valid_response_rate": valid_response_rate,
+                "weather_error_cases": error_count,
+                "weather_overall_passed": 1 if overall_passed else 0,
+            }
+        )
+
+        # Log per-case results as artifact
+        results_json = [r.model_dump() for r in results]
+        results_path = Path("weather_eval_results.json")
+        with open(results_path, "w") as f:
+            json.dump(results_json, f, indent=2, default=str)
+        mlflow.log_artifact(str(results_path))
+        results_path.unlink()
+
+        # Log dataset as artifact
+        mlflow.log_artifact(str(dataset_path))
+
+    return WeatherEvaluationResult(
+        metrics=metrics,
+        results=results,
+        mlflow_run_id=run_id,
+        dataset_version=dataset.version,
+    )
+
+
+def _detect_weather_behavior(response: str, case) -> str:
+    """
+    Detect the actual behavior type from a weather response.
+
+    Returns: "success", "error", or "clarification"
+    """
+    response_lower = response.lower()
+
+    # Check for error indicators
+    error_indicators = [
+        "couldn't find",
+        "unable to retrieve",
+        "error",
+        "not found",
+        "try again",
+        "failed",
+    ]
+    if any(indicator in response_lower for indicator in error_indicators):
+        return "error"
+
+    # Check for clarification indicators
+    clarification_indicators = [
+        "please specify",
+        "which location",
+        "what location",
+        "where would you like",
+    ]
+    if any(indicator in response_lower for indicator in clarification_indicators):
+        return "clarification"
+
+    # Check for success indicators (weather data present)
+    success_indicators = [
+        "temperature",
+        "°f",
+        "°c",
+        "humidity",
+        "conditions",
+        "weather in",
+        "current weather",
+        "forecast",
+    ]
+    if any(indicator in response_lower for indicator in success_indicators):
+        return "success"
+
+    return "unknown"
+
+
+def format_weather_summary(result: WeatherEvaluationResult) -> str:
+    """
+    Format weather evaluation results as a summary string.
+
+    Args:
+        result: WeatherEvaluationResult from run_weather_evaluation()
+
+    Returns:
+        Formatted summary string for console output.
+    """
+    m = result.metrics
+    lines = [
+        "",
+        "=" * 60,
+        "WEATHER EVALUATION SUMMARY",
+        "=" * 60,
+        f"Dataset Version: {result.dataset_version}",
+        f"MLflow Run ID:   {result.mlflow_run_id or 'N/A'}",
+        "",
+        f"Total Cases:          {m.total_cases}",
+        f"Success Cases:        {m.success_cases}",
+        f"Error Cases:          {m.error_cases}",
+        "",
+        "BEHAVIOR METRICS:",
+        f"  Success Rate:       {m.success_rate:.1%} (threshold: >=95%)",
+        f"  Error Rate:         {m.error_rate:.1%}",
+        f"  Valid Response Rate: {m.valid_response_rate:.1%}",
+        "",
+        "PERFORMANCE METRICS:",
+        f"  Cache Hit Rate:     {m.cache_hit_rate:.1%}",
+        f"  Latency P50:        {m.latency_p50:.0f}ms",
+        f"  Latency P95:        {m.latency_p95:.0f}ms (threshold: <3000ms)",
+        "",
+    ]
+
+    if m.overall_passed:
+        lines.append("🎉 WEATHER GATE: PASS")
+    else:
+        lines.append("❌ WEATHER GATE: FAIL")
+        reasons = []
+        if m.success_rate < 0.95:
+            reasons.append(f"Success rate {m.success_rate:.1%} < 95%")
+        if m.latency_p95 >= 3000:
+            reasons.append(f"Latency P95 {m.latency_p95:.0f}ms >= 3000ms")
+        if reasons:
+            lines.append(f"   Reasons: {'; '.join(reasons)}")
+
+    lines.append("=" * 60)
+
+    return "\n".join(lines)

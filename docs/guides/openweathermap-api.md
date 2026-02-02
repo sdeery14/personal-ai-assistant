@@ -1,7 +1,7 @@
 # OpenWeatherMap API Integration Guide
 
-**Last Updated**: 2026-02-01  
-**Feature**: 005-weather-lookup  
+**Last Updated**: 2026-02-01
+**Feature**: 005-weather-lookup
 **Purpose**: Document correct location parameter formats and API usage patterns for OpenWeatherMap
 
 ---
@@ -22,6 +22,7 @@ OpenWeatherMap provides two main API families for weather data:
 ### ✅ CORRECT: Formats That Work
 
 #### 1. City Name Only
+
 ```
 q=Boston
 q=London
@@ -32,6 +33,7 @@ q=Chicago
 **Result**: Returns the most common/populous match globally.
 
 #### 2. City + Country Code (Recommended)
+
 ```
 q=Boston,US
 q=London,GB
@@ -44,6 +46,7 @@ q=Toronto,CA
 **Why Recommended**: Avoids ambiguity (e.g., Paris, France vs Paris, Texas).
 
 #### 3. City + State + Country (US Only)
+
 ```
 q=Boston,MA,US
 q=Austin,TX,US
@@ -55,6 +58,7 @@ q=Portland,OR,US
 **CRITICAL LIMITATION**: State codes are **only supported for US locations**. Using state codes for non-US cities will cause the API to fail.
 
 #### 4. Latitude/Longitude Coordinates
+
 ```
 lat=42.3601&lon=-71.0589  (Boston)
 lat=51.5074&lon=-0.1278   (London)
@@ -67,6 +71,7 @@ lat=51.5074&lon=-0.1278   (London)
 ### ❌ INCORRECT: Formats That Fail
 
 #### 1. State Abbreviation Without Country Code
+
 ```
 q=Boston,MA          ❌ FAILS (missing country code)
 q=Austin,TX          ❌ FAILS (missing country code)
@@ -75,6 +80,7 @@ q=Austin,TX          ❌ FAILS (missing country code)
 **Error**: API interprets "MA" or "TX" as a country code, which doesn't exist.
 
 #### 2. Non-US State/Province Codes
+
 ```
 q=Toronto,ON,CA      ❌ FAILS (ON is province code, not supported)
 q=Munich,BY,DE       ❌ FAILS (BY is state code, not supported)
@@ -84,6 +90,7 @@ q=Melbourne,VI,AU    ❌ FAILS (VI is state code, not supported)
 **Why**: State/province codes are only supported for US locations.
 
 #### 3. Full State Names
+
 ```
 q=Boston,Massachusetts,US    ❌ FAILS (full names not supported)
 q=Austin,Texas,US            ❌ FAILS (full names not supported)
@@ -100,16 +107,18 @@ q=Austin,Texas,US            ❌ FAILS (full names not supported)
 **Base URL**: `https://api.openweathermap.org/data/2.5/weather`
 
 #### Required Parameters
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `q` | string | Location query (see formats above) |
-| `appid` | string | Your OpenWeatherMap API key |
+
+| Parameter | Type   | Description                        |
+| --------- | ------ | ---------------------------------- |
+| `q`       | string | Location query (see formats above) |
+| `appid`   | string | Your OpenWeatherMap API key        |
 
 #### Optional Parameters
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `units` | string | `standard` | `standard` (Kelvin), `metric` (Celsius), `imperial` (Fahrenheit) |
-| `lang` | string | `en` | Language code (e.g., `en`, `fr`, `es`) |
+
+| Parameter | Type   | Default    | Description                                                      |
+| --------- | ------ | ---------- | ---------------------------------------------------------------- |
+| `units`   | string | `standard` | `standard` (Kelvin), `metric` (Celsius), `imperial` (Fahrenheit) |
+| `lang`    | string | `en`       | Language code (e.g., `en`, `fr`, `es`)                           |
 
 ### Example API Calls
 
@@ -149,32 +158,32 @@ https://api.openweathermap.org/data/2.5/weather?lat=42.3601&lon=-71.0589&appid={
   ],
   "base": "stations",
   "main": {
-    "temp": 282.55,          // Current temperature
-    "feels_like": 281.86,     // Feels like temperature
-    "temp_min": 280.37,       // Min observed temp (city-wide)
-    "temp_max": 284.26,       // Max observed temp (city-wide)
-    "pressure": 1023,         // Atmospheric pressure (hPa)
-    "humidity": 73            // Humidity (%)
+    "temp": 282.55, // Current temperature
+    "feels_like": 281.86, // Feels like temperature
+    "temp_min": 280.37, // Min observed temp (city-wide)
+    "temp_max": 284.26, // Max observed temp (city-wide)
+    "pressure": 1023, // Atmospheric pressure (hPa)
+    "humidity": 73 // Humidity (%)
   },
-  "visibility": 10000,        // Visibility (meters, max 10km)
+  "visibility": 10000, // Visibility (meters, max 10km)
   "wind": {
-    "speed": 4.1,            // Wind speed (default: m/s, imperial: mph)
-    "deg": 80,               // Wind direction (degrees)
-    "gust": 5.7              // Wind gust (optional)
+    "speed": 4.1, // Wind speed (default: m/s, imperial: mph)
+    "deg": 80, // Wind direction (degrees)
+    "gust": 5.7 // Wind gust (optional)
   },
   "clouds": {
-    "all": 90                // Cloudiness (%)
+    "all": 90 // Cloudiness (%)
   },
-  "dt": 1560350645,          // Data calculation time (Unix UTC)
+  "dt": 1560350645, // Data calculation time (Unix UTC)
   "sys": {
     "country": "US",
-    "sunrise": 1560343627,   // Sunrise time (Unix UTC)
-    "sunset": 1560396563     // Sunset time (Unix UTC)
+    "sunrise": 1560343627, // Sunrise time (Unix UTC)
+    "sunset": 1560396563 // Sunset time (Unix UTC)
   },
-  "timezone": -14400,        // Timezone offset (seconds from UTC)
-  "id": 4930956,             // City ID
-  "name": "Boston",          // City name
-  "cod": 200                 // HTTP status code
+  "timezone": -14400, // Timezone offset (seconds from UTC)
+  "id": 4930956, // City ID
+  "name": "Boston", // City name
+  "cod": 200 // HTTP status code
 }
 ```
 
@@ -188,6 +197,7 @@ https://api.openweathermap.org/data/2.5/weather?lat=42.3601&lon=-71.0589&appid={
 ```
 
 **Common Causes**:
+
 - Invalid location format (e.g., `Boston,MA` without `US`)
 - Non-existent city name
 - State codes used for non-US cities
@@ -205,15 +215,15 @@ def normalize_location(location: str) -> str:
     """Normalize location for OpenWeatherMap API."""
     # Remove extra whitespace
     location = location.strip()
-    
+
     # Remove common problematic patterns
     # Remove "in" prefix: "in Boston" → "Boston"
     if location.lower().startswith("in "):
         location = location[3:]
-    
+
     # Check for state abbreviations without country
     parts = [p.strip() for p in location.split(',')]
-    
+
     if len(parts) == 2:
         city, state_or_country = parts
         # If second part looks like US state code (2 uppercase letters)
@@ -224,13 +234,14 @@ def normalize_location(location: str) -> str:
                 # Add US country code
                 location = f"{city},{state_or_country},US"
             # else assume it's already a country code
-    
+
     return location
 ```
 
 ### 2. Handle State Abbreviations
 
 **DO**: Strip state abbreviations for non-US cities
+
 ```python
 # Input: "Toronto, ON"
 # Process: Strip "ON" → "Toronto,CA"
@@ -238,6 +249,7 @@ def normalize_location(location: str) -> str:
 ```
 
 **DO**: Keep state abbreviations for US cities but add country code
+
 ```python
 # Input: "Boston, MA"
 # Process: Add US → "Boston,MA,US"
@@ -247,6 +259,7 @@ def normalize_location(location: str) -> str:
 ### 3. Fallback Strategy
 
 If the API returns 404:
+
 1. Try removing state/province code: `Boston,MA,US` → `Boston,US`
 2. Try with just city name: `Boston,US` → `Boston`
 3. Inform user if all attempts fail
@@ -254,6 +267,7 @@ If the API returns 404:
 ### 4. Caching Strategy
 
 Cache responses by normalized location key:
+
 - Cache key: `lowercase(location)|units` (e.g., `"boston,us|imperial"`)
 - TTL: 10 minutes for current weather (weather doesn't change rapidly)
 - Cache location normalization results separately to avoid repeated API calls for similar queries
@@ -264,14 +278,14 @@ Cache responses by normalized location key:
 
 ### HTTP Status Codes
 
-| Code | Meaning | Action |
-|------|---------|--------|
-| 200 | Success | Return data |
-| 400 | Bad Request | Check parameters, return error to user |
-| 401 | Unauthorized | Invalid API key, fail closed |
-| 404 | Not Found | Location not found, try fallback or return error |
-| 429 | Too Many Requests | Rate limit exceeded, use cached data or retry with backoff |
-| 500, 502, 503 | Server Error | Retry with exponential backoff (max 3 attempts) |
+| Code          | Meaning           | Action                                                     |
+| ------------- | ----------------- | ---------------------------------------------------------- |
+| 200           | Success           | Return data                                                |
+| 400           | Bad Request       | Check parameters, return error to user                     |
+| 401           | Unauthorized      | Invalid API key, fail closed                               |
+| 404           | Not Found         | Location not found, try fallback or return error           |
+| 429           | Too Many Requests | Rate limit exceeded, use cached data or retry with backoff |
+| 500, 502, 503 | Server Error      | Retry with exponential backoff (max 3 attempts)            |
 
 ### Retry Logic
 
@@ -292,10 +306,12 @@ def should_retry(status_code: int) -> bool:
 ## Rate Limits & Quotas
 
 ### Free Tier
+
 - **60 calls/minute**
 - **1,000,000 calls/month**
 
 ### Optimization Tips
+
 1. **Cache aggressively**: 10-minute TTL keeps you well under limits
 2. **Normalize locations**: Avoid duplicate calls for equivalent queries
 3. **Batch requests**: If checking multiple cities, space them out
@@ -307,6 +323,7 @@ def should_retry(status_code: int) -> bool:
 Use these test cases to validate location handling:
 
 ### ✅ Should Work
+
 - [ ] `Boston` - City only
 - [ ] `Boston,US` - City + country
 - [ ] `Boston,MA,US` - City + state + country (US)
@@ -315,6 +332,7 @@ Use these test cases to validate location handling:
 - [ ] `lat=42.3601&lon=-71.0589` - Coordinates
 
 ### ❌ Should Handle Gracefully
+
 - [ ] `Boston,MA` - Missing country code (normalize to `Boston,MA,US` or strip to `Boston,US`)
 - [ ] `Toronto,ON,CA` - Non-US state code (strip to `Toronto,CA`)
 - [ ] `Atlantis` - Non-existent city (return 404 error)

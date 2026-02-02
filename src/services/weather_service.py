@@ -46,6 +46,88 @@ def _normalize_location(location: str) -> str:
     return location.strip().lower()
 
 
+# US state abbreviations for location normalization
+US_STATE_CODES = {
+    'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+    'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+    'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+    'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+    'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+    'DC',  # District of Columbia
+}
+
+# Common ISO 3166-1 alpha-2 country codes (not exhaustive, but covers major countries)
+COMMON_COUNTRY_CODES = {
+    'US', 'GB', 'UK', 'CA', 'AU', 'DE', 'FR', 'IT', 'ES', 'JP',
+    'CN', 'IN', 'BR', 'MX', 'KR', 'RU', 'NL', 'BE', 'CH', 'AT',
+    'SE', 'NO', 'DK', 'FI', 'PL', 'PT', 'IE', 'NZ', 'SG', 'HK',
+    'TW', 'ZA', 'IL', 'AE', 'SA', 'EG', 'AR', 'CL', 'CO', 'PE',
+    'TH', 'MY', 'ID', 'PH', 'VN', 'TR', 'GR', 'CZ', 'HU', 'RO',
+}
+
+
+def _normalize_location_for_api(location: str) -> str:
+    """Normalize location for OpenWeatherMap API call.
+
+    Handles state abbreviations correctly:
+    - "Boston, MA" → "Boston,MA,US" (US state codes need country code)
+    - "Toronto, ON" → "Toronto" (non-US state codes are stripped)
+    - "London, UK" → "London,UK" (country codes preserved)
+    - "Boston" → "Boston" (simple city names preserved)
+
+    See: docs/guides/openweathermap-api.md for format details.
+    """
+    location = location.strip()
+
+    # Don't modify coordinate queries
+    if COORDINATE_PATTERN.match(location):
+        return location
+
+    # Split by comma
+    parts = [p.strip() for p in location.split(',')]
+
+    if len(parts) == 1:
+        # Simple city name, return as-is
+        return parts[0]
+
+    if len(parts) == 2:
+        city, second = parts
+        second_upper = second.upper()
+
+        # Check if second part is a US state code
+        if second_upper in US_STATE_CODES:
+            # Add US country code: "Boston,MA" → "Boston,MA,US"
+            return f"{city},{second_upper},US"
+
+        # Check if it's a known country code
+        if second_upper in COMMON_COUNTRY_CODES:
+            return f"{city},{second_upper}"
+
+        # If it's a 2-letter code but not recognized, it's likely a province code
+        # (e.g., "ON" for Ontario, "BC" for British Columbia)
+        # Strip it and just use the city name
+        if len(second) == 2:
+            return city
+
+        # For longer codes, also strip (e.g., full state/province names)
+        return city
+
+    if len(parts) == 3:
+        city, state, country = parts
+        country_upper = country.upper()
+
+        # Already has country code
+        if country_upper == 'US' and state.upper() in US_STATE_CODES:
+            # Valid US format
+            return f"{city},{state.upper()},{country_upper}"
+
+        # Non-US with state code - strip state
+        return f"{city},{country_upper}"
+
+    # More than 3 parts - just use first part as city
+    return parts[0]
+
+
 def _parse_coordinates(location: str) -> tuple[float, float] | None:
     """Parse coordinates from location string.
 
@@ -196,7 +278,9 @@ class WeatherService:
         if coords:
             params = {"lat": coords[0], "lon": coords[1]}
         else:
-            params = {"q": location}
+            # Normalize location for API (handles US state codes)
+            normalized_location = _normalize_location_for_api(location)
+            params = {"q": normalized_location}
 
         data = await self._call_api("weather", params)
         if not data:
@@ -253,7 +337,9 @@ class WeatherService:
         if coords:
             params = {"lat": coords[0], "lon": coords[1]}
         else:
-            params = {"q": location}
+            # Normalize location for API (handles US state codes)
+            normalized_location = _normalize_location_for_api(location)
+            params = {"q": normalized_location}
 
         # OpenWeatherMap free tier returns 5-day/3-hour forecast
         data = await self._call_api("forecast", params)

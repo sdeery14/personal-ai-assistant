@@ -84,7 +84,7 @@
     },
     {
       "id": "weather-009",
-      "query": "Weather in Atlantis",
+      "query": "Weather in Xyzzy123NotARealPlace",
       "expected_behavior": "error",
       "expected_fields": [],
       "expected_error_keywords": ["couldn't find", "check spelling", "try"],
