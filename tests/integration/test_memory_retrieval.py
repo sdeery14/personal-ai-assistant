@@ -210,10 +210,12 @@ class TestAgentToolInvocation:
 
             service = ChatService()
 
-            # Verify _get_tools() returns the query_memory tool
+            # Verify _get_tools() includes the query_memory tool
+            # Note: Other tools (weather, etc.) may also be registered
             tools = service._get_tools()
-            assert len(tools) == 1
-            assert tools[0] == query_memory_tool
+            assert len(tools) >= 1, "At least one tool should be registered"
+            tool_names = [t.name for t in tools]
+            assert "query_memory_tool" in tool_names, "query_memory_tool should be registered"
 
     @pytest.mark.asyncio
     async def test_query_memory_tool_context_includes_user_id(self):

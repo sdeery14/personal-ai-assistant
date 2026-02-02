@@ -161,3 +161,67 @@ def get_response_with_guardrails(
             "guardrail_type": "output",
             "model": actual_model,
         }
+
+
+# Weather system prompt (same as chat_service.py)
+WEATHER_SYSTEM_PROMPT = """
+You have access to a weather tool that can look up current weather and forecasts.
+
+When users ask about weather:
+1. Use the get_weather tool to fetch real data
+2. Present the information in a natural, conversational way
+3. Include both Fahrenheit and Celsius when showing temperatures
+4. For forecasts, summarize the key days rather than listing every detail
+
+If a location cannot be found, suggest the user check the spelling or try a nearby city.
+"""
+
+
+def get_response_with_weather(
+    prompt: str, model: str | None = None, api_key: str | None = None
+) -> str:
+    """
+    Get assistant response with weather tool enabled.
+
+    This function creates an agent with the weather tool attached for
+    testing weather-related queries through the full agent flow.
+
+    Args:
+        prompt: The user prompt to send to the assistant.
+        model: Optional model override (defaults to OPENAI_MODEL env var).
+        api_key: Optional OpenAI API key (defaults to OPENAI_API_KEY env var).
+
+    Returns:
+        The complete assistant response as a string.
+
+    Raises:
+        Exception: If the assistant fails to generate a response.
+    """
+    settings = get_eval_settings()
+    actual_model = model or settings.openai_model
+    actual_api_key = api_key or settings.openai_api_key
+
+    # Ensure OPENAI_API_KEY is in environment
+    os.environ["OPENAI_API_KEY"] = actual_api_key
+
+    # Import weather tool
+    try:
+        from src.tools.get_weather import get_weather_tool
+        tools = [get_weather_tool]
+    except ImportError:
+        tools = []
+
+    # Create agent with weather tool and system prompt
+    instructions = "You are a helpful assistant." + WEATHER_SYSTEM_PROMPT
+
+    agent = Agent(
+        name="Assistant",
+        instructions=instructions,
+        model=actual_model,
+        tools=tools,
+    )
+
+    # Use run_sync for synchronous, non-streaming execution
+    result = Runner.run_sync(agent, input=prompt)
+
+    return result.final_output

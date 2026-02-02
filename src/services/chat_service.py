@@ -31,6 +31,22 @@ When using retrieved memories:
 - Never fabricate memories that weren't retrieved
 """
 
+# Weather system prompt guidance (Feature 005)
+WEATHER_SYSTEM_PROMPT = """
+You have access to a weather tool that can retrieve current conditions and forecasts.
+
+When to use the weather tool:
+- User asks about current weather in a location
+- User asks about upcoming weather or forecasts
+- User asks weather-related questions ("Is it raining?", "Do I need an umbrella?")
+
+When using weather data:
+- Present facts without advice or recommendations
+- If forecast requested beyond 7 days, explain the limitation
+- If location is ambiguous, ask for clarification or note which location was used
+- If weather cannot be retrieved, explain the issue and suggest trying again
+"""
+
 
 class ChatService:
     """Service for streaming chat completions via OpenAI Agents SDK."""
@@ -64,11 +80,20 @@ class ChatService:
     def _get_tools(self):
         """Get available tools for the agent."""
         tools = []
+        # Memory tool (Feature 004)
         try:
             from src.tools.query_memory import query_memory_tool
             tools.append(query_memory_tool)
         except Exception as e:
             self.logger.warning("query_memory_tool_unavailable", error=str(e))
+        # Weather tool (Feature 005)
+        try:
+            from src.tools.get_weather import get_weather_tool
+            tools.append(get_weather_tool)
+            self._weather_available = True
+        except Exception as e:
+            self.logger.warning("get_weather_tool_unavailable", error=str(e))
+            self._weather_available = False
         return tools
 
     async def stream_completion(
@@ -120,19 +145,24 @@ class ChatService:
                 )
                 conversation = None
 
-        # Build system instructions with memory guidance
+        # Build system instructions with feature-specific guidance
         instructions = "You are a helpful assistant."
         if self._database_available:
             instructions += "\n" + MEMORY_SYSTEM_PROMPT
 
-        # Create agent with input and output guardrails and memory tool
+        # Get tools - weather tool is always available, memory requires database
+        tools = self._get_tools()
+        if hasattr(self, '_weather_available') and self._weather_available:
+            instructions += "\n" + WEATHER_SYSTEM_PROMPT
+
+        # Create agent with input and output guardrails and tools
         agent = Agent(
             name="Assistant",
             instructions=instructions,
             model=actual_model,
             input_guardrails=[validate_input],
             output_guardrails=[validate_output],
-            tools=self._get_tools() if self._database_available else [],
+            tools=tools,
         )
 
         sequence = 0

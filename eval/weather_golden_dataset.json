@@ -1,0 +1,136 @@
+{
+  "version": "1.0.0",
+  "description": "Weather tool evaluation dataset for Feature 005 - tests current weather, forecasts, error handling, and edge cases",
+  "cases": [
+    {
+      "id": "weather-001",
+      "query": "What's the weather in New York?",
+      "expected_behavior": "success",
+      "expected_fields": ["temperature", "conditions", "humidity"],
+      "expected_error_keywords": [],
+      "rubric": "Response should include current temperature (in both F and C), weather conditions description, and humidity. Location should be recognized as New York.",
+      "context": "Basic current weather query for major US city",
+      "tags": ["current", "us-city"]
+    },
+    {
+      "id": "weather-002",
+      "query": "Is it raining in Seattle?",
+      "expected_behavior": "success",
+      "expected_fields": ["conditions"],
+      "expected_error_keywords": [],
+      "rubric": "Response should clearly indicate whether it is currently raining or not based on weather conditions. Should provide current weather data for Seattle.",
+      "context": "Query asking about specific weather condition",
+      "tags": ["current", "conditions"]
+    },
+    {
+      "id": "weather-003",
+      "query": "What's the temperature in London?",
+      "expected_behavior": "success",
+      "expected_fields": ["temperature"],
+      "expected_error_keywords": [],
+      "rubric": "Response should include temperature in both Fahrenheit and Celsius. Should handle international city correctly.",
+      "context": "International city temperature query",
+      "tags": ["current", "international"]
+    },
+    {
+      "id": "weather-004",
+      "query": "Weather in Tokyo",
+      "expected_behavior": "success",
+      "expected_fields": ["temperature", "conditions"],
+      "expected_error_keywords": [],
+      "rubric": "Response should include current weather data for Tokyo, Japan. Should handle non-English city name correctly.",
+      "context": "Asian city weather query",
+      "tags": ["current", "international"]
+    },
+    {
+      "id": "weather-005",
+      "query": "Weather at 40.7128, -74.0060",
+      "expected_behavior": "success",
+      "expected_fields": ["temperature", "conditions"],
+      "expected_error_keywords": [],
+      "rubric": "Response should handle coordinate-based query and return weather for the location (New York City area). Coordinates should be parsed correctly.",
+      "context": "Coordinate-based weather query",
+      "tags": ["current", "coordinates"]
+    },
+    {
+      "id": "weather-006",
+      "query": "Weather forecast for Denver tomorrow",
+      "expected_behavior": "success",
+      "expected_fields": ["forecast", "high", "low"],
+      "expected_error_keywords": [],
+      "rubric": "Response should include forecast data for tomorrow with high and low temperatures. Should recognize 'tomorrow' as 1-day forecast request.",
+      "context": "Single day forecast query",
+      "tags": ["forecast", "short-term"]
+    },
+    {
+      "id": "weather-007",
+      "query": "Will it rain in Miami this week?",
+      "expected_behavior": "success",
+      "expected_fields": ["forecast", "precipitation"],
+      "expected_error_keywords": [],
+      "rubric": "Response should include multi-day forecast with precipitation chances. Should cover at least 5-7 days.",
+      "context": "Weekly forecast with precipitation focus",
+      "tags": ["forecast", "precipitation"]
+    },
+    {
+      "id": "weather-008",
+      "query": "10-day forecast for Boston",
+      "expected_behavior": "success",
+      "expected_fields": ["forecast"],
+      "expected_error_keywords": [],
+      "rubric": "Response should provide forecast data. May explain that only 7 days are available from free API. Should not error on extended range request.",
+      "context": "Extended forecast request (beyond available range)",
+      "tags": ["forecast", "extended"]
+    },
+    {
+      "id": "weather-009",
+      "query": "Weather in Xyzzy123NotARealPlace",
+      "expected_behavior": "error",
+      "expected_fields": [],
+      "expected_error_keywords": ["couldn't find", "check spelling", "try"],
+      "rubric": "Response should return user-friendly error message explaining the location couldn't be found. Should NOT return a stack trace or technical error.",
+      "context": "Invalid/fictional location",
+      "tags": ["error-handling", "invalid-location"]
+    },
+    {
+      "id": "weather-010",
+      "query": "Weather in Springfield",
+      "expected_behavior": "success",
+      "expected_fields": ["temperature", "location"],
+      "expected_error_keywords": [],
+      "rubric": "Response should handle ambiguous city name. May return data for most common Springfield or ask for clarification. Should not fail.",
+      "context": "Ambiguous city name (multiple cities with same name)",
+      "tags": ["edge-case", "ambiguous"]
+    },
+    {
+      "id": "weather-011",
+      "query": "Weather",
+      "expected_behavior": "clarification",
+      "expected_fields": [],
+      "expected_error_keywords": ["location", "where", "city"],
+      "rubric": "Response should ask the user to specify a location. Should not attempt to guess or return an error.",
+      "context": "Missing location - should ask for clarification",
+      "tags": ["edge-case", "missing-location"]
+    },
+    {
+      "id": "weather-012",
+      "query": "What's the weather in Boston and New York?",
+      "expected_behavior": "success",
+      "expected_fields": ["temperature"],
+      "expected_error_keywords": [],
+      "rubric": "Response should handle query with multiple locations. May return data for first location, both locations, or ask for clarification. Should not fail.",
+      "context": "Multiple locations in single query",
+      "tags": ["edge-case", "multiple-locations"]
+    },
+    {
+      "id": "weather-013",
+      "query": "How's the weather looking in Chicago?",
+      "expected_behavior": "success",
+      "expected_fields": ["temperature", "conditions"],
+      "expected_error_keywords": [],
+      "rubric": "Response should understand casual phrasing and return current weather for Chicago.",
+      "context": "Casual/colloquial weather query",
+      "tags": ["current", "casual-language"]
+    }
+  ]
+}

@@ -12,7 +12,14 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from eval.models import GoldenDataset, MemoryGoldenDataset, MemoryTestCase, TestCase
+from eval.models import (
+    GoldenDataset,
+    MemoryGoldenDataset,
+    MemoryTestCase,
+    TestCase,
+    WeatherGoldenDataset,
+    WeatherTestCase,
+)
 
 
 class DatasetError(Exception):
@@ -250,3 +257,159 @@ def get_memory_case_by_id(
         if case.id == case_id:
             return case
     return None
+
+
+# Weather-specific dataset loading functions
+
+
+def load_weather_dataset(path: str | Path) -> WeatherGoldenDataset:
+    """
+    Load and validate a weather evaluation dataset from a JSON file.
+
+    Args:
+        path: Path to the weather golden dataset JSON file.
+
+    Returns:
+        Validated WeatherGoldenDataset instance.
+
+    Raises:
+        DatasetError: If the file cannot be read or validation fails.
+    """
+    path = Path(path)
+
+    # Check file exists
+    if not path.exists():
+        raise DatasetError(f"Weather dataset file not found: {path}")
+
+    if not path.is_file():
+        raise DatasetError(f"Weather dataset path is not a file: {path}")
+
+    # Read JSON
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise DatasetError(f"Invalid JSON in weather dataset file: {e}")
+    except OSError as e:
+        raise DatasetError(f"Failed to read weather dataset file: {e}")
+
+    # Validate required fields
+    if "cases" not in data:
+        raise DatasetError("Weather dataset missing required field: 'cases'")
+
+    for idx, case in enumerate(data.get("cases", [])):
+        required_fields = ["id", "query", "expected_behavior", "rubric"]
+        missing = [f for f in required_fields if f not in case]
+        if missing:
+            raise DatasetError(
+                f"Weather dataset case {idx} missing required fields: {missing}"
+            )
+
+    # Validate with Pydantic
+    try:
+        dataset = WeatherGoldenDataset.model_validate(data)
+    except ValidationError as e:
+        errors = _format_validation_errors(e)
+        raise DatasetError(f"Weather dataset validation failed:\n{errors}")
+
+    return dataset
+
+
+def validate_weather_dataset_file(path: str | Path) -> tuple[bool, str | None]:
+    """
+    Validate a weather dataset file without raising exceptions.
+
+    Args:
+        path: Path to the weather golden dataset JSON file.
+
+    Returns:
+        Tuple of (is_valid, error_message).
+        If valid, error_message is None.
+    """
+    try:
+        load_weather_dataset(path)
+        return True, None
+    except DatasetError as e:
+        return False, str(e)
+
+
+def get_weather_dataset_info(dataset: WeatherGoldenDataset) -> dict[str, Any]:
+    """
+    Get summary information about a weather dataset.
+
+    Args:
+        dataset: Validated WeatherGoldenDataset instance.
+
+    Returns:
+        Dictionary with dataset info.
+    """
+    # Collect all tags
+    all_tags: set[str] = set()
+    for case in dataset.cases:
+        all_tags.update(case.tags)
+
+    # Count by expected behavior
+    success_cases = sum(1 for c in dataset.cases if c.expected_behavior == "success")
+    error_cases = sum(1 for c in dataset.cases if c.expected_behavior == "error")
+    clarification_cases = sum(
+        1 for c in dataset.cases if c.expected_behavior == "clarification"
+    )
+
+    return {
+        "version": dataset.version,
+        "description": dataset.description,
+        "case_count": len(dataset.cases),
+        "success_cases": success_cases,
+        "error_cases": error_cases,
+        "clarification_cases": clarification_cases,
+        "tags": sorted(all_tags),
+        "case_ids": [case.id for case in dataset.cases],
+    }
+
+
+def get_weather_case_by_id(
+    dataset: WeatherGoldenDataset, case_id: str
+) -> WeatherTestCase | None:
+    """
+    Get a specific weather test case by ID.
+
+    Args:
+        dataset: Validated WeatherGoldenDataset instance.
+        case_id: The case ID to find.
+
+    Returns:
+        WeatherTestCase if found, None otherwise.
+    """
+    for case in dataset.cases:
+        if case.id == case_id:
+            return case
+    return None
+
+
+def is_weather_dataset(path: str | Path) -> bool:
+    """
+    Check if a dataset file is a weather dataset.
+
+    Args:
+        path: Path to the dataset file.
+
+    Returns:
+        True if the file appears to be a weather dataset.
+    """
+    path = Path(path)
+
+    # Check filename
+    if "weather" in path.name.lower():
+        return True
+
+    # Check content for weather-specific fields
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        cases = data.get("cases", [])
+        if cases and "expected_behavior" in cases[0] and "expected_fields" in cases[0]:
+            return True
+    except (json.JSONDecodeError, OSError, KeyError):
+        pass
+
+    return False
