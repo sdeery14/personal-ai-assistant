@@ -143,16 +143,45 @@ Allow the assistant to remember important information automatically.
 - Automatic summarization of conversation windows
 - Insight extraction (facts, preferences, decisions)
 - User-observable memory writes with provenance
+- Memory correction and deletion via conversation
 - Memory write eval coverage (precision, relevance)
 
 **Explicitly Out of Scope**
 
+- Knowledge graph / entity relationships
 - Background jobs
 - Proactive suggestions
 
 ---
 
-### Feature 007 – Memory v3 (Background Jobs & Proactivity)
+### Feature 007 – Knowledge Graph
+
+> _Implements Knowledge Graph from [vision-memory.md](vision-memory.md)_
+
+**Goal**
+Enable structured relationship tracking between entities mentioned in conversations.
+
+**User Capability**
+
+> "The assistant understands how things I mention relate to each other."
+
+**Scope**
+
+- Entity extraction from conversations (people, projects, tools, concepts)
+- Relationship tracking with typed edges (USES, PREFERS, DECIDED, etc.)
+- Graph-based retrieval tool for relationship queries
+- Provenance linking all graph elements to source messages
+- Entity resolution with confidence scoring
+
+**Explicitly Out of Scope**
+
+- Complex entity merging (deferred to background jobs)
+- Cross-user graph connections
+- Automatic graph cleanup/consolidation
+
+---
+
+### Feature 008 – Memory v3 (Background Jobs & Proactivity)
 
 > _Implements Memory v3 from [vision-memory.md](vision-memory.md)_
 
@@ -169,6 +198,7 @@ Enable time-shifted intelligence and proactive preparation.
 - Morning briefings (news, weather, calendar)
 - Trip/event preparation summaries
 - Opt-in proactive notifications
+- Graph consolidation and entity merging
 
 **Explicitly Out of Scope**
 
@@ -177,9 +207,9 @@ Enable time-shifted intelligence and proactive preparation.
 
 ---
 
-### Feature 008 – Voice Interaction (Phased)
+### Feature 009 – Voice Interaction (Phased)
 
-#### Feature 008a – Voice Output (TTS Only)
+#### Feature 009a – Voice Output (TTS Only)
 
 **Goal**
 Add audio output without increasing system complexity.
@@ -196,7 +226,7 @@ Add audio output without increasing system complexity.
 
 ---
 
-#### Feature 008b – Two-Way Voice Chat
+#### Feature 009b – Two-Way Voice Chat
 
 **Goal**
 Enable natural spoken conversations.
@@ -213,7 +243,7 @@ Enable natural spoken conversations.
 
 ---
 
-### Feature 009 – Edge Client v1: Raspberry Pi Interface
+### Feature 010 – Edge Client v1: Raspberry Pi Interface
 
 **Goal**
 Deploy the assistant in a physical environment.
@@ -235,7 +265,7 @@ Deploy the assistant in a physical environment.
 
 ---
 
-### Feature 010 – External Integrations v1: Google (Read-Only)
+### Feature 011 – External Integrations v1: Google (Read-Only)
 
 **Goal**
 Allow the assistant to see personal context safely.

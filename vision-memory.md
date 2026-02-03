@@ -167,6 +167,63 @@ Memory is injected as **contextual grounding**, never as authoritative truth.
 
 ---
 
+## Knowledge Graph
+
+The knowledge graph captures **structured relationships** between entities mentioned in conversations. It complements the memory store by enabling relationship-based queries that vector search cannot answer well.
+
+### Purpose
+
+- Track connections between people, projects, tools, and concepts
+- Answer "how does X relate to Y?" queries
+- Provide context for decisions and preferences
+- Enable reasoning about user's world model
+
+### Design Principles
+
+1. **Derived, not primary**: The graph is built from conversation transcripts and memory items. Raw transcripts remain canonical.
+
+2. **Provenance required**: Every edge must link back to source material (message, episode, or memory item).
+
+3. **Confidence-aware**: Entity resolution and relationship extraction include confidence scores. Low-confidence items are flagged for review.
+
+4. **Conservative merging**: Ambiguous entity matches are kept separate rather than incorrectly merged. Complex consolidation is deferred to background jobs.
+
+5. **User-scoped**: Graph data is strictly per-user. No cross-user relationships.
+
+### Entity Types
+
+| Type       | Description                              |
+| ---------- | ---------------------------------------- |
+| person     | People mentioned (friends, colleagues)   |
+| project    | Projects, repos, initiatives             |
+| tool       | Tools, libraries, services               |
+| concept    | Abstract ideas, topics                   |
+| decision   | Choices made                             |
+| preference | Stated preferences                       |
+| goal       | User goals and intentions                |
+
+### Relationship Types
+
+| Relationship  | Description                        |
+| ------------- | ---------------------------------- |
+| USES          | User/project uses a tool           |
+| PREFERS       | User prefers X over Y              |
+| DECIDED       | User decided on X                  |
+| WORKS_ON      | User works on project              |
+| KNOWS         | User knows person                  |
+| DEPENDS_ON    | Project depends on tool/service    |
+| MENTIONED_IN  | Entity mentioned in episode        |
+
+### Retrieval Routing
+
+The agent chooses retrieval method based on query type:
+
+- **Graph retrieval**: Relationship queries ("What tools do I use for project X?")
+- **Vector retrieval**: Narrative queries ("What did we discuss about the trip?")
+- **Combined**: Complex queries requiring both context and relationships
+
+---
+
 ## Summarization & Insight Extraction
 
 The assistant may:
@@ -225,12 +282,13 @@ Memory systems must:
 
 Memory is intentionally **multi-feature**, with each phase shipping as a distinct feature in [vision.md](vision.md):
 
-| Phase     | Capability                                   | Feature     |
-| --------- | -------------------------------------------- | ----------- |
-| Memory v1 | Read-only recall (keyword + semantic)        | Feature 004 ✅ |
-| Memory v2 | Automatic summarization + insight extraction | Feature 006 |
-| Memory v3 | Background jobs + proactive synthesis        | Feature 007 |
-| Memory v4 | Personalization + long-horizon planning      | Future      |
+| Phase           | Capability                                   | Feature     |
+| --------------- | -------------------------------------------- | ----------- |
+| Memory v1       | Read-only recall (keyword + semantic)        | Feature 004 ✅ |
+| Memory v2       | Automatic summarization + insight extraction | Feature 006 |
+| Knowledge Graph | Entity relationships + graph retrieval       | Feature 007 |
+| Memory v3       | Background jobs + proactive synthesis        | Feature 008 |
+| Memory v4       | Personalization + long-horizon planning      | Future      |
 
 Each phase:
 
