@@ -1,0 +1,223 @@
+{
+  "version": "1.0.0",
+  "description": "Golden dataset for memory write (auto-extraction) evaluation. Tests fact extraction, preference extraction, decision extraction, trivial messages, corrections, deletions, duplicates, and low-confidence items.",
+  "cases": [
+    {
+      "id": "write-001-fact-extraction",
+      "conversation": [
+        {"role": "user", "content": "My name is Sarah and I live in Portland, Oregon."},
+        {"role": "assistant", "content": "Nice to meet you, Sarah! Portland is a great city."}
+      ],
+      "expected_actions": [
+        {
+          "action": "save",
+          "content_keywords": ["Sarah", "name"],
+          "memory_type": "fact"
+        },
+        {
+          "action": "save",
+          "content_keywords": ["Portland", "Oregon"],
+          "memory_type": "fact"
+        }
+      ],
+      "rubric": "Agent should extract both the user's name (Sarah) and location (Portland, Oregon) as separate fact memories with high confidence (>=0.9).",
+      "tags": ["fact", "explicit"]
+    },
+    {
+      "id": "write-002-preference-extraction",
+      "conversation": [
+        {"role": "user", "content": "I always use dark mode in my editors and prefer tabs over spaces."},
+        {"role": "assistant", "content": "Good to know your preferences!"}
+      ],
+      "expected_actions": [
+        {
+          "action": "save",
+          "content_keywords": ["dark mode"],
+          "memory_type": "preference"
+        },
+        {
+          "action": "save",
+          "content_keywords": ["tabs"],
+          "memory_type": "preference"
+        }
+      ],
+      "rubric": "Agent should extract dark mode preference and tabs-over-spaces preference as separate preference memories.",
+      "tags": ["preference", "explicit"]
+    },
+    {
+      "id": "write-003-decision-extraction",
+      "conversation": [
+        {"role": "user", "content": "I've decided to use PostgreSQL for the database and Redis for caching in my new project."},
+        {"role": "assistant", "content": "That's a solid stack choice."}
+      ],
+      "expected_actions": [
+        {
+          "action": "save",
+          "content_keywords": ["PostgreSQL", "database"],
+          "memory_type": "decision"
+        },
+        {
+          "action": "save",
+          "content_keywords": ["Redis", "caching"],
+          "memory_type": "decision"
+        }
+      ],
+      "rubric": "Agent should extract both technology decisions as decision-type memories.",
+      "tags": ["decision", "explicit"]
+    },
+    {
+      "id": "write-004-trivial-no-write",
+      "conversation": [
+        {"role": "user", "content": "Hello! How are you today?"},
+        {"role": "assistant", "content": "Hello! I'm doing well, thank you for asking. How can I help you today?"}
+      ],
+      "expected_actions": [
+        {
+          "action": "none",
+          "content_keywords": []
+        }
+      ],
+      "rubric": "Agent should NOT save any memory for trivial greetings. No save_memory calls expected.",
+      "tags": ["trivial", "no-write"]
+    },
+    {
+      "id": "write-005-trivial-thanks",
+      "conversation": [
+        {"role": "user", "content": "Thanks for your help!"},
+        {"role": "assistant", "content": "You're welcome! Let me know if you need anything else."}
+      ],
+      "expected_actions": [
+        {
+          "action": "none",
+          "content_keywords": []
+        }
+      ],
+      "rubric": "Agent should NOT save any memory for thank-you messages.",
+      "tags": ["trivial", "no-write"]
+    },
+    {
+      "id": "write-006-correction-supersede",
+      "conversation": [
+        {"role": "user", "content": "Actually, I moved from Portland to Seattle last month."},
+        {"role": "assistant", "content": "I'll update that. You now live in Seattle."}
+      ],
+      "expected_actions": [
+        {
+          "action": "save",
+          "content_keywords": ["Seattle"],
+          "memory_type": "fact"
+        },
+        {
+          "action": "delete",
+          "content_keywords": ["Portland"]
+        }
+      ],
+      "rubric": "Agent should save the new location (Seattle) and delete the old one (Portland). This tests the correction flow.",
+      "tags": ["correction", "supersede"]
+    },
+    {
+      "id": "write-007-deletion-request",
+      "conversation": [
+        {"role": "user", "content": "Please forget everything you know about my job."},
+        {"role": "assistant", "content": "I'll delete your job-related memories."}
+      ],
+      "expected_actions": [
+        {
+          "action": "delete",
+          "content_keywords": ["job"]
+        }
+      ],
+      "rubric": "Agent should call delete_memory_tool to remove job-related memories when user explicitly requests deletion.",
+      "tags": ["deletion", "explicit"]
+    },
+    {
+      "id": "write-008-implicit-preference",
+      "conversation": [
+        {"role": "user", "content": "Can you format your responses in markdown? I find it much easier to read."},
+        {"role": "assistant", "content": "Of course! I'll use markdown formatting from now on."}
+      ],
+      "expected_actions": [
+        {
+          "action": "save",
+          "content_keywords": ["markdown", "format"],
+          "memory_type": "preference"
+        }
+      ],
+      "rubric": "Agent should infer the markdown preference and save it with moderate-to-high confidence.",
+      "tags": ["preference", "implicit"]
+    },
+    {
+      "id": "write-009-multi-fact-single-message",
+      "conversation": [
+        {"role": "user", "content": "I'm a software engineer at Google, working on the Cloud team. I have two kids and a golden retriever named Max."},
+        {"role": "assistant", "content": "That's a lot of great details!"}
+      ],
+      "expected_actions": [
+        {
+          "action": "save",
+          "content_keywords": ["software engineer", "Google"],
+          "memory_type": "fact"
+        },
+        {
+          "action": "save",
+          "content_keywords": ["kids", "children", "two"],
+          "memory_type": "fact"
+        },
+        {
+          "action": "save",
+          "content_keywords": ["golden retriever", "Max", "dog"],
+          "memory_type": "fact"
+        }
+      ],
+      "rubric": "Agent should extract multiple distinct facts from a single rich message: job, family, and pet information.",
+      "tags": ["fact", "multi-extraction"]
+    },
+    {
+      "id": "write-010-low-confidence-discard",
+      "conversation": [
+        {"role": "user", "content": "I was thinking maybe I might switch to TypeScript sometime, but I'm not sure yet."},
+        {"role": "assistant", "content": "It's worth considering. TypeScript adds type safety."}
+      ],
+      "expected_actions": [
+        {
+          "action": "none",
+          "content_keywords": []
+        }
+      ],
+      "rubric": "Agent should NOT save this as a decision or preference since the user is explicitly uncertain. The confidence should be too low to save.",
+      "tags": ["low-confidence", "no-write"]
+    },
+    {
+      "id": "write-011-project-context",
+      "conversation": [
+        {"role": "user", "content": "I'm building a personal finance app using React Native and Supabase as the backend."},
+        {"role": "assistant", "content": "That's a nice modern stack for a mobile finance app."}
+      ],
+      "expected_actions": [
+        {
+          "action": "save",
+          "content_keywords": ["finance app", "React Native", "Supabase"],
+          "memory_type": "note"
+        }
+      ],
+      "rubric": "Agent should save the project context as a note-type memory including the tech stack details.",
+      "tags": ["note", "project"]
+    },
+    {
+      "id": "write-012-preference-change",
+      "conversation": [
+        {"role": "user", "content": "I used to prefer Python but now I mainly use Rust for backend work."},
+        {"role": "assistant", "content": "Rust is a great choice for performance-critical backends."}
+      ],
+      "expected_actions": [
+        {
+          "action": "save",
+          "content_keywords": ["Rust", "backend"],
+          "memory_type": "preference"
+        }
+      ],
+      "rubric": "Agent should save the current preference (Rust for backend) and optionally delete any old Python backend preference.",
+      "tags": ["preference", "change"]
+    }
+  ]
+}

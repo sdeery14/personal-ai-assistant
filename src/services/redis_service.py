@@ -240,6 +240,121 @@ class RedisService:
         """
         return hashlib.sha256(content.encode()).hexdigest()
 
+    # Memory write rate limit methods (Feature 006)
+
+    async def check_write_rate_limit_conversation(
+        self, conversation_id: str, limit: Optional[int] = None
+    ) -> tuple[bool, int]:
+        """Check write rate limit per conversation.
+
+        Args:
+            conversation_id: Conversation identifier
+            limit: Optional custom limit (defaults to config)
+
+        Returns:
+            Tuple of (allowed: bool, remaining: int)
+        """
+        client = await get_redis()
+        if client is None:
+            return True, -1
+
+        limit = limit or self.settings.memory_write_rate_per_conversation
+
+        try:
+            key = f"memory_write:conv:{conversation_id}"
+            current = await client.get(key)
+
+            if current is None:
+                await client.set(key, "1")
+                return True, limit - 1
+
+            count = int(current)
+            if count >= limit:
+                return False, 0
+
+            await client.incr(key)
+            return True, limit - count - 1
+        except Exception as e:
+            logger.warning("redis_write_rate_limit_conv_failed", error=str(e))
+            return True, -1
+
+    async def check_write_rate_limit_hourly(
+        self, user_id: str, limit: Optional[int] = None
+    ) -> tuple[bool, int]:
+        """Check hourly write rate limit per user.
+
+        Args:
+            user_id: User identifier
+            limit: Optional custom limit (defaults to config)
+
+        Returns:
+            Tuple of (allowed: bool, remaining: int)
+        """
+        client = await get_redis()
+        if client is None:
+            return True, -1
+
+        limit = limit or self.settings.memory_write_rate_per_hour
+
+        try:
+            key = f"memory_write:hourly:{user_id}"
+            current = await client.get(key)
+
+            if current is None:
+                await client.setex(key, 3600, "1")
+                return True, limit - 1
+
+            count = int(current)
+            if count >= limit:
+                return False, 0
+
+            await client.incr(key)
+            return True, limit - count - 1
+        except Exception as e:
+            logger.warning("redis_write_rate_limit_hourly_failed", error=str(e))
+            return True, -1
+
+    async def check_episode_generated(self, conversation_id: str) -> bool:
+        """Check if episode summary was already generated for a conversation.
+
+        Args:
+            conversation_id: Conversation identifier
+
+        Returns:
+            True if episode already generated
+        """
+        client = await get_redis()
+        if client is None:
+            return False
+
+        try:
+            key = f"episode_generated:{conversation_id}"
+            return await client.exists(key) > 0
+        except Exception as e:
+            logger.warning("redis_check_episode_failed", error=str(e))
+            return False
+
+    async def set_episode_generated(self, conversation_id: str) -> bool:
+        """Mark episode summary as generated for a conversation.
+
+        Args:
+            conversation_id: Conversation identifier
+
+        Returns:
+            True if successful
+        """
+        client = await get_redis()
+        if client is None:
+            return False
+
+        try:
+            key = f"episode_generated:{conversation_id}"
+            await client.setex(key, 86400, "1")  # 24 hour TTL
+            return True
+        except Exception as e:
+            logger.warning("redis_set_episode_failed", error=str(e))
+            return False
+
     # Weather cache methods (Feature 005)
 
     async def get_weather_cache(

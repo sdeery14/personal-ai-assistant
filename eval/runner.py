@@ -25,9 +25,10 @@ from mlflow.genai import evaluate as genai_evaluate
 
 from eval.assistant import get_response, get_response_with_guardrails
 from eval.config import EvalSettings, get_eval_settings
-from eval.dataset import DatasetError, load_dataset, load_memory_dataset, load_weather_dataset
+from eval.dataset import DatasetError, load_dataset, load_memory_dataset, load_memory_write_dataset, load_weather_dataset
 from eval.judge import create_quality_judge, score_to_label, score_to_passed
 from eval.memory_judge import MemoryJudge
+from eval.memory_write_judge import MemoryWriteJudge
 from eval.models import (
     EvalResult,
     EvalRunMetrics,
@@ -35,6 +36,9 @@ from eval.models import (
     MemoryEvalResult,
     MemoryGoldenDataset,
     MemoryMetrics,
+    MemoryWriteEvalResult,
+    MemoryWriteGoldenDataset,
+    MemoryWriteMetrics,
     WeatherEvalResult,
     WeatherGoldenDataset,
     WeatherMetrics,
@@ -58,6 +62,17 @@ class MemoryEvaluationResult:
 
     metrics: MemoryMetrics
     results: list[MemoryEvalResult]
+    mlflow_run_id: str | None
+    dataset_version: str
+    error: str | None = None
+
+
+@dataclass
+class MemoryWriteEvaluationResult:
+    """Complete results from a memory write evaluation run."""
+
+    metrics: MemoryWriteMetrics
+    results: list[MemoryWriteEvalResult]
     mlflow_run_id: str | None
     dataset_version: str
     error: str | None = None
@@ -943,6 +958,288 @@ def is_memory_dataset(path: str | Path) -> bool:
     """Check if a dataset path is a memory evaluation dataset."""
     path_str = str(path)
     return "memory" in path_str.lower()
+
+
+def is_memory_write_dataset(path: str | Path) -> bool:
+    """Check if a dataset path is a memory write evaluation dataset."""
+    path_str = str(path)
+    return "memory_write" in path_str.lower()
+
+
+def run_memory_write_evaluation(
+    dataset_path: str | Path = "eval/memory_write_golden_dataset.json",
+    verbose: bool = False,
+    dry_run: bool = False,
+) -> MemoryWriteEvaluationResult:
+    """Run memory write (auto-extraction) evaluation.
+
+    Tests the agent's ability to correctly extract and save memories
+    from conversation messages.
+
+    Args:
+        dataset_path: Path to the memory write golden dataset JSON file.
+        verbose: If True, print per-case details during evaluation.
+        dry_run: If True, validate dataset only without running evaluation.
+
+    Returns:
+        MemoryWriteEvaluationResult with metrics, per-case results, and MLflow run ID.
+    """
+    import statistics
+    import time
+
+    settings = get_eval_settings()
+
+    # Load dataset
+    dataset = load_memory_write_dataset(dataset_path)
+
+    if verbose:
+        print(f"Loaded memory write dataset v{dataset.version} with {len(dataset.cases)} cases")
+
+    if dry_run:
+        return MemoryWriteEvaluationResult(
+            metrics=MemoryWriteMetrics(
+                total_cases=len(dataset.cases),
+                extraction_precision=0.0,
+                extraction_recall=0.0,
+                false_positive_rate=0.0,
+                error_cases=0,
+                overall_passed=False,
+            ),
+            results=[],
+            mlflow_run_id=None,
+            dataset_version=dataset.version,
+        )
+
+    # Set up MLflow
+    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+    mlflow.set_experiment(settings.mlflow_experiment_name + "-memory-write")
+
+    results: list[MemoryWriteEvalResult] = []
+    judge = MemoryWriteJudge()
+
+    with mlflow.start_run() as run:
+        run_id = run.info.run_id
+
+        mlflow.log_params({
+            "dataset_type": "memory_write",
+            "dataset_version": dataset.version,
+            "total_cases": len(dataset.cases),
+            "precision_threshold": 0.70,
+            "recall_threshold": 0.70,
+        })
+
+        for case in dataset.cases:
+            try:
+                start_time = time.perf_counter()
+
+                # Invoke the assistant with the conversation
+                actual_writes, actual_deletes = _invoke_memory_write_agent(
+                    case.conversation, settings
+                )
+
+                latency_ms = int((time.perf_counter() - start_time) * 1000)
+
+                # Get expected save keywords and delete keywords
+                save_keywords = [
+                    ea.content_keywords
+                    for ea in case.expected_actions
+                    if ea.action == "save"
+                ]
+                delete_keywords = [
+                    ea.content_keywords
+                    for ea in case.expected_actions
+                    if ea.action == "delete"
+                ]
+
+                # Evaluate
+                precision = judge.evaluate_extraction_precision(
+                    actual_writes, save_keywords
+                )
+                recall = judge.evaluate_extraction_recall(
+                    actual_writes, save_keywords
+                )
+                false_positives = judge.count_false_positives(
+                    actual_writes, save_keywords
+                )
+
+                result = MemoryWriteEvalResult(
+                    case_id=case.id,
+                    actual_writes=actual_writes,
+                    actual_deletes=actual_deletes,
+                    precision=precision,
+                    recall=recall,
+                    false_positive_count=false_positives,
+                    latency_ms=latency_ms,
+                )
+                results.append(result)
+
+                if verbose:
+                    status = "PASS" if precision >= 0.7 and recall >= 0.7 else "FAIL"
+                    print(
+                        f"  {case.id}: {status} P={precision:.2f} R={recall:.2f} "
+                        f"FP={false_positives} {latency_ms}ms"
+                    )
+
+            except Exception as e:
+                results.append(MemoryWriteEvalResult(
+                    case_id=case.id,
+                    actual_writes=[],
+                    actual_deletes=[],
+                    precision=0.0,
+                    recall=0.0,
+                    false_positive_count=0,
+                    latency_ms=0,
+                    error=str(e),
+                ))
+                if verbose:
+                    print(f"  {case.id}: ERROR - {str(e)}")
+
+        # Compute aggregate metrics
+        valid_results = [r for r in results if r.error is None]
+        error_count = len(results) - len(valid_results)
+
+        if valid_results:
+            avg_precision = statistics.mean(r.precision for r in valid_results)
+            avg_recall = statistics.mean(r.recall for r in valid_results)
+            avg_fp = statistics.mean(r.false_positive_count for r in valid_results)
+        else:
+            avg_precision = 0.0
+            avg_recall = 0.0
+            avg_fp = 0.0
+
+        overall_passed = (
+            avg_precision >= 0.70
+            and avg_recall >= 0.70
+            and avg_fp <= 0.5
+        )
+
+        metrics = MemoryWriteMetrics(
+            total_cases=len(dataset.cases),
+            extraction_precision=avg_precision,
+            extraction_recall=avg_recall,
+            false_positive_rate=avg_fp,
+            error_cases=error_count,
+            overall_passed=overall_passed,
+        )
+
+        # Log metrics
+        mlflow.log_metrics({
+            "memory_write_precision": avg_precision,
+            "memory_write_recall": avg_recall,
+            "memory_write_fp_rate": avg_fp,
+            "memory_write_error_cases": error_count,
+            "memory_write_overall_passed": 1 if overall_passed else 0,
+        })
+
+        # Log artifacts
+        results_json = [r.model_dump() for r in results]
+        results_path = Path("memory_write_eval_results.json")
+        with open(results_path, "w") as f:
+            json.dump(results_json, f, indent=2, default=str)
+        mlflow.log_artifact(str(results_path))
+        results_path.unlink()
+        mlflow.log_artifact(str(dataset_path))
+
+    return MemoryWriteEvaluationResult(
+        metrics=metrics,
+        results=results,
+        mlflow_run_id=run_id,
+        dataset_version=dataset.version,
+    )
+
+
+def _invoke_memory_write_agent(
+    conversation: list[dict],
+    settings,
+) -> tuple[list[str], list[str]]:
+    """Invoke the agent with conversation and capture memory writes/deletes.
+
+    This is a placeholder implementation that uses the chat endpoint.
+    In a real evaluation, this would intercept tool calls to save_memory_tool
+    and delete_memory_tool.
+
+    Args:
+        conversation: List of {role, content} message dicts
+        settings: Evaluation settings
+
+    Returns:
+        Tuple of (writes, deletes) - lists of content strings
+    """
+    import asyncio
+
+    async def _run():
+        from eval.assistant import get_response
+
+        # Send the last user message through the assistant
+        last_user_msg = None
+        for msg in conversation:
+            if msg["role"] == "user":
+                last_user_msg = msg["content"]
+
+        if not last_user_msg:
+            return [], []
+
+        response = get_response(
+            last_user_msg,
+            model=settings.openai_model,
+            api_key=settings.openai_api_key,
+        )
+
+        # Parse response for memory action indicators
+        # In production, we would intercept actual tool calls
+        writes = []
+        deletes = []
+
+        # Heuristic: check if response mentions saving/remembering
+        response_lower = response.lower()
+        if any(kw in response_lower for kw in ["i'll remember", "saved", "noted", "i'll keep"]):
+            writes.append(response)
+        if any(kw in response_lower for kw in ["deleted", "removed", "forgotten", "forget"]):
+            deletes.append(response)
+
+        return writes, deletes
+
+    return asyncio.run(_run())
+
+
+def format_memory_write_summary(result: MemoryWriteEvaluationResult) -> str:
+    """Format memory write evaluation results as a summary string."""
+    m = result.metrics
+    lines = [
+        "",
+        "=" * 60,
+        "MEMORY WRITE EVALUATION SUMMARY",
+        "=" * 60,
+        f"Dataset Version: {result.dataset_version}",
+        f"MLflow Run ID:   {result.mlflow_run_id or 'N/A'}",
+        "",
+        f"Total Cases:              {m.total_cases}",
+        f"Error Cases:              {m.error_cases}",
+        "",
+        "EXTRACTION METRICS:",
+        f"  Precision:              {m.extraction_precision:.1%} (threshold: >=70%)",
+        f"  Recall:                 {m.extraction_recall:.1%} (threshold: >=70%)",
+        f"  False Positive Rate:    {m.false_positive_rate:.2f} (threshold: <=0.5)",
+        "",
+    ]
+
+    if m.overall_passed:
+        lines.append("MEMORY WRITE GATE: PASS")
+    else:
+        lines.append("MEMORY WRITE GATE: FAIL")
+        reasons = []
+        if m.extraction_precision < 0.70:
+            reasons.append(f"Precision {m.extraction_precision:.1%} < 70%")
+        if m.extraction_recall < 0.70:
+            reasons.append(f"Recall {m.extraction_recall:.1%} < 70%")
+        if m.false_positive_rate > 0.5:
+            reasons.append(f"FP rate {m.false_positive_rate:.2f} > 0.5")
+        if reasons:
+            lines.append(f"   Reasons: {'; '.join(reasons)}")
+
+    lines.append("=" * 60)
+
+    return "\n".join(lines)
 
 
 def is_weather_dataset(path: str | Path) -> bool:

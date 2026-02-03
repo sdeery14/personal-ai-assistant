@@ -16,6 +16,8 @@ from eval.models import (
     GoldenDataset,
     MemoryGoldenDataset,
     MemoryTestCase,
+    MemoryWriteGoldenDataset,
+    MemoryWriteTestCase,
     TestCase,
     WeatherGoldenDataset,
     WeatherTestCase,
@@ -413,3 +415,92 @@ def is_weather_dataset(path: str | Path) -> bool:
         pass
 
     return False
+
+
+# Memory Write dataset loading functions (Feature 006)
+
+
+def is_memory_write_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a memory write evaluation dataset.
+
+    Args:
+        path: Path to the dataset file.
+
+    Returns:
+        True if the file appears to be a memory write dataset.
+    """
+    path = Path(path)
+
+    # Check filename
+    if "memory_write" in path.name.lower():
+        return True
+
+    # Check content for memory write-specific fields
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        cases = data.get("cases", [])
+        if cases and "expected_actions" in cases[0] and "conversation" in cases[0]:
+            return True
+    except (json.JSONDecodeError, OSError, KeyError):
+        pass
+
+    return False
+
+
+def load_memory_write_dataset(path: str | Path) -> MemoryWriteGoldenDataset:
+    """Load and validate a memory write evaluation dataset from a JSON file.
+
+    Args:
+        path: Path to the memory write golden dataset JSON file.
+
+    Returns:
+        Validated MemoryWriteGoldenDataset instance.
+
+    Raises:
+        DatasetError: If the file cannot be read or validation fails.
+    """
+    path = Path(path)
+
+    if not path.exists():
+        raise DatasetError(f"Memory write dataset file not found: {path}")
+
+    if not path.is_file():
+        raise DatasetError(f"Memory write dataset path is not a file: {path}")
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise DatasetError(f"Invalid JSON in memory write dataset file: {e}")
+    except OSError as e:
+        raise DatasetError(f"Failed to read memory write dataset file: {e}")
+
+    if "cases" not in data:
+        raise DatasetError("Memory write dataset missing required field: 'cases'")
+
+    for idx, case in enumerate(data.get("cases", [])):
+        required_fields = ["id", "conversation", "expected_actions", "rubric"]
+        missing = [f for f in required_fields if f not in case]
+        if missing:
+            raise DatasetError(
+                f"Memory write dataset case {idx} missing required fields: {missing}"
+            )
+
+    try:
+        dataset = MemoryWriteGoldenDataset.model_validate(data)
+    except ValidationError as e:
+        errors = _format_validation_errors(e)
+        raise DatasetError(f"Memory write dataset validation failed:\n{errors}")
+
+    return dataset
+
+
+def get_memory_write_case_by_id(
+    dataset: MemoryWriteGoldenDataset, case_id: str
+) -> MemoryWriteTestCase | None:
+    """Get a specific memory write test case by ID."""
+    for case in dataset.cases:
+        if case.id == case_id:
+            return case
+    return None

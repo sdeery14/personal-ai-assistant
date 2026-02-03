@@ -31,7 +31,33 @@ When using retrieved memories:
 - Never fabricate memories that weren't retrieved
 """
 
-# Weather system prompt guidance (Feature 005)
+MEMORY_WRITE_SYSTEM_PROMPT = """
+You have access to memory save and delete tools to remember important information about the user.
+
+When to save memories:
+- User shares personal facts (name, location, job, family, pets)
+- User expresses preferences (likes, dislikes, tool preferences, communication style)
+- User makes decisions or commitments
+- User shares project context or goals worth remembering
+
+Confidence guidelines:
+- 0.9-1.0: Explicitly stated ("My name is...", "I prefer...", "I decided to...")
+- 0.7-0.9: Strongly implied from context
+- 0.5-0.7: Somewhat uncertain - ask user to confirm before saving
+- Below 0.5: Too uncertain - do not save
+
+When to delete memories:
+- User says something contradicts a stored memory (save the correction, delete the old)
+- User explicitly asks to forget something
+- User indicates information is outdated
+
+Important rules:
+- Never save trivial conversational content ("hello", "thanks", etc.)
+- Never save the user's messages verbatim - extract the key information
+- For corrections, save the new information and delete the old
+- Acknowledge when you save or delete a memory naturally in your response
+"""
+
 WEATHER_SYSTEM_PROMPT = """
 You have access to a weather tool that can retrieve current conditions and forecasts.
 
@@ -86,6 +112,17 @@ class ChatService:
             tools.append(query_memory_tool)
         except Exception as e:
             self.logger.warning("query_memory_tool_unavailable", error=str(e))
+        # Memory write tools (Feature 006)
+        try:
+            from src.tools.save_memory import save_memory_tool
+            tools.append(save_memory_tool)
+        except Exception as e:
+            self.logger.warning("save_memory_tool_unavailable", error=str(e))
+        try:
+            from src.tools.delete_memory import delete_memory_tool
+            tools.append(delete_memory_tool)
+        except Exception as e:
+            self.logger.warning("delete_memory_tool_unavailable", error=str(e))
         # Weather tool (Feature 005)
         try:
             from src.tools.get_weather import get_weather_tool
@@ -149,6 +186,7 @@ class ChatService:
         instructions = "You are a helpful assistant."
         if self._database_available:
             instructions += "\n" + MEMORY_SYSTEM_PROMPT
+            instructions += "\n" + MEMORY_WRITE_SYSTEM_PROMPT
 
         # Get tools - weather tool is always available, memory requires database
         tools = self._get_tools()
@@ -180,10 +218,11 @@ class ChatService:
         )
 
         try:
-            # Pass context for tools to access user_id and correlation_id
+            # Pass context for tools to access user_id, correlation_id, and conversation_id
             context = {
                 "correlation_id": correlation_id,
                 "user_id": user_id,
+                "conversation_id": str(conversation.id) if conversation else None,
             }
             result = Runner.run_streamed(agent, input=message, context=context)
 
@@ -236,6 +275,39 @@ class ChatService:
                         correlation_id=correlation_id,
                         generate_embedding=False,  # Don't embed assistant responses for now
                     )
+                    # Trigger episode summarization if thresholds met
+                    try:
+                        from src.services.memory_write_service import (
+                            MemoryWriteService,
+                            schedule_write,
+                        )
+
+                        write_service = MemoryWriteService()
+                        messages = await self.conversation_service.get_conversation_messages(
+                            conversation.id, limit=50
+                        )
+                        user_msg_count = sum(
+                            1 for m in messages if m.role.value == "user"
+                        )
+                        total_msg_count = len(messages)
+                        settings = get_settings()
+
+                        if (
+                            user_msg_count >= settings.episode_user_message_threshold
+                            or total_msg_count >= settings.episode_total_message_threshold
+                        ):
+                            schedule_write(
+                                write_service.create_episode_summary(
+                                    conversation.id, user_id, correlation_id
+                                )
+                            )
+                    except Exception as ep_e:
+                        self.logger.warning(
+                            "episode_trigger_failed",
+                            error=str(ep_e),
+                            correlation_id=str(correlation_id),
+                        )
+
                 except Exception as e:
                     self.logger.warning(
                         "response_persistence_failed",

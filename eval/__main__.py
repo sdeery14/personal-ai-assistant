@@ -22,14 +22,18 @@ from eval.dataset import DatasetError
 from eval.runner import (
     EvaluationResult,
     MemoryEvaluationResult,
+    MemoryWriteEvaluationResult,
     WeatherEvaluationResult,
     format_memory_summary,
+    format_memory_write_summary,
     format_summary,
     format_weather_summary,
     is_memory_dataset,
+    is_memory_write_dataset,
     is_weather_dataset,
     run_evaluation,
     run_memory_evaluation,
+    run_memory_write_evaluation,
     run_weather_evaluation,
 )
 
@@ -185,10 +189,42 @@ def main() -> int:
 
     try:
         # Check dataset type
-        is_memory = is_memory_dataset(args.dataset)
+        is_memory_write = is_memory_write_dataset(args.dataset)
+        is_memory = is_memory_dataset(args.dataset) and not is_memory_write
         is_weather = is_weather_dataset(args.dataset)
 
-        if is_weather:
+        if is_memory_write:
+            # Memory write evaluation flow
+            if args.dry_run:
+                print("Validating memory write dataset (dry run)...")
+                result = run_memory_write_evaluation(
+                    dataset_path=args.dataset,
+                    verbose=args.verbose,
+                    dry_run=True,
+                )
+                print(f"Memory write dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+
+            print("Running memory write evaluation...")
+            if args.verbose:
+                print()
+
+            result = run_memory_write_evaluation(
+                dataset_path=args.dataset,
+                verbose=args.verbose,
+                dry_run=False,
+            )
+
+            summary = format_memory_write_summary(result)
+            print(summary)
+
+            if result.metrics.overall_passed:
+                return 0
+            else:
+                return 1
+
+        elif is_weather:
             # Weather evaluation flow
             if args.dry_run:
                 print("🔍 Validating weather dataset (dry run)...")

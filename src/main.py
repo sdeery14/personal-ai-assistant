@@ -64,6 +64,15 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    # Drain pending memory writes before closing connections
+    try:
+        from src.services.memory_write_service import await_pending_writes
+
+        await await_pending_writes(timeout=5.0)
+        logger.info("pending_writes_drained")
+    except Exception:
+        pass
+
     try:
         from src.database import close_database
 

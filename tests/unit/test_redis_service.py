@@ -132,6 +132,136 @@ class TestEmbeddingCache:
             assert result is None
 
 
+class TestWriteRateLimiting:
+    """Tests for memory write rate limiting (Feature 006)."""
+
+    @pytest.mark.asyncio
+    async def test_conversation_write_rate_limit_allows(self, redis_service, mock_redis_client):
+        """Test conversation write rate limit allows under limit."""
+        with patch("src.services.redis_service.get_redis", return_value=mock_redis_client):
+            mock_redis_client.get.return_value = "3"
+            mock_redis_client.incr.return_value = 4
+
+            allowed, remaining = await redis_service.check_write_rate_limit_conversation(
+                "conv-123", limit=10
+            )
+
+            assert allowed is True
+            assert remaining == 6
+
+    @pytest.mark.asyncio
+    async def test_conversation_write_rate_limit_blocks(self, redis_service, mock_redis_client):
+        """Test conversation write rate limit blocks at limit."""
+        with patch("src.services.redis_service.get_redis", return_value=mock_redis_client):
+            mock_redis_client.get.return_value = "10"
+
+            allowed, remaining = await redis_service.check_write_rate_limit_conversation(
+                "conv-123", limit=10
+            )
+
+            assert allowed is False
+            assert remaining == 0
+
+    @pytest.mark.asyncio
+    async def test_conversation_write_rate_first_write(self, redis_service, mock_redis_client):
+        """Test first write in a conversation."""
+        with patch("src.services.redis_service.get_redis", return_value=mock_redis_client):
+            mock_redis_client.get.return_value = None
+
+            allowed, remaining = await redis_service.check_write_rate_limit_conversation(
+                "conv-123", limit=10
+            )
+
+            assert allowed is True
+            assert remaining == 9
+            mock_redis_client.set.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_hourly_write_rate_limit_allows(self, redis_service, mock_redis_client):
+        """Test hourly write rate limit allows under limit."""
+        with patch("src.services.redis_service.get_redis", return_value=mock_redis_client):
+            mock_redis_client.get.return_value = "5"
+            mock_redis_client.incr.return_value = 6
+
+            allowed, remaining = await redis_service.check_write_rate_limit_hourly(
+                "test-user", limit=25
+            )
+
+            assert allowed is True
+            assert remaining == 19
+
+    @pytest.mark.asyncio
+    async def test_hourly_write_rate_limit_blocks(self, redis_service, mock_redis_client):
+        """Test hourly write rate limit blocks at limit."""
+        with patch("src.services.redis_service.get_redis", return_value=mock_redis_client):
+            mock_redis_client.get.return_value = "25"
+
+            allowed, remaining = await redis_service.check_write_rate_limit_hourly(
+                "test-user", limit=25
+            )
+
+            assert allowed is False
+            assert remaining == 0
+
+    @pytest.mark.asyncio
+    async def test_hourly_write_rate_first_request(self, redis_service, mock_redis_client):
+        """Test first hourly write request."""
+        with patch("src.services.redis_service.get_redis", return_value=mock_redis_client):
+            mock_redis_client.get.return_value = None
+
+            allowed, remaining = await redis_service.check_write_rate_limit_hourly(
+                "test-user", limit=25
+            )
+
+            assert allowed is True
+            assert remaining == 24
+            mock_redis_client.setex.assert_called_once_with(
+                "memory_write:hourly:test-user", 3600, "1"
+            )
+
+    @pytest.mark.asyncio
+    async def test_write_rate_limit_graceful_degradation(self, redis_service):
+        """Test graceful degradation when Redis unavailable."""
+        with patch("src.services.redis_service.get_redis", return_value=None):
+            allowed, remaining = await redis_service.check_write_rate_limit_conversation("conv-123")
+            assert allowed is True
+            assert remaining == -1
+
+            allowed, remaining = await redis_service.check_write_rate_limit_hourly("test-user")
+            assert allowed is True
+            assert remaining == -1
+
+
+class TestEpisodeFlag:
+    """Tests for episode generation flag (Feature 006)."""
+
+    @pytest.mark.asyncio
+    async def test_check_episode_not_generated(self, redis_service, mock_redis_client):
+        """Test checking when episode not yet generated."""
+        with patch("src.services.redis_service.get_redis", return_value=mock_redis_client):
+            mock_redis_client.exists.return_value = 0
+
+            result = await redis_service.check_episode_generated("conv-123")
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_check_episode_already_generated(self, redis_service, mock_redis_client):
+        """Test checking when episode already generated."""
+        with patch("src.services.redis_service.get_redis", return_value=mock_redis_client):
+            mock_redis_client.exists.return_value = 1
+
+            result = await redis_service.check_episode_generated("conv-123")
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_set_episode_generated(self, redis_service, mock_redis_client):
+        """Test marking episode as generated."""
+        with patch("src.services.redis_service.get_redis", return_value=mock_redis_client):
+            result = await redis_service.set_episode_generated("conv-123")
+            assert result is True
+            mock_redis_client.setex.assert_called_once()
+
+
 class TestContentHash:
     """Tests for content hash computation."""
 

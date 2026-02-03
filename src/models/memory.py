@@ -23,6 +23,7 @@ class MemoryType(str, Enum):
     PREFERENCE = "preference"
     DECISION = "decision"
     NOTE = "note"
+    EPISODE = "episode"
 
 
 class Conversation(BaseModel):
@@ -58,6 +59,10 @@ class MemoryItem(BaseModel):
     source: Optional[str] = None  # Reference to source message if available
     created_at: datetime
     importance: float = Field(ge=0.0, le=1.0, default=0.5)
+    source_conversation_id: Optional[UUID] = None
+    confidence: float = Field(ge=0.0, le=1.0, default=1.0)
+    superseded_by: Optional[UUID] = None
+    status: str = "active"
 
 
 class MemoryQueryRequest(BaseModel):
@@ -102,3 +107,48 @@ class MemoryToolResponse(BaseModel):
     metadata: dict = Field(
         description="Metadata including count and truncated flag"
     )
+
+
+class MemoryWriteRequest(BaseModel):
+    """Request to create a new memory item via agent extraction."""
+
+    user_id: str = Field(..., description="User ID for scoping")
+    content: str = Field(..., min_length=1, max_length=2000, description="Memory content")
+    type: MemoryType = Field(..., description="Memory type category")
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0, description="Extraction confidence")
+    source_message_id: Optional[UUID] = None
+    source_conversation_id: Optional[UUID] = None
+    importance: float = Field(default=0.5, ge=0.0, le=1.0, description="Memory importance")
+
+
+class MemoryDeleteRequest(BaseModel):
+    """Request to delete a memory item."""
+
+    user_id: str = Field(..., description="User ID for scoping")
+    query: str = Field(..., min_length=1, description="Description of memory to delete")
+    reason: Optional[str] = Field(default=None, description="Reason for deletion")
+
+
+class MemoryWriteResponse(BaseModel):
+    """Response from a memory write operation."""
+
+    success: bool
+    memory_id: Optional[UUID] = None
+    action: str = Field(description="Action taken: queued, discarded, confirm_needed, deleted, not_found, error")
+    message: str = Field(description="Human-readable description of what happened")
+
+
+class MemoryWriteEvent(BaseModel):
+    """Audit log entry for memory write operations."""
+
+    id: UUID
+    memory_item_id: Optional[UUID] = None
+    user_id: str
+    operation: str  # create, delete, supersede, episode
+    confidence: Optional[float] = None
+    extraction_type: str  # agent, episode, manual
+    before_content: Optional[str] = None
+    after_content: Optional[str] = None
+    correlation_id: Optional[UUID] = None
+    processing_time_ms: Optional[int] = None
+    created_at: datetime

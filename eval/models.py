@@ -344,6 +344,132 @@ class MemoryMetrics(BaseModel):
 # Weather-specific models for Feature 005 evaluation
 
 
+# Memory Write models for Feature 006 evaluation
+
+
+class MemoryWriteExpectedAction(BaseModel):
+    """An expected memory write or delete action."""
+
+    action: str = Field(
+        ...,
+        pattern=r"^(save|delete|none)$",
+        description="Expected action: save, delete, or none",
+    )
+    content_keywords: list[str] = Field(
+        default_factory=list,
+        description="Keywords expected in the saved/deleted memory content",
+    )
+    memory_type: Optional[str] = Field(
+        default=None,
+        pattern=r"^(fact|preference|decision|note)$",
+        description="Expected memory type for save actions",
+    )
+
+
+class MemoryWriteTestCase(BaseModel):
+    """A test case for memory write evaluation."""
+
+    id: str = Field(
+        ...,
+        pattern=r"^[a-z0-9-]+$",
+        description="Unique case identifier",
+    )
+    conversation: list[dict] = Field(
+        ...,
+        min_length=1,
+        description="Conversation messages as list of {role, content} dicts",
+    )
+    expected_actions: list[MemoryWriteExpectedAction] = Field(
+        ...,
+        description="Expected memory write/delete actions",
+    )
+    rubric: str = Field(
+        ...,
+        min_length=10,
+        max_length=2000,
+        description="Evaluation criteria for judging extraction quality",
+    )
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Categorization tags",
+    )
+
+
+class MemoryWriteGoldenDataset(BaseModel):
+    """Complete memory write evaluation dataset."""
+
+    version: str = Field(
+        ...,
+        pattern=r"^\d+\.\d+\.\d+$",
+        description="Dataset schema version (semver)",
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Dataset purpose description",
+    )
+    cases: list[MemoryWriteTestCase] = Field(
+        ...,
+        min_length=5,
+        max_length=30,
+        description="Array of memory write test cases",
+    )
+
+    @field_validator("cases")
+    @classmethod
+    def unique_ids(cls, v: list[MemoryWriteTestCase]) -> list[MemoryWriteTestCase]:
+        """Validate that all case IDs are unique."""
+        ids = [case.id for case in v]
+        if len(ids) != len(set(ids)):
+            duplicates = [id_ for id_ in ids if ids.count(id_) > 1]
+            raise ValueError(f"Case IDs must be unique. Duplicates: {set(duplicates)}")
+        return v
+
+
+class MemoryWriteEvalResult(BaseModel):
+    """Result of evaluating one memory write test case."""
+
+    case_id: str = Field(..., description="Reference to MemoryWriteTestCase.id")
+    actual_writes: list[str] = Field(
+        default_factory=list,
+        description="Content of memories actually written",
+    )
+    actual_deletes: list[str] = Field(
+        default_factory=list,
+        description="Content of memories actually deleted",
+    )
+    precision: float = Field(
+        ..., ge=0.0, le=1.0, description="Fraction of actual writes that were expected"
+    )
+    recall: float = Field(
+        ..., ge=0.0, le=1.0, description="Fraction of expected writes that were made"
+    )
+    false_positive_count: int = Field(
+        ..., ge=0, description="Number of unexpected writes"
+    )
+    latency_ms: int = Field(..., ge=0, description="Processing latency")
+    error: Optional[str] = Field(default=None, description="Error if evaluation failed")
+
+
+class MemoryWriteMetrics(BaseModel):
+    """Aggregate metrics for a memory write evaluation run."""
+
+    total_cases: int = Field(..., description="Total number of test cases")
+    extraction_precision: float = Field(
+        ..., ge=0.0, le=1.0, description="Average precision across cases"
+    )
+    extraction_recall: float = Field(
+        ..., ge=0.0, le=1.0, description="Average recall across cases"
+    )
+    false_positive_rate: float = Field(
+        ..., ge=0.0, description="Average false positives per case"
+    )
+    error_cases: int = Field(..., ge=0, description="Cases that errored")
+    overall_passed: bool = Field(
+        ...,
+        description="True if precision >= 0.70 AND recall >= 0.70 AND fp_rate <= 0.5",
+    )
+
+
 class WeatherTestCase(BaseModel):
     """A test case for weather tool evaluation."""
 

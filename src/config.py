@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     session_ttl: int = 86400  # 24 hours in seconds
     rrf_k: int = 60  # RRF constant (standard value, not configurable)
 
+    # Memory Write Configuration (Feature 006)
+    memory_write_rate_per_conversation: int = 10
+    memory_write_rate_per_hour: int = 25
+    memory_duplicate_threshold: float = 0.92
+    episode_user_message_threshold: int = 8
+    episode_total_message_threshold: int = 15
+
     # Weather API Configuration (Feature 005)
     openweathermap_api_key: str = ""  # Required for weather tool
     weather_api_base_url: str = "https://api.openweathermap.org/data/2.5"
