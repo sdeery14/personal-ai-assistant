@@ -227,9 +227,9 @@ Memory is intentionally **multi-feature**, with each phase shipping as a distinc
 
 | Phase     | Capability                                   | Feature     |
 | --------- | -------------------------------------------- | ----------- |
-| Memory v1 | Read-only recall (keyword + semantic)        | Feature 004 |
-| Memory v2 | Automatic summarization + insight extraction | Feature 007 |
-| Memory v3 | Background jobs + proactive synthesis        | Feature 011 |
+| Memory v1 | Read-only recall (keyword + semantic)        | Feature 004 ✅ |
+| Memory v2 | Automatic summarization + insight extraction | Feature 006 |
+| Memory v3 | Background jobs + proactive synthesis        | Feature 007 |
 | Memory v4 | Personalization + long-horizon planning      | Future      |
 
 Each phase:

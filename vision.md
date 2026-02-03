@@ -71,9 +71,7 @@ Protect users and the system from harmful inputs and outputs.
 
 ---
 
-## Upcoming Features
-
-### Feature 004 – Memory v1 (Read-Only Recall)
+### Feature 004 – Memory v1 (Read-Only Recall) ✅
 
 > _Implements Memory v1 from [vision-memory.md](vision-memory.md)_
 
@@ -98,9 +96,11 @@ Enable safe retrieval of relevant past information.
 - Summarization or insight extraction
 - Long-term personalization logic
 
+**Status:** Complete (spec `004-memory-v1-readonly-recall`)
+
 ---
 
-### Feature 005 – External Tool v1: Weather Lookup
+### Feature 005 – External Tool v1: Weather Lookup ✅
 
 **Goal**
 Introduce a safe, real-world external tool.
@@ -121,31 +121,13 @@ Introduce a safe, real-world external tool.
 - Advice or recommendations
 - Multi-provider failover
 
----
-
-### Feature 006 – Tool-Based Reasoning (Weather-Aware Suggestions)
-
-**Goal**
-Combine factual tools with assistant reasoning.
-
-**User Capability**
-
-> "The assistant can suggest plans, clothing, or gear based on weather."
-
-**Scope**
-
-- Reasoned suggestions using weather data
-- Explicit assumptions and confidence language
-- Structured response format (facts → suggestions)
-
-**Explicitly Out of Scope**
-
-- Proactive notifications
-- Memory updates
+**Status:** Complete (spec `005-weather-lookup`)
 
 ---
 
-### Feature 007 – Memory v2 (Automatic Writes)
+## Upcoming Features
+
+### Feature 006 – Memory v2 (Automatic Writes)
 
 > _Implements Memory v2 from [vision-memory.md](vision-memory.md)_
 
@@ -167,6 +149,31 @@ Allow the assistant to remember important information automatically.
 
 - Background jobs
 - Proactive suggestions
+
+---
+
+### Feature 007 – Memory v3 (Background Jobs & Proactivity)
+
+> _Implements Memory v3 from [vision-memory.md](vision-memory.md)_
+
+**Goal**
+Enable time-shifted intelligence and proactive preparation.
+
+**User Capability**
+
+> "The assistant prepares helpful information before I ask for it."
+
+**Scope**
+
+- Background job execution
+- Morning briefings (news, weather, calendar)
+- Trip/event preparation summaries
+- Opt-in proactive notifications
+
+**Explicitly Out of Scope**
+
+- Autonomous actions
+- Unsolicited interruptions
 
 ---
 
@@ -251,31 +258,6 @@ Allow the assistant to see personal context safely.
 
 ---
 
-### Feature 011 – Memory v3 (Background Jobs & Proactivity)
-
-> _Implements Memory v3 from [vision-memory.md](vision-memory.md)_
-
-**Goal**
-Enable time-shifted intelligence and proactive preparation.
-
-**User Capability**
-
-> "The assistant prepares helpful information before I ask for it."
-
-**Scope**
-
-- Background job execution
-- Morning briefings (news, weather, calendar)
-- Trip/event preparation summaries
-- Opt-in proactive notifications
-
-**Explicitly Out of Scope**
-
-- Autonomous actions
-- Unsolicited interruptions
-
----
-
 ## Future Capability Expansion
 
 **Goal**
@@ -284,6 +266,7 @@ Safely extend assistant usefulness over time.
 **Examples**
 
 - Memory v4: Long-horizon personalization and planning
+- Tool-based reasoning (context-aware suggestions using memory + tools)
 - Task automation and write-capable integrations
 - Multi-modal inputs (images, documents)
 - Additional tool integrations
