@@ -96,3 +96,86 @@
 
 - Prefer cross-platform commands (Windows/macOS/Linux).
 - Keep instructions reproducible and minimal.
+
+## MLflow MCP Server (Trace Management)
+
+The MLflow MCP server provides direct access to trace management operations. Use these tools for debugging, analysis, and quality assessment workflows.
+
+### Prerequisites
+
+- MLflow must be running in Docker at `http://localhost:5000/`
+- Start with: `docker compose -f docker/docker-compose.mlflow.yml up -d`
+
+### Available Tools
+
+| Tool                                 | Purpose                    | Key Parameters                                                    |
+| ------------------------------------ | -------------------------- | ----------------------------------------------------------------- |
+| `search_traces`                      | Find traces in experiments | `experiment_id`, `filter_string`, `max_results`, `extract_fields` |
+| `get_trace`                          | Get detailed trace info    | `trace_id`, `extract_fields`                                      |
+| `delete_traces`                      | Remove traces              | `experiment_id`, `trace_ids` or timestamp filtering               |
+| `set_trace_tag` / `delete_trace_tag` | Manage trace tags          | `trace_id`, `key`, `value`                                        |
+| `log_feedback`                       | Log evaluation scores      | `trace_id`, `name`, `value`, `rationale`                          |
+| `log_expectation`                    | Log ground truth labels    | `trace_id`, `name`, `value`                                       |
+| `evaluate_traces`                    | Run scorers on traces      | `experiment_id`, `trace_ids`, `scorers`                           |
+| `register_llm_judge`                 | Create custom LLM judge    | `name`, `instructions`, `experiment_id`                           |
+
+### Common Patterns
+
+**Search for recent traces:**
+
+```
+search_traces(experiment_id="1", max_results=10, order_by="timestamp_ms DESC")
+```
+
+**Filter failed traces:**
+
+```
+search_traces(experiment_id="1", filter_string="status='ERROR'")
+```
+
+**Get specific fields only (performance optimization):**
+
+```
+search_traces(experiment_id="1", extract_fields="info.trace_id,info.state,data.spans.*.name")
+```
+
+**Log feedback after evaluation:**
+
+```
+log_feedback(trace_id="tr-abc123", name="relevance", value="0.85", rationale="Response addressed the query accurately")
+```
+
+### Field Selection Patterns
+
+Use `extract_fields` to reduce response size:
+
+- `info.trace_id,info.state` - Basic trace info
+- `info.assessments.*` - All assessments
+- `data.spans.*.name` - Span operation names
+- `info.tags.\`mlflow.traceName\`` - Use backticks for field names with dots
+
+### When to Use
+
+- **Debugging production issues**: Search for ERROR traces, inspect spans
+- **Performance analysis**: Filter by execution_time_ms, order by duration
+- **Quality assessment**: Log feedback scores, evaluate with built-in scorers
+- **Data cleanup**: Delete old test traces by timestamp
+
+### Built-in Scorers
+
+Available scorers for `evaluate_traces`:
+
+- `Correctness` / `correctness` - Response accuracy
+- `Safety` / `safety` - Harmful content detection
+- `RelevanceToQuery` / `relevance_to_query` - Query relevance
+- `Guidelines` / `guidelines` - Constraint adherence
+- `RetrievalRelevance` / `retrieval_relevance` - Chunk relevance
+- `RetrievalGroundedness` / `retrieval_groundedness` - Context alignment
+
+### Integration with Eval Workflow
+
+1. Run evals: `uv run python -m eval` (logs traces to MLflow)
+2. Search traces: Use `search_traces` to find runs
+3. Analyze: Use `get_trace` for detailed inspection
+4. Assess: Use `log_feedback` to add manual scores
+5. Cleanup: Use `delete_traces` to remove test data
