@@ -53,6 +53,17 @@
 - When giving setup instructions, provide the `uv` “golden path” first.
 - If you mention `pip`, label it explicitly as an exception and explain why.
 
+## Library Version Requirements (IMPORTANT)
+
+The following libraries have specific version requirements for this project:
+
+| Library           | Version | Purpose                                                     |
+| ----------------- | ------- | ----------------------------------------------------------- |
+| MLflow            | 3.8.1   | Experiment tracking, trace management, evaluation framework |
+| OpenAI Agents SDK | 0.7.0   | AI agent orchestration and task execution                   |
+
+These versions should be maintained in `pyproject.toml`. When updating dependencies, ensure these versions are preserved unless there's a specific reason to upgrade.
+
 ## Testing Philosophy (IMPORTANT)
 
 ### pytest - Code Testing Only

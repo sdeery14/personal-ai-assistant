@@ -23,10 +23,23 @@ import mlflow
 import pandas as pd
 from mlflow.genai import evaluate as genai_evaluate
 
-from eval.assistant import get_response, get_response_with_guardrails
+from agents.exceptions import (
+    InputGuardrailTripwireTriggered,
+    OutputGuardrailTripwireTriggered,
+)
+
+from eval.assistant import extract_tool_calls, invoke_production_agent
 from eval.config import EvalSettings, get_eval_settings
 from eval.dataset import DatasetError, load_dataset, load_memory_dataset, load_memory_write_dataset, load_weather_dataset
 from eval.judge import create_quality_judge, score_to_label, score_to_passed
+from eval.mlflow_datasets import (
+    get_experiment_id,
+    get_or_create_dataset,
+    prepare_memory_retrieval_records,
+    prepare_memory_write_records,
+    prepare_quality_records,
+    prepare_weather_records,
+)
 from eval.memory_judge import MemoryJudge
 from eval.memory_write_judge import MemoryWriteJudge
 from eval.models import (
@@ -165,8 +178,15 @@ def run_evaluation(
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name)
 
-    # Prepare data for mlflow.genai.evaluate()
-    eval_data = _prepare_eval_data(dataset)
+    # Register dataset in MLflow
+    experiment_id = get_experiment_id(settings.mlflow_experiment_name)
+    mlflow_records = prepare_quality_records(dataset)
+    mlflow_dataset = get_or_create_dataset(
+        dataset_path=dataset_path,
+        version=dataset.version,
+        experiment_id=experiment_id,
+        records=mlflow_records,
+    )
 
     # Capture API key in closure for MLflow predict_fn
     # MLflow doesn't pass environment variables, so we must explicitly capture them
@@ -177,31 +197,24 @@ def run_evaluation(
         case.expected_behavior is not None for case in dataset.cases
     )
 
-    # Create predict function that wraps assistant
+    # Create predict function that wraps the production agent
     # Note: Parameter name must match the key in inputs dict
     def predict_fn(question: str) -> str:
-        """Predict function for mlflow.genai.evaluate."""
-        # CRITICAL: Set environment variable first, before any OpenAI SDK initialization
-        # MLflow serializes this function and doesn't preserve the parent environment
+        """Predict function for mlflow.genai.evaluate using the production agent."""
         import os
 
         os.environ["OPENAI_API_KEY"] = api_key
 
         try:
-            if is_security_dataset:
-                # For security evaluation, use guardrail-aware function
-                result = get_response_with_guardrails(
-                    question, model=actual_model, api_key=api_key
-                )
-                # Return just the response text
-                # Guardrail status will be inferred from response content patterns
-                return result["response"]
-            else:
-                # For quality evaluation, use standard function
-                response = get_response(question, model=actual_model, api_key=api_key)
-                return response
+            result = invoke_production_agent(
+                question, model=actual_model, api_key=api_key
+            )
+            return result.final_output
+        except InputGuardrailTripwireTriggered:
+            return "Your request cannot be processed due to security concerns. Please rephrase your message and try again."
+        except OutputGuardrailTripwireTriggered:
+            return "Previous content retracted due to safety concerns. Please try a different request."
         except Exception as e:
-            # Return error message instead of raising - allows evaluation to continue
             return f"[ERROR: {type(e).__name__}: {str(e)}]"
 
     # Create judge
@@ -222,13 +235,14 @@ def run_evaluation(
                 "pass_rate_threshold": actual_pass_threshold,
                 "score_threshold": actual_score_threshold,
                 "total_cases": len(dataset.cases),
+                "mlflow_dataset_id": mlflow_dataset.dataset_id,
             }
         )
 
         # Run evaluation
         start_time = time.perf_counter()
         eval_results = genai_evaluate(
-            data=eval_data,
+            data=mlflow_dataset,
             predict_fn=predict_fn,
             scorers=[quality_judge],
         )
@@ -276,9 +290,6 @@ def run_evaluation(
         mlflow.log_artifact(str(results_path))
         results_path.unlink()  # Clean up temp file
 
-        # Log dataset as artifact for reproducibility
-        mlflow.log_artifact(str(dataset_path))
-
     return EvaluationResult(
         metrics=metrics,
         results=results,
@@ -286,23 +297,6 @@ def run_evaluation(
         dataset_version=dataset.version,
     )
 
-
-def _prepare_eval_data(dataset: GoldenDataset) -> list[dict[str, Any]]:
-    """
-    Prepare dataset for mlflow.genai.evaluate().
-
-    Converts GoldenDataset to the format expected by MLflow 3.x:
-    - inputs: Dictionary with 'question' key
-    - expectations: Dictionary with 'rubric' key
-    """
-    return [
-        {
-            "inputs": {"question": case.user_prompt},
-            "expectations": {"rubric": case.rubric},
-            "_case_id": case.id,  # Keep for result mapping
-        }
-        for case in dataset.cases
-    ]
 
 
 def _process_eval_results(
@@ -686,6 +680,16 @@ def run_memory_evaluation(
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-memory")
 
+    # Register dataset in MLflow
+    experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-memory")
+    mlflow_records = prepare_memory_retrieval_records(dataset)
+    mlflow_dataset = get_or_create_dataset(
+        dataset_path=dataset_path,
+        version=dataset.version,
+        experiment_id=experiment_id,
+        records=mlflow_records,
+    )
+
     # Run evaluation
     results: list[MemoryEvalResult] = []
     latencies: list[int] = []
@@ -702,6 +706,7 @@ def run_memory_evaluation(
                 "total_cases": len(dataset.cases),
                 "recall_threshold": 0.80,
                 "precision_threshold": 0.70,
+                "mlflow_dataset_id": mlflow_dataset.dataset_id,
             }
         )
 
@@ -843,9 +848,6 @@ def run_memory_evaluation(
         mlflow.log_artifact(str(results_path))
         results_path.unlink()
 
-        # Log dataset as artifact
-        mlflow.log_artifact(str(dataset_path))
-
     return MemoryEvaluationResult(
         metrics=metrics,
         results=results,
@@ -973,8 +975,16 @@ def run_memory_write_evaluation(
 ) -> MemoryWriteEvaluationResult:
     """Run memory write (auto-extraction) evaluation.
 
-    Tests the agent's ability to correctly extract and save memories
-    from conversation messages.
+    Two-phase approach required because Runner.run_sync() (asyncio) deadlocks
+    when called from inside genai_evaluate()'s worker threads.
+
+    Phase 1: Manual prediction loop with autolog DISABLED - invokes the
+    production agent for each case, extracts tool calls, collects responses.
+    Autolog is disabled to prevent orphaned AgentRunner.run traces.
+
+    Phase 2: Scorer-only genai_evaluate() - passes pre-computed outputs
+    (no predict_fn) to run LLM judge + precision/recall scorers. This creates
+    the only set of traces, each with assessments attached.
 
     Args:
         dataset_path: Path to the memory write golden dataset JSON file.
@@ -986,6 +996,9 @@ def run_memory_write_evaluation(
     """
     import statistics
     import time
+
+    import httpx
+    from mlflow.genai import scorer as scorer_decorator
 
     settings = get_eval_settings()
 
@@ -1014,8 +1027,25 @@ def run_memory_write_evaluation(
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-memory-write")
 
-    results: list[MemoryWriteEvalResult] = []
+    # Register dataset in MLflow
+    experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-memory-write")
+    mlflow_records = prepare_memory_write_records(dataset)
+    mlflow_dataset = get_or_create_dataset(
+        dataset_path=dataset_path,
+        version=dataset.version,
+        experiment_id=experiment_id,
+        records=mlflow_records,
+    )
+
+    # Force sequential scorer execution
+    os.environ["MLFLOW_GENAI_EVAL_MAX_WORKERS"] = "1"
+
+    api_key = settings.openai_api_key
+    actual_model = settings.openai_model
+    judge_model = settings.judge_model
     judge = MemoryWriteJudge()
+
+    results: list[MemoryWriteEvalResult] = []
 
     with mlflow.start_run() as run:
         run_id = run.info.run_id
@@ -1024,75 +1054,245 @@ def run_memory_write_evaluation(
             "dataset_type": "memory_write",
             "dataset_version": dataset.version,
             "total_cases": len(dataset.cases),
+            "assistant_model": actual_model,
+            "judge_model": judge_model,
             "precision_threshold": 0.70,
             "recall_threshold": 0.70,
+            "mlflow_dataset_id": mlflow_dataset.dataset_id,
         })
 
+        # ============================================================
+        # PHASE 1: Manual prediction loop (autolog disabled)
+        # ============================================================
+        # Disable OpenAI autolog to prevent orphaned AgentRunner.run traces.
+        # Only Phase 2's genai_evaluate should create traces (with assessments).
+        mlflow.openai.autolog(disable=True)
+
+        tool_call_results: dict[str, dict] = {}
+        case_data: list[tuple] = []
+
+        if verbose:
+            print("Phase 1: Running agent predictions...")
+
         for case in dataset.cases:
+            last_user_msg = None
+            for msg in case.conversation:
+                if msg["role"] == "user":
+                    last_user_msg = msg["content"]
+
+            if not last_user_msg:
+                continue
+
+            start_time = time.perf_counter()
+
             try:
-                start_time = time.perf_counter()
-
-                # Invoke the assistant with the conversation
-                actual_writes, actual_deletes = _invoke_memory_write_agent(
-                    case.conversation, settings
+                result = invoke_production_agent(
+                    last_user_msg, model=actual_model, api_key=api_key,
+                    max_turns=5,
                 )
-
                 latency_ms = int((time.perf_counter() - start_time) * 1000)
 
-                # Get expected save keywords and delete keywords
+                tool_calls = extract_tool_calls(result)
+                writes = []
+                deletes = []
+                for tc in tool_calls:
+                    if tc["name"] == "save_memory_tool":
+                        content = tc["arguments"].get("content", "")
+                        if content:
+                            writes.append(content)
+                    elif tc["name"] == "delete_memory_tool":
+                        description = tc["arguments"].get("description", "")
+                        if description:
+                            deletes.append(description)
+
+                tool_call_results[last_user_msg] = {"writes": writes, "deletes": deletes}
+                case_data.append((case, last_user_msg, result.final_output, writes, deletes, latency_ms, None))
+
+                if verbose:
+                    print(f"  {case.id}: predicted ({latency_ms}ms, {len(writes)} writes, {len(deletes)} deletes)")
+
+            except Exception as e:
+                latency_ms = int((time.perf_counter() - start_time) * 1000)
+                tool_call_results[last_user_msg] = {"writes": [], "deletes": []}
+                case_data.append((case, last_user_msg, f"[ERROR: {str(e)}]", [], [], latency_ms, str(e)))
+                if verbose:
+                    print(f"  {case.id}: ERROR ({latency_ms}ms) - {str(e)}")
+
+        # Re-enable autolog for Phase 2
+        mlflow.openai.autolog()
+
+        # ============================================================
+        # PHASE 2: Scorer-only genai_evaluate (creates traces with assessments)
+        # ============================================================
+        if verbose:
+            print("\nPhase 2: Running LLM judge and scorers...")
+
+        # Build eval_data with pre-computed outputs
+        eval_data = []
+        for case, message, response, writes, deletes, latency_ms, error in case_data:
+            save_keywords = [
+                ea.content_keywords
+                for ea in case.expected_actions
+                if ea.action == "save"
+            ]
+            eval_data.append({
+                "inputs": {"message": message},
+                "outputs": response,
+                "expectations": {
+                    "rubric": case.rubric,
+                    "save_keywords": save_keywords,
+                },
+            })
+
+        # LLM judge scorer using httpx (bypasses OpenAI SDK client lifecycle issues)
+        @scorer_decorator
+        def memory_write_quality(inputs, outputs, expectations) -> bool:
+            """LLM judge: does the response appropriately handle memory operations?"""
+            message = inputs.get("message", "")
+            rubric = expectations.get("rubric", "")
+            response_text = outputs if isinstance(outputs, str) else str(outputs)
+
+            resp = httpx.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": judge_model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are evaluating an AI assistant's ability to handle memory operations. "
+                                "Evaluate whether the response appropriately handles the user's message, "
+                                "including acknowledging personal information or correctly declining to save trivial content. "
+                                "Answer ONLY 'yes' or 'no'."
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": (
+                                f"**User Message**: {message}\n\n"
+                                f"**Assistant Response**: {response_text}\n\n"
+                                f"**Evaluation Rubric**: {rubric}\n\n"
+                                "Does the response appropriately handle the situation per the rubric?"
+                            ),
+                        },
+                    ],
+                    "max_tokens": 10,
+                    "temperature": 0.0,
+                },
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            answer = data["choices"][0]["message"]["content"].strip().lower()
+            return answer.startswith("yes")
+
+        @scorer_decorator
+        def extraction_precision(inputs, outputs, expectations) -> float:
+            """Precision: fraction of actual writes that match expected keywords."""
+            message = inputs.get("message", "")
+            tc_data = tool_call_results.get(message, {"writes": [], "deletes": []})
+            save_keywords = expectations.get("save_keywords", [])
+            return judge.evaluate_extraction_precision(tc_data["writes"], save_keywords)
+
+        @scorer_decorator
+        def extraction_recall(inputs, outputs, expectations) -> float:
+            """Recall: fraction of expected writes that were actually made."""
+            message = inputs.get("message", "")
+            tc_data = tool_call_results.get(message, {"writes": [], "deletes": []})
+            save_keywords = expectations.get("save_keywords", [])
+            return judge.evaluate_extraction_recall(tc_data["writes"], save_keywords)
+
+        try:
+            eval_results = genai_evaluate(
+                data=eval_data,
+                scorers=[memory_write_quality, extraction_precision, extraction_recall],
+            )
+
+            # Process scorer results from the DataFrame
+            results_df = eval_results.tables["eval_results"]
+
+            for idx, (_, row) in enumerate(results_df.iterrows()):
+                case, message, response, writes, deletes, latency_ms, error = case_data[idx]
+
+                # Extract scorer results
+                judge_value = row.get("memory_write_quality/value", None)
+                if judge_value is None:
+                    judge_passed = None
+                elif isinstance(judge_value, bool):
+                    judge_passed = judge_value
+                else:
+                    judge_passed = str(judge_value).lower() in ("true", "yes")
+
+                prec_value = row.get("extraction_precision/value", None)
+                precision = float(prec_value) if prec_value is not None else 0.0
+
+                rec_value = row.get("extraction_recall/value", None)
+                recall = float(rec_value) if rec_value is not None else 0.0
+
                 save_keywords = [
                     ea.content_keywords
                     for ea in case.expected_actions
                     if ea.action == "save"
                 ]
-                delete_keywords = [
+                false_positives = judge.count_false_positives(writes, save_keywords)
+
+                results.append(MemoryWriteEvalResult(
+                    case_id=case.id,
+                    response=response,
+                    actual_writes=writes,
+                    actual_deletes=deletes,
+                    precision=precision,
+                    recall=recall,
+                    false_positive_count=false_positives,
+                    judge_passed=judge_passed,
+                    latency_ms=latency_ms,
+                    error=error,
+                ))
+
+                if verbose:
+                    p_status = "PASS" if precision >= 0.7 and recall >= 0.7 else "FAIL"
+                    j_status = "PASS" if judge_passed else "FAIL"
+                    print(
+                        f"  {case.id}: {p_status} P={precision:.2f} R={recall:.2f} "
+                        f"FP={false_positives} Judge={j_status} {latency_ms}ms"
+                    )
+
+        except Exception as e:
+            if verbose:
+                print(f"  Scorer evaluation failed: {str(e)}")
+            # Fall back to results without judge scores
+            for case, message, response, writes, deletes, latency_ms, error in case_data:
+                save_keywords = [
                     ea.content_keywords
                     for ea in case.expected_actions
-                    if ea.action == "delete"
+                    if ea.action == "save"
                 ]
+                precision = judge.evaluate_extraction_precision(writes, save_keywords)
+                recall = judge.evaluate_extraction_recall(writes, save_keywords)
+                false_positives = judge.count_false_positives(writes, save_keywords)
 
-                # Evaluate
-                precision = judge.evaluate_extraction_precision(
-                    actual_writes, save_keywords
-                )
-                recall = judge.evaluate_extraction_recall(
-                    actual_writes, save_keywords
-                )
-                false_positives = judge.count_false_positives(
-                    actual_writes, save_keywords
-                )
-
-                result = MemoryWriteEvalResult(
+                results.append(MemoryWriteEvalResult(
                     case_id=case.id,
-                    actual_writes=actual_writes,
-                    actual_deletes=actual_deletes,
+                    response=response,
+                    actual_writes=writes,
+                    actual_deletes=deletes,
                     precision=precision,
                     recall=recall,
                     false_positive_count=false_positives,
                     latency_ms=latency_ms,
-                )
-                results.append(result)
-
-                if verbose:
-                    status = "PASS" if precision >= 0.7 and recall >= 0.7 else "FAIL"
-                    print(
-                        f"  {case.id}: {status} P={precision:.2f} R={recall:.2f} "
-                        f"FP={false_positives} {latency_ms}ms"
-                    )
-
-            except Exception as e:
-                results.append(MemoryWriteEvalResult(
-                    case_id=case.id,
-                    actual_writes=[],
-                    actual_deletes=[],
-                    precision=0.0,
-                    recall=0.0,
-                    false_positive_count=0,
-                    latency_ms=0,
-                    error=str(e),
+                    error=error,
                 ))
+
                 if verbose:
-                    print(f"  {case.id}: ERROR - {str(e)}")
+                    p_status = "PASS" if precision >= 0.7 and recall >= 0.7 else "FAIL"
+                    print(
+                        f"  {case.id}: {p_status} P={precision:.2f} R={recall:.2f} "
+                        f"FP={false_positives} {latency_ms}ms (no judge)"
+                    )
 
         # Compute aggregate metrics
         valid_results = [r for r in results if r.error is None]
@@ -1102,10 +1302,16 @@ def run_memory_write_evaluation(
             avg_precision = statistics.mean(r.precision for r in valid_results)
             avg_recall = statistics.mean(r.recall for r in valid_results)
             avg_fp = statistics.mean(r.false_positive_count for r in valid_results)
+            judge_results = [r for r in valid_results if r.judge_passed is not None]
+            judge_pass_rate = (
+                sum(1 for r in judge_results if r.judge_passed) / len(judge_results)
+                if judge_results else None
+            )
         else:
             avg_precision = 0.0
             avg_recall = 0.0
             avg_fp = 0.0
+            judge_pass_rate = None
 
         overall_passed = (
             avg_precision >= 0.70
@@ -1118,6 +1324,7 @@ def run_memory_write_evaluation(
             extraction_precision=avg_precision,
             extraction_recall=avg_recall,
             false_positive_rate=avg_fp,
+            judge_pass_rate=judge_pass_rate,
             error_cases=error_count,
             overall_passed=overall_passed,
         )
@@ -1130,15 +1337,16 @@ def run_memory_write_evaluation(
             "memory_write_error_cases": error_count,
             "memory_write_overall_passed": 1 if overall_passed else 0,
         })
+        if judge_pass_rate is not None:
+            mlflow.log_metrics({"memory_write_judge_pass_rate": judge_pass_rate})
 
-        # Log artifacts
+        # Log per-case results as artifact
         results_json = [r.model_dump() for r in results]
         results_path = Path("memory_write_eval_results.json")
         with open(results_path, "w") as f:
             json.dump(results_json, f, indent=2, default=str)
         mlflow.log_artifact(str(results_path))
         results_path.unlink()
-        mlflow.log_artifact(str(dataset_path))
 
     return MemoryWriteEvaluationResult(
         metrics=metrics,
@@ -1146,60 +1354,6 @@ def run_memory_write_evaluation(
         mlflow_run_id=run_id,
         dataset_version=dataset.version,
     )
-
-
-def _invoke_memory_write_agent(
-    conversation: list[dict],
-    settings,
-) -> tuple[list[str], list[str]]:
-    """Invoke the agent with conversation and capture memory writes/deletes.
-
-    This is a placeholder implementation that uses the chat endpoint.
-    In a real evaluation, this would intercept tool calls to save_memory_tool
-    and delete_memory_tool.
-
-    Args:
-        conversation: List of {role, content} message dicts
-        settings: Evaluation settings
-
-    Returns:
-        Tuple of (writes, deletes) - lists of content strings
-    """
-    import asyncio
-
-    async def _run():
-        from eval.assistant import get_response
-
-        # Send the last user message through the assistant
-        last_user_msg = None
-        for msg in conversation:
-            if msg["role"] == "user":
-                last_user_msg = msg["content"]
-
-        if not last_user_msg:
-            return [], []
-
-        response = get_response(
-            last_user_msg,
-            model=settings.openai_model,
-            api_key=settings.openai_api_key,
-        )
-
-        # Parse response for memory action indicators
-        # In production, we would intercept actual tool calls
-        writes = []
-        deletes = []
-
-        # Heuristic: check if response mentions saving/remembering
-        response_lower = response.lower()
-        if any(kw in response_lower for kw in ["i'll remember", "saved", "noted", "i'll keep"]):
-            writes.append(response)
-        if any(kw in response_lower for kw in ["deleted", "removed", "forgotten", "forget"]):
-            deletes.append(response)
-
-        return writes, deletes
-
-    return asyncio.run(_run())
 
 
 def format_memory_write_summary(result: MemoryWriteEvaluationResult) -> str:
@@ -1220,6 +1374,9 @@ def format_memory_write_summary(result: MemoryWriteEvaluationResult) -> str:
         f"  Precision:              {m.extraction_precision:.1%} (threshold: >=70%)",
         f"  Recall:                 {m.extraction_recall:.1%} (threshold: >=70%)",
         f"  False Positive Rate:    {m.false_positive_rate:.2f} (threshold: <=0.5)",
+        "",
+        "LLM JUDGE METRICS:",
+        f"  Judge Pass Rate:        {m.judge_pass_rate:.1%}" if m.judge_pass_rate is not None else "  Judge Pass Rate:        N/A",
         "",
     ]
 
@@ -1277,7 +1434,6 @@ def run_weather_evaluation(
     import statistics
     import time
 
-    from eval.assistant import get_response_with_weather
     from mlflow.genai import scorer
 
     settings = get_eval_settings()
@@ -1312,22 +1468,34 @@ def run_weather_evaluation(
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-weather")
 
+    # Register dataset in MLflow
+    experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-weather")
+    mlflow_records = prepare_weather_records(dataset)
+    mlflow_dataset = get_or_create_dataset(
+        dataset_path=dataset_path,
+        version=dataset.version,
+        experiment_id=experiment_id,
+        records=mlflow_records,
+    )
+
     # Capture API key in closure for MLflow predict_fn
     api_key = settings.openai_api_key
     actual_model = settings.openai_model
 
-    # Create predict function that uses agent with weather tool
+    # Create predict function that uses the production agent (includes weather tool)
     # Note: Parameter name must match the key in inputs dict
     def predict_fn(query: str) -> str:
-        """Predict function for weather evaluation using agent with weather tool."""
+        """Predict function for weather evaluation using the production agent."""
         import os
         os.environ["OPENAI_API_KEY"] = api_key
 
         try:
-            response = get_response_with_weather(
-                prompt=query, model=actual_model, api_key=api_key
+            result = invoke_production_agent(
+                query, model=actual_model, api_key=api_key
             )
-            return response
+            return result.final_output
+        except (InputGuardrailTripwireTriggered, OutputGuardrailTripwireTriggered):
+            return "[ERROR: Guardrail triggered]"
         except Exception as e:
             return f"[ERROR: {type(e).__name__}: {str(e)}]"
 
@@ -1364,19 +1532,6 @@ def run_weather_evaluation(
         # Return True if behavior matches expected
         return actual_behavior == expected_behavior
 
-    # Prepare data for mlflow.genai.evaluate()
-    eval_data = []
-    for case in dataset.cases:
-        eval_data.append({
-            "inputs": {"query": case.query},
-            "expectations": {
-                "expected_behavior": case.expected_behavior,
-                "expected_fields": case.expected_fields,
-                "expected_error_keywords": case.expected_error_keywords,
-                "rubric": case.rubric,
-            },
-        })
-
     # Run evaluation with MLflow
     results: list[WeatherEvalResult] = []
     latencies: list[int] = []
@@ -1393,6 +1548,7 @@ def run_weather_evaluation(
                 "assistant_model": actual_model,
                 "success_rate_threshold": 0.95,
                 "latency_p95_threshold": 3000,
+                "mlflow_dataset_id": mlflow_dataset.dataset_id,
             }
         )
 
@@ -1401,7 +1557,7 @@ def run_weather_evaluation(
 
         try:
             eval_results = genai_evaluate(
-                data=eval_data,
+                data=mlflow_dataset,
                 predict_fn=predict_fn,
                 scorers=[weather_behavior_scorer],
             )
@@ -1557,9 +1713,6 @@ def run_weather_evaluation(
             json.dump(results_json, f, indent=2, default=str)
         mlflow.log_artifact(str(results_path))
         results_path.unlink()
-
-        # Log dataset as artifact
-        mlflow.log_artifact(str(dataset_path))
 
     return WeatherEvaluationResult(
         metrics=metrics,

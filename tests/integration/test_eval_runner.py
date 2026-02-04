@@ -14,10 +14,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from eval.dataset import DatasetError, load_dataset
+from eval.mlflow_datasets import prepare_quality_records
 from eval.models import EvalRunMetrics, GoldenDataset
 from eval.runner import (
     EvaluationResult,
-    _prepare_eval_data,
     _process_eval_results,
     format_summary,
     run_evaluation,
@@ -69,37 +69,33 @@ def mock_settings(monkeypatch):
 
 
 class TestDatasetPreparation:
-    """Tests for _prepare_eval_data function."""
+    """Tests for prepare_quality_records function."""
 
-    def test_prepare_eval_data_structure(self, minimal_dataset_file):
-        """Should convert dataset to MLflow 3.x-compatible format."""
+    def test_prepare_quality_records_structure(self, minimal_dataset_file):
+        """Should convert dataset to MLflow evaluation dataset record format."""
         dataset = load_dataset(minimal_dataset_file)
-        eval_data = _prepare_eval_data(dataset)
+        records = prepare_quality_records(dataset)
 
-        assert len(eval_data) == 5
+        assert len(records) == 5
 
-        for item in eval_data:
-            # MLflow 3.x: both inputs and expectations are dicts
+        for item in records:
             assert "inputs" in item
             assert "expectations" in item
-            assert "_case_id" in item
             assert isinstance(item["inputs"], dict)
             assert isinstance(item["expectations"], dict)
             assert "question" in item["inputs"]
             assert "rubric" in item["expectations"]
 
-    def test_prepare_eval_data_preserves_content(self, minimal_dataset_file):
+    def test_prepare_quality_records_preserves_content(self, minimal_dataset_file):
         """Should preserve original content in converted format."""
         dataset = load_dataset(minimal_dataset_file)
-        eval_data = _prepare_eval_data(dataset)
+        records = prepare_quality_records(dataset)
 
         first_case = dataset.cases[0]
-        first_data = eval_data[0]
+        first_record = records[0]
 
-        # MLflow 3.x format: both are dicts
-        assert first_data["inputs"]["question"] == first_case.user_prompt
-        assert first_data["expectations"]["rubric"] == first_case.rubric
-        assert first_data["_case_id"] == first_case.id
+        assert first_record["inputs"]["question"] == first_case.user_prompt
+        assert first_record["expectations"]["rubric"] == first_case.rubric
 
 
 # =============================================================================
@@ -280,7 +276,8 @@ class TestFullIntegration:
     """Full integration tests with mocked external calls."""
 
     @patch("eval.runner.genai_evaluate")
-    @patch("eval.runner.get_response")
+    @patch("eval.runner.get_or_create_dataset")
+    @patch("eval.runner.get_experiment_id")
     @patch("mlflow.start_run")
     @patch("mlflow.set_experiment")
     @patch("mlflow.set_tracking_uri")
@@ -295,7 +292,8 @@ class TestFullIntegration:
         mock_set_uri,
         mock_set_exp,
         mock_start_run,
-        mock_get_response,
+        mock_get_exp_id,
+        mock_get_or_create,
         mock_genai_eval,
         minimal_dataset_file,
         mock_settings,
@@ -309,8 +307,11 @@ class TestFullIntegration:
         mock_start_run.return_value.__enter__ = MagicMock(return_value=mock_run)
         mock_start_run.return_value.__exit__ = MagicMock(return_value=False)
 
-        # Mock assistant responses
-        mock_get_response.return_value = "Test response"
+        # Mock dataset registration
+        mock_get_exp_id.return_value = "4"
+        mock_dataset = MagicMock()
+        mock_dataset.dataset_id = "d-test123"
+        mock_get_or_create.return_value = mock_dataset
 
         # Mock genai_evaluate results
         mock_eval_result = MagicMock()
@@ -342,6 +343,13 @@ class TestFullIntegration:
         mock_set_exp.assert_called_once()
         mock_log_params.assert_called_once()
         mock_log_metrics.assert_called_once()
+
+        # Verify dataset registration
+        mock_get_or_create.assert_called_once()
+        mock_genai_eval.assert_called_once()
+        # genai_evaluate should receive the MLflow dataset, not a list
+        call_kwargs = mock_genai_eval.call_args
+        assert call_kwargs.kwargs.get("data") is mock_dataset or call_kwargs[1].get("data") is mock_dataset
 
 
 # =============================================================================

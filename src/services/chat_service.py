@@ -78,14 +78,7 @@ class ChatService:
     """Service for streaming chat completions via OpenAI Agents SDK."""
 
     def __init__(self) -> None:
-        """Initialize the chat service with an agent."""
-        settings = get_settings()
-
-        self.agent = Agent(
-            name="Assistant",
-            instructions="You are a helpful assistant.",
-            model=settings.openai_model,
-        )
+        """Initialize the chat service."""
         self.logger = structlog.get_logger(__name__)
         self._conversation_service = None
         self._database_available = False
@@ -132,6 +125,44 @@ class ChatService:
             self.logger.warning("get_weather_tool_unavailable", error=str(e))
             self._weather_available = False
         return tools
+
+    def create_agent(self, model: str | None = None) -> Agent:
+        """Create the production agent with all tools, guardrails, and instructions.
+
+        This is the single source of truth for agent configuration. Used by both
+        the streaming API and the evaluation framework.
+
+        Args:
+            model: Optional model override (defaults to OPENAI_MODEL setting).
+
+        Returns:
+            Configured Agent with guardrails, tools, and system prompts.
+        """
+        settings = get_settings()
+        actual_model = model or settings.openai_model
+
+        # Trigger lazy-load of conversation service to set _database_available
+        _ = self.conversation_service
+
+        # Build system instructions with feature-specific guidance
+        instructions = "You are a helpful assistant."
+        if self._database_available:
+            instructions += "\n" + MEMORY_SYSTEM_PROMPT
+            instructions += "\n" + MEMORY_WRITE_SYSTEM_PROMPT
+
+        # Get tools - weather tool sets _weather_available as side effect
+        tools = self._get_tools()
+        if getattr(self, '_weather_available', False):
+            instructions += "\n" + WEATHER_SYSTEM_PROMPT
+
+        return Agent(
+            name="Assistant",
+            instructions=instructions,
+            model=actual_model,
+            input_guardrails=[validate_input],
+            output_guardrails=[validate_output],
+            tools=tools,
+        )
 
     async def stream_completion(
         self,
@@ -182,26 +213,8 @@ class ChatService:
                 )
                 conversation = None
 
-        # Build system instructions with feature-specific guidance
-        instructions = "You are a helpful assistant."
-        if self._database_available:
-            instructions += "\n" + MEMORY_SYSTEM_PROMPT
-            instructions += "\n" + MEMORY_WRITE_SYSTEM_PROMPT
-
-        # Get tools - weather tool is always available, memory requires database
-        tools = self._get_tools()
-        if hasattr(self, '_weather_available') and self._weather_available:
-            instructions += "\n" + WEATHER_SYSTEM_PROMPT
-
-        # Create agent with input and output guardrails and tools
-        agent = Agent(
-            name="Assistant",
-            instructions=instructions,
-            model=actual_model,
-            input_guardrails=[validate_input],
-            output_guardrails=[validate_output],
-            tools=tools,
-        )
+        # Create the production agent with all features
+        agent = self.create_agent(model=actual_model)
 
         sequence = 0
         start_time = time.perf_counter()

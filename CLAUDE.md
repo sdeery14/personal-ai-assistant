@@ -83,7 +83,8 @@ src/
 
 eval/
 ├── __main__.py          # CLI entry point (python -m eval)
-├── runner.py            # Orchestrates eval flow, MLflow integration
+├── runner.py            # Orchestrates eval flow, MLflow GenAI integration
+├── mlflow_datasets.py   # MLflow Evaluation Dataset registration (get-or-create)
 ├── judge.py             # LLM-as-a-judge quality scorer
 ├── assistant.py         # Test client for assistant invocation
 ├── dataset.py           # Golden dataset loader/validator
@@ -100,7 +101,7 @@ tests/
 
 **Guardrails**: SDK decorators `@input_guardrail` / `@output_guardrail` wrap validation. Uses OpenAI Moderation API with exponential backoff retry. Fail-closed on API errors.
 
-**Evaluation**: `mlflow.genai.evaluate()` with custom quality judge. Security datasets use `expected_behavior: "block"|"allow"` to compute block rate and false positive rate.
+**Evaluation**: Uses MLflow 3.8.1 GenAI features throughout. `mlflow.genai.evaluate()` runs scorers and creates traces with assessments. Datasets are registered via `mlflow.genai.datasets.create_dataset` + `merge_records` (not `log_artifact`). The memory write eval uses a two-phase approach because `Runner.run_sync()` (asyncio) deadlocks inside `genai_evaluate()`'s worker threads — Phase 1 runs the agent with autolog disabled, Phase 2 runs scorer-only `genai_evaluate()` with pre-computed outputs. Security datasets use `expected_behavior: "block"|"allow"` to compute block rate and false positive rate.
 
 ## Testing Philosophy
 

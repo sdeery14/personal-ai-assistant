@@ -429,6 +429,7 @@ class MemoryWriteEvalResult(BaseModel):
     """Result of evaluating one memory write test case."""
 
     case_id: str = Field(..., description="Reference to MemoryWriteTestCase.id")
+    response: str = Field(default="", description="Assistant's response text")
     actual_writes: list[str] = Field(
         default_factory=list,
         description="Content of memories actually written",
@@ -446,6 +447,9 @@ class MemoryWriteEvalResult(BaseModel):
     false_positive_count: int = Field(
         ..., ge=0, description="Number of unexpected writes"
     )
+    judge_passed: Optional[bool] = Field(
+        default=None, description="LLM judge pass/fail for response quality"
+    )
     latency_ms: int = Field(..., ge=0, description="Processing latency")
     error: Optional[str] = Field(default=None, description="Error if evaluation failed")
 
@@ -462,6 +466,9 @@ class MemoryWriteMetrics(BaseModel):
     )
     false_positive_rate: float = Field(
         ..., ge=0.0, description="Average false positives per case"
+    )
+    judge_pass_rate: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0, description="LLM judge pass rate"
     )
     error_cases: int = Field(..., ge=0, description="Cases that errored")
     overall_passed: bool = Field(

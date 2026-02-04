@@ -1,227 +1,107 @@
 """
-Sync wrapper for Feature 001 assistant.
+Sync wrapper for invoking the production agent during evaluation.
 
-This module provides a synchronous interface to invoke the Feature 001
-ChatService for evaluation purposes. It uses Runner.run_sync() for
-non-streaming, deterministic evaluation.
+This module provides a synchronous interface to invoke the production
+ChatService agent using Runner.run_sync(). The agent configuration
+(tools, guardrails, instructions) comes from ChatService.create_agent(),
+ensuring the eval tests the exact same agent as production.
 
 MLflow tracing is enabled via mlflow.openai.autolog() to capture
 detailed execution traces during evaluation.
 """
 
+import json
 import os
+from uuid import uuid4
 
 import mlflow
-from agents import Agent, Runner
+from agents import Runner
 from agents.exceptions import (
     InputGuardrailTripwireTriggered,
     OutputGuardrailTripwireTriggered,
 )
+from agents.items import ToolCallItem
+from agents.result import RunResult
 
 from eval.config import get_eval_settings
-from src.services.guardrails import validate_input, validate_output
 
 # Enable MLflow auto-tracing for OpenAI calls
 # This captures traces for debugging failed cases and enables future trace-based scorers
 mlflow.openai.autolog()
 
 
-def get_response(
-    prompt: str, model: str | None = None, api_key: str | None = None
-) -> str:
+def invoke_production_agent(
+    prompt: str,
+    model: str | None = None,
+    api_key: str | None = None,
+    user_id: str = "eval-user",
+    max_turns: int = 5,
+) -> RunResult:
     """
-    Get a complete assistant response synchronously.
+    Invoke the production agent synchronously, returning the full RunResult.
 
-    This function invokes the Feature 001 assistant using Runner.run_sync()
-    (non-streaming) for deterministic evaluation. It reuses the same agent
-    configuration as the main application.
+    Uses ChatService.create_agent() to get the exact same agent configuration
+    as production (guardrails, tools, system prompts), then runs it with
+    Runner.run_sync() for deterministic evaluation.
 
     Args:
         prompt: The user prompt to send to the assistant.
         model: Optional model override (defaults to OPENAI_MODEL env var).
         api_key: Optional OpenAI API key (defaults to OPENAI_API_KEY env var).
-                 Required when running in MLflow context where env vars may not be available.
+        user_id: User ID for memory scoping in tool calls.
+        max_turns: Maximum agent turns (default 5). Prevents hangs when
+            tools fail repeatedly in eval environments without full infra.
 
     Returns:
-        The complete assistant response as a string.
+        RunResult with final_output, new_items (tool calls), and guardrail results.
 
     Raises:
-        Exception: If the assistant fails to generate a response.
+        InputGuardrailTripwireTriggered: If input guardrail blocks the request.
+        OutputGuardrailTripwireTriggered: If output guardrail blocks the response.
+        MaxTurnsExceeded: If agent exceeds max_turns limit.
     """
     settings = get_eval_settings()
-    actual_model = model or settings.openai_model
     actual_api_key = api_key or settings.openai_api_key
 
     # Ensure OPENAI_API_KEY is in environment (required by OpenAI SDK)
-    # This is critical for MLflow predict_fn which doesn't preserve environment
     os.environ["OPENAI_API_KEY"] = actual_api_key
 
-    # Create agent with deterministic settings (temperature=0)
-    agent = Agent(
-        name="Assistant",
-        instructions="You are a helpful assistant.",
-        model=actual_model,
-    )
+    from src.services.chat_service import ChatService
 
-    # Use run_sync for synchronous, non-streaming execution
-    result = Runner.run_sync(agent, input=prompt)
+    service = ChatService()
+    agent = service.create_agent(model=model)
 
-    return result.final_output
-
-
-def get_response_with_metadata(
-    prompt: str, model: str | None = None
-) -> dict[str, str | int]:
-    """
-    Get assistant response with additional metadata.
-
-    Args:
-        prompt: The user prompt to send to the assistant.
-        model: Optional model override.
-
-    Returns:
-        Dictionary with 'response', 'model', and 'prompt_length' keys.
-    """
-    settings = get_eval_settings()
-    actual_model = model or settings.openai_model
-    response = get_response(prompt, model=actual_model)
-
-    return {
-        "response": response,
-        "model": actual_model,
-        "prompt_length": len(prompt),
-        "response_length": len(response),
+    context = {
+        "user_id": user_id,
+        "correlation_id": str(uuid4()),
+        "conversation_id": None,
     }
 
+    return Runner.run_sync(agent, input=prompt, context=context, max_turns=max_turns)
 
-def get_response_with_guardrails(
-    prompt: str, model: str | None = None, api_key: str | None = None
-) -> dict[str, str | bool | None]:
+
+def extract_tool_calls(result: RunResult) -> list[dict]:
     """
-    Get assistant response with guardrails enabled, detecting blocks.
+    Extract tool call details from a RunResult.
 
-    This function is specifically for security evaluation. It creates an agent
-    with input and output guardrails attached, then attempts to get a response.
-    If guardrails trigger, it captures the block event.
+    Inspects the new_items list for ToolCallItem entries and returns
+    structured information about each tool invocation.
 
     Args:
-        prompt: The user prompt to send to the assistant.
-        model: Optional model override (defaults to OPENAI_MODEL env var).
-        api_key: Optional OpenAI API key (defaults to OPENAI_API_KEY env var).
+        result: RunResult from Runner.run_sync().
 
     Returns:
-        Dictionary with:
-        - 'response': The complete response or error message
-        - 'was_blocked': Boolean indicating if guardrail blocked the request
-        - 'guardrail_type': 'input' or 'output' if blocked, None otherwise
-        - 'model': Model used
+        List of dicts with 'name' and 'arguments' keys for each tool call.
     """
-    settings = get_eval_settings()
-    actual_model = model or settings.openai_model
-    actual_api_key = api_key or settings.openai_api_key
-
-    # Ensure OPENAI_API_KEY is in environment
-    os.environ["OPENAI_API_KEY"] = actual_api_key
-
-    # Create agent WITH guardrails
-    agent = Agent(
-        name="Assistant",
-        instructions="You are a helpful assistant.",
-        model=actual_model,
-        input_guardrails=[validate_input],
-        output_guardrails=[validate_output],
-    )
-
-    try:
-        # Use run_sync for synchronous execution
-        result = Runner.run_sync(agent, input=prompt)
-        response = result.final_output
-
-        return {
-            "response": response,
-            "was_blocked": False,
-            "guardrail_type": None,
-            "model": actual_model,
-        }
-
-    except InputGuardrailTripwireTriggered as e:
-        # Input guardrail blocked the request
-        return {
-            "response": "Your request cannot be processed due to security concerns. Please rephrase your message and try again.",
-            "was_blocked": True,
-            "guardrail_type": "input",
-            "model": actual_model,
-        }
-
-    except OutputGuardrailTripwireTriggered as e:
-        # Output guardrail blocked the response
-        return {
-            "response": "Previous content retracted due to safety concerns. Please try a different request.",
-            "was_blocked": True,
-            "guardrail_type": "output",
-            "model": actual_model,
-        }
-
-
-# Weather system prompt (same as chat_service.py)
-WEATHER_SYSTEM_PROMPT = """
-You have access to a weather tool that can look up current weather and forecasts.
-
-When users ask about weather:
-1. Use the get_weather tool to fetch real data
-2. Present the information in a natural, conversational way
-3. Include both Fahrenheit and Celsius when showing temperatures
-4. For forecasts, summarize the key days rather than listing every detail
-
-If a location cannot be found, suggest the user check the spelling or try a nearby city.
-"""
-
-
-def get_response_with_weather(
-    prompt: str, model: str | None = None, api_key: str | None = None
-) -> str:
-    """
-    Get assistant response with weather tool enabled.
-
-    This function creates an agent with the weather tool attached for
-    testing weather-related queries through the full agent flow.
-
-    Args:
-        prompt: The user prompt to send to the assistant.
-        model: Optional model override (defaults to OPENAI_MODEL env var).
-        api_key: Optional OpenAI API key (defaults to OPENAI_API_KEY env var).
-
-    Returns:
-        The complete assistant response as a string.
-
-    Raises:
-        Exception: If the assistant fails to generate a response.
-    """
-    settings = get_eval_settings()
-    actual_model = model or settings.openai_model
-    actual_api_key = api_key or settings.openai_api_key
-
-    # Ensure OPENAI_API_KEY is in environment
-    os.environ["OPENAI_API_KEY"] = actual_api_key
-
-    # Import weather tool
-    try:
-        from src.tools.get_weather import get_weather_tool
-        tools = [get_weather_tool]
-    except ImportError:
-        tools = []
-
-    # Create agent with weather tool and system prompt
-    instructions = "You are a helpful assistant." + WEATHER_SYSTEM_PROMPT
-
-    agent = Agent(
-        name="Assistant",
-        instructions=instructions,
-        model=actual_model,
-        tools=tools,
-    )
-
-    # Use run_sync for synchronous, non-streaming execution
-    result = Runner.run_sync(agent, input=prompt)
-
-    return result.final_output
+    tool_calls = []
+    for item in result.new_items:
+        if isinstance(item, ToolCallItem):
+            raw = item.raw_item
+            name = getattr(raw, 'name', None)
+            arguments = getattr(raw, 'arguments', '{}')
+            try:
+                args_dict = json.loads(arguments) if isinstance(arguments, str) else arguments
+            except (json.JSONDecodeError, TypeError):
+                args_dict = {"raw": str(arguments)}
+            tool_calls.append({"name": name, "arguments": args_dict})
+    return tool_calls
