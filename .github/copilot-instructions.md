@@ -103,6 +103,35 @@ These versions should be maintained in `pyproject.toml`. When updating dependenc
 - **Eval tests**: Require MLflow running in Docker at localhost:5000
 - **Test execution**: Always run from host with `uv run pytest` (NOT inside container)
 
+## Evaluation Architecture (Two-Phase Pattern)
+
+All evals that invoke the production agent use a **two-phase pattern** to avoid deadlocks and orphaned traces.
+
+### Why It's Necessary
+
+`Runner.run_sync()` from the OpenAI Agents SDK uses `asyncio.run()` internally. When `mlflow.genai.evaluate()` calls a `predict_fn` from its worker threads, the nested event loop creation deadlocks. Additionally, autolog creates "orphaned" traces (AgentRunner.run spans without assessments) alongside the traces that `genai_evaluate` creates with scorer assessments attached.
+
+### The Pattern
+
+**Phase 1 — Manual prediction loop (autolog disabled):**
+- Call `mlflow.openai.autolog(disable=True)` before the loop
+- Iterate over dataset cases, calling `invoke_production_agent()` for each
+- Store results (response, latency, errors) in a list
+- Call `mlflow.openai.autolog()` to re-enable after the loop
+
+**Phase 2 — Scorer-only `genai_evaluate()` (creates traces with assessments):**
+- Build `eval_data` list with `inputs`, `outputs` (pre-computed), and `expectations`
+- Call `genai_evaluate(data=eval_data, scorers=[...])` — NO `predict_fn`, NO `mlflow_dataset`
+- This creates the only set of traces, each with scorer assessments attached
+
+### Reference Implementation
+
+`run_memory_write_evaluation()` in `eval/runner.py` was the first to use this pattern. `run_evaluation()` and `run_weather_evaluation()` follow the same structure.
+
+### Exception
+
+`run_memory_evaluation()` does not need the two-phase pattern because it queries the memory service directly (no agent invocation, no `Runner.run_sync()`).
+
 ## General
 
 - Prefer cross-platform commands (Windows/macOS/Linux).

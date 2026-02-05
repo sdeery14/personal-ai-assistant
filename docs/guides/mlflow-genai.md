@@ -1176,6 +1176,60 @@ with mlflow.start_span("chat") as span:
     # ... conversation logic
 ```
 
+### 9. Runner.run_sync() Deadlocks Inside genai_evaluate() Worker Threads
+
+`Runner.run_sync()` from the OpenAI Agents SDK calls `asyncio.run()` internally, which creates a new event loop. When `mlflow.genai.evaluate()` invokes a `predict_fn` from its worker threads, this nested event loop creation deadlocks because the thread's event loop state conflicts with asyncio's constraints.
+
+**Side effect:** Even when it doesn't fully deadlock, autolog creates "orphaned" traces — `AgentRunner.run` spans without scorer assessments — alongside the traces that `genai_evaluate` creates with assessments attached. This makes trace analysis confusing.
+
+**Solution:** Use a two-phase approach that separates agent invocation from scorer evaluation.
+
+❌ **Wrong — single-phase with predict_fn (deadlocks):**
+
+```python
+def predict_fn(question: str) -> str:
+    result = invoke_production_agent(question)  # Uses Runner.run_sync()
+    return result.final_output
+
+# This deadlocks in worker threads
+results = mlflow.genai.evaluate(
+    data=dataset,
+    predict_fn=predict_fn,  # Called from worker thread → deadlock
+    scorers=[quality_judge],
+)
+```
+
+✅ **Correct — two-phase pattern:**
+
+```python
+# Phase 1: Manual prediction loop with autolog disabled
+mlflow.openai.autolog(disable=True)
+
+predictions = []
+for case in dataset.cases:
+    result = invoke_production_agent(case.question)
+    predictions.append((case.question, result.final_output))
+
+mlflow.openai.autolog()  # Re-enable for Phase 2
+
+# Phase 2: Scorer-only genai_evaluate with pre-computed outputs
+eval_data = [
+    {
+        "inputs": {"question": q},
+        "outputs": {"response": response},
+        "expectations": {"rubric": case.rubric},
+    }
+    for q, response in predictions
+]
+
+results = mlflow.genai.evaluate(
+    data=eval_data,       # Pre-computed outputs
+    scorers=[quality_judge],  # No predict_fn needed
+)
+```
+
+This pattern is used by all agent-invoking evals in `eval/runner.py`: `run_evaluation()`, `run_weather_evaluation()`, and `run_memory_write_evaluation()`.
+
 ---
 
 ## Resources
@@ -1197,5 +1251,6 @@ with mlflow.start_span("chat") as span:
 
 | Date       | Change                                                         |
 | ---------- | -------------------------------------------------------------- |
+| 2026-02-04 | Add gotcha #9: Runner.run_sync() deadlock + two-phase solution |
 | 2026-01-28 | Add Agent Evaluation, Datasets, Scorers, Tracing, MCP, Serving |
 | 2026-01-28 | Initial guide created for Feature 002 planning                 |

@@ -188,34 +188,13 @@ def run_evaluation(
         records=mlflow_records,
     )
 
-    # Capture API key in closure for MLflow predict_fn
-    # MLflow doesn't pass environment variables, so we must explicitly capture them
+    # Capture API key for agent invocation
     api_key = settings.openai_api_key
 
     # Detect if this is a security dataset (has expected_behavior field)
     is_security_dataset = any(
         case.expected_behavior is not None for case in dataset.cases
     )
-
-    # Create predict function that wraps the production agent
-    # Note: Parameter name must match the key in inputs dict
-    def predict_fn(question: str) -> str:
-        """Predict function for mlflow.genai.evaluate using the production agent."""
-        import os
-
-        os.environ["OPENAI_API_KEY"] = api_key
-
-        try:
-            result = invoke_production_agent(
-                question, model=actual_model, api_key=api_key
-            )
-            return result.final_output
-        except InputGuardrailTripwireTriggered:
-            return "Your request cannot be processed due to security concerns. Please rephrase your message and try again."
-        except OutputGuardrailTripwireTriggered:
-            return "Previous content retracted due to safety concerns. Please try a different request."
-        except Exception as e:
-            return f"[ERROR: {type(e).__name__}: {str(e)}]"
 
     # Create judge
     quality_judge = create_quality_judge()
@@ -239,11 +218,60 @@ def run_evaluation(
             }
         )
 
-        # Run evaluation
+        # ============================================================
+        # PHASE 1: Manual prediction loop (autolog disabled)
+        # ============================================================
+        # Disable OpenAI autolog to prevent orphaned AgentRunner.run traces.
+        # Only Phase 2's genai_evaluate should create traces (with assessments).
+        mlflow.openai.autolog(disable=True)
+
+        case_predictions: list[tuple] = []  # (case, question, response, latency_ms)
+
+        if verbose:
+            print("Phase 1: Running agent predictions...")
+
         start_time = time.perf_counter()
+
+        for case in dataset.cases:
+            case_start = time.perf_counter()
+            try:
+                result = invoke_production_agent(
+                    case.user_prompt, model=actual_model, api_key=api_key
+                )
+                response = result.final_output
+            except InputGuardrailTripwireTriggered:
+                response = "Your request cannot be processed due to security concerns. Please rephrase your message and try again."
+            except OutputGuardrailTripwireTriggered:
+                response = "Previous content retracted due to safety concerns. Please try a different request."
+            except Exception as e:
+                response = f"[ERROR: {type(e).__name__}: {str(e)}]"
+
+            latency_ms = int((time.perf_counter() - case_start) * 1000)
+            case_predictions.append((case, case.user_prompt, response, latency_ms))
+
+            if verbose:
+                print(f"  {case.id}: predicted ({latency_ms}ms)")
+
+        # Re-enable autolog for Phase 2
+        mlflow.openai.autolog()
+
+        # ============================================================
+        # PHASE 2: Scorer-only genai_evaluate (creates traces with assessments)
+        # ============================================================
+        if verbose:
+            print("\nPhase 2: Running LLM judge scorer...")
+
+        # Build eval_data with pre-computed outputs
+        eval_data = []
+        for case, question, response, latency_ms in case_predictions:
+            eval_data.append({
+                "inputs": {"question": question},
+                "outputs": {"response": response},
+                "expectations": {"rubric": case.rubric},
+            })
+
         eval_results = genai_evaluate(
-            data=mlflow_dataset,
-            predict_fn=predict_fn,
+            data=eval_data,
             scorers=[quality_judge],
         )
         eval_duration_ms = int((time.perf_counter() - start_time) * 1000)
@@ -252,6 +280,7 @@ def run_evaluation(
         results, metrics = _process_eval_results(
             eval_results=eval_results,
             dataset=dataset,
+            case_predictions=case_predictions,
             pass_threshold=actual_pass_threshold,
             score_threshold=actual_score_threshold,
             verbose=verbose,
@@ -304,6 +333,7 @@ def _process_eval_results(
     dataset: GoldenDataset,
     pass_threshold: float,
     score_threshold: float,
+    case_predictions: list[tuple] | None = None,
     verbose: bool = False,
 ) -> tuple[list[EvalResult], EvalRunMetrics]:
     """
@@ -314,6 +344,9 @@ def _process_eval_results(
         dataset: Original dataset for case mapping
         pass_threshold: Pass rate threshold for overall decision
         score_threshold: Average score threshold for overall decision
+        case_predictions: Pre-computed predictions from Phase 1 as
+            list of (case, question, response, latency_ms) tuples.
+            Used to retrieve responses when genai_evaluate ran without predict_fn.
         verbose: Print per-case details
 
     Returns:
@@ -365,12 +398,17 @@ def _process_eval_results(
                 else:
                     score = int(score_value)
 
-            # Get response from trace
-            response_value = row.get("response", "")
-            if isinstance(response_value, dict):
-                response = response_value.get("content", str(response_value))
+            # Get response — prefer pre-computed from Phase 1, fall back to DataFrame
+            if case_predictions is not None and idx < len(case_predictions):
+                response = case_predictions[idx][2]
+                duration_ms = case_predictions[idx][3]
             else:
-                response = str(response_value)
+                response_value = row.get("response", "")
+                if isinstance(response_value, dict):
+                    response = response_value.get("content", str(response_value))
+                else:
+                    response = str(response_value)
+                duration_ms = 1000  # Placeholder when no Phase 1 data
 
             # Get justification from assessments or quality rationale
             justification = "No justification provided"
@@ -393,7 +431,7 @@ def _process_eval_results(
                 score=score,
                 passed=passed,
                 justification=str(justification),
-                duration_ms=1000,  # Placeholder; MLflow doesn't provide per-case timing
+                duration_ms=duration_ms,
             )
 
             results.append(result)
@@ -1478,26 +1516,8 @@ def run_weather_evaluation(
         records=mlflow_records,
     )
 
-    # Capture API key in closure for MLflow predict_fn
     api_key = settings.openai_api_key
     actual_model = settings.openai_model
-
-    # Create predict function that uses the production agent (includes weather tool)
-    # Note: Parameter name must match the key in inputs dict
-    def predict_fn(query: str) -> str:
-        """Predict function for weather evaluation using the production agent."""
-        import os
-        os.environ["OPENAI_API_KEY"] = api_key
-
-        try:
-            result = invoke_production_agent(
-                query, model=actual_model, api_key=api_key
-            )
-            return result.final_output
-        except (InputGuardrailTripwireTriggered, OutputGuardrailTripwireTriggered):
-            return "[ERROR: Guardrail triggered]"
-        except Exception as e:
-            return f"[ERROR: {type(e).__name__}: {str(e)}]"
 
     # Create custom scorer for weather behavior evaluation
     # Returns a simple boolean for pass/fail
@@ -1552,13 +1572,70 @@ def run_weather_evaluation(
             }
         )
 
-        # Run evaluation using mlflow.genai.evaluate() with agent
+        # ============================================================
+        # PHASE 1: Manual prediction loop (autolog disabled)
+        # ============================================================
+        # Disable OpenAI autolog to prevent orphaned AgentRunner.run traces.
+        # Only Phase 2's genai_evaluate should create traces (with assessments).
+        mlflow.openai.autolog(disable=True)
+
+        case_data: list[tuple] = []  # (case, query, response, latency_ms, error)
+
+        if verbose:
+            print("Phase 1: Running agent predictions...")
+
         start_time = time.perf_counter()
+
+        for case in dataset.cases:
+            case_start = time.perf_counter()
+            try:
+                result = invoke_production_agent(
+                    case.query, model=actual_model, api_key=api_key
+                )
+                response = result.final_output
+                latency_ms = int((time.perf_counter() - case_start) * 1000)
+                latencies.append(latency_ms)
+                case_data.append((case, case.query, response, latency_ms, None))
+            except (InputGuardrailTripwireTriggered, OutputGuardrailTripwireTriggered):
+                response = "[ERROR: Guardrail triggered]"
+                latency_ms = int((time.perf_counter() - case_start) * 1000)
+                latencies.append(latency_ms)
+                case_data.append((case, case.query, response, latency_ms, None))
+            except Exception as e:
+                response = f"[ERROR: {type(e).__name__}: {str(e)}]"
+                latency_ms = int((time.perf_counter() - case_start) * 1000)
+                latencies.append(latency_ms)
+                case_data.append((case, case.query, response, latency_ms, str(e)))
+
+            if verbose:
+                print(f"  {case.id}: predicted ({latency_ms}ms)")
+
+        # Re-enable autolog for Phase 2
+        mlflow.openai.autolog()
+
+        # ============================================================
+        # PHASE 2: Scorer-only genai_evaluate (creates traces with assessments)
+        # ============================================================
+        if verbose:
+            print("\nPhase 2: Running behavior scorer...")
+
+        # Build eval_data with pre-computed outputs
+        eval_data = []
+        for case, query, response, latency_ms, error in case_data:
+            eval_data.append({
+                "inputs": {"query": query},
+                "outputs": response,
+                "expectations": {
+                    "expected_behavior": case.expected_behavior,
+                    "expected_fields": case.expected_fields,
+                    "expected_error_keywords": getattr(case, "expected_error_keywords", []),
+                    "rubric": getattr(case, "rubric", ""),
+                },
+            })
 
         try:
             eval_results = genai_evaluate(
-                data=mlflow_dataset,
-                predict_fn=predict_fn,
+                data=eval_data,
                 scorers=[weather_behavior_scorer],
             )
             eval_duration_ms = int((time.perf_counter() - start_time) * 1000)
@@ -1567,16 +1644,7 @@ def run_weather_evaluation(
             results_df = eval_results.tables["eval_results"]
 
             for idx, (_, row) in enumerate(results_df.iterrows()):
-                case = dataset.cases[idx]
-
-                # Extract output (agent response) from row
-                # MLflow stores the response in the 'response' column
-                response = str(row.get("response", "") or "")
-
-                # Get execution duration from trace data
-                exec_duration = row.get("execution_duration", 0)
-                latency_ms = int(exec_duration) if exec_duration else int(eval_duration_ms / len(dataset.cases))
-                latencies.append(latency_ms)
+                case, query, response, latency_ms, error = case_data[idx]
 
                 # Extract scorer result (boolean) - column name is 'weather_behavior_scorer/value'
                 scorer_result = row.get("weather_behavior_scorer/value", None)
@@ -1613,6 +1681,7 @@ def run_weather_evaluation(
                     fields_missing=fields_missing,
                     latency_ms=latency_ms,
                     cache_hit=False,  # Cannot determine from agent response
+                    error=error,
                 )
                 results.append(result)
 
@@ -1621,21 +1690,26 @@ def run_weather_evaluation(
                     print(f"  {case.id}: {status} [{actual_behavior}] {latency_ms}ms")
 
         except Exception as e:
-            # If evaluation fails entirely, create error results
+            # If evaluation fails entirely, create error results from Phase 1 data
             if verbose:
-                print(f"  ⚠️ Evaluation failed: {str(e)}")
-            for case in dataset.cases:
+                print(f"  ⚠️ Scorer evaluation failed: {str(e)}")
+            for case, query, response, latency_ms, pred_error in case_data:
+                actual_behavior = _detect_weather_behavior(response, case)
+                response_lower = response.lower()
+                fields_found = [f for f in case.expected_fields if f.lower() in response_lower]
+                fields_missing = [f for f in case.expected_fields if f.lower() not in response_lower]
+
                 results.append(
                     WeatherEvalResult(
                         case_id=case.id,
                         query=case.query,
-                        response="",
+                        response=response,
                         expected_behavior=case.expected_behavior,
-                        actual_behavior="unknown",
+                        actual_behavior=actual_behavior,
                         behavior_match=False,
-                        fields_found=[],
-                        fields_missing=case.expected_fields,
-                        latency_ms=0,
+                        fields_found=fields_found,
+                        fields_missing=fields_missing,
+                        latency_ms=latency_ms,
                         cache_hit=False,
                         error=str(e),
                     )

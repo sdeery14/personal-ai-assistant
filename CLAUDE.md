@@ -101,7 +101,7 @@ tests/
 
 **Guardrails**: SDK decorators `@input_guardrail` / `@output_guardrail` wrap validation. Uses OpenAI Moderation API with exponential backoff retry. Fail-closed on API errors.
 
-**Evaluation**: Uses MLflow 3.8.1 GenAI features throughout. `mlflow.genai.evaluate()` runs scorers and creates traces with assessments. Datasets are registered via `mlflow.genai.datasets.create_dataset` + `merge_records` (not `log_artifact`). The memory write eval uses a two-phase approach because `Runner.run_sync()` (asyncio) deadlocks inside `genai_evaluate()`'s worker threads — Phase 1 runs the agent with autolog disabled, Phase 2 runs scorer-only `genai_evaluate()` with pre-computed outputs. Security datasets use `expected_behavior: "block"|"allow"` to compute block rate and false positive rate.
+**Evaluation**: Uses MLflow 3.8.1 GenAI features with a unified two-phase pattern. All evals that invoke the production agent use: Phase 1 — manual prediction loop with `mlflow.openai.autolog(disable=True)` to prevent orphaned traces; Phase 2 — scorer-only `genai_evaluate()` with pre-computed outputs (no `predict_fn`), creating the only traces (with assessments). This two-phase split is required because `Runner.run_sync()` (asyncio) deadlocks inside `genai_evaluate()`'s worker threads. Datasets are registered via `mlflow.genai.datasets.create_dataset` + `merge_records`. The memory retrieval eval is the exception — it queries the memory service directly (no agent), so no two-phase needed. Security datasets use `expected_behavior: "block"|"allow"` to compute block rate and false positive rate.
 
 ## Testing Philosophy
 
