@@ -17,12 +17,17 @@
 
 ### Session 2026-02-05
 
-*To be filled during planning discussion*
+- Q: How do we handle entity disambiguation (e.g., two people named "John")? → A: **Conservative merging** — entities with same name+type+user are considered the same. Different contexts create separate entities. Complex merging deferred to Feature 008.
 
-- Q: How do we handle entity disambiguation (e.g., two people named "John")? → A: TBD
-- Q: What confidence threshold for automatic entity creation? → A: TBD
-- Q: Should entities link to memory items or be separate? → A: TBD
-- Q: How do we handle entity mentions vs. entity creation? → A: TBD
+- Q: What confidence threshold for automatic entity creation? → A: **Same as memory writes** — ≥0.7 auto-create, 0.5-0.7 create with lower confidence flag, <0.5 skip.
+
+- Q: Should entities link to memory items or be separate? → A: **Separate but connected** — entities are distinct from memory items, but MENTIONED_IN relationships can link entities to episode memories.
+
+- Q: How do we handle entity mentions vs. entity creation? → A: **Implicit extraction** — entity extraction happens automatically during message processing (like memory writes), not via explicit tool calls.
+
+- Q: How do we handle pronouns ("he", "that project")? → A: **Skip in MVP** — only extract explicit named entities. Pronoun/coreference resolution is deferred.
+
+- Q: Should relationships be directional or bidirectional? → A: **Stored as directional** — but symmetric relationships (WORKS_WITH) can be queried bidirectionally by the tool.
 
 ---
 
@@ -332,10 +337,10 @@ Entity/relationship creation should respect similar rate limits as memory writes
 
 ---
 
-## Open Questions
+## Design Decisions (Resolved)
 
-1. How should the agent decide between creating a new entity vs. linking to an existing one with a similar name?
-2. Should entity extraction be a separate tool call or implicit in message processing?
-3. What's the right balance between extraction precision and recall?
-4. How do we handle pronouns and references ("he", "that project")?
-5. Should relationships be directional, bidirectional, or both depending on type?
+1. **Entity deduplication**: Same name + type + user_id = same entity. Context stored in aliases/description.
+2. **Extraction approach**: Implicit during message processing (no separate tool call).
+3. **Precision vs recall**: Favor precision (≥0.7 confidence threshold) — better to miss some than create noise.
+4. **Pronouns**: Skip in MVP — only explicit named entities extracted.
+5. **Relationship direction**: Stored as directional; symmetric types queryable both ways.
