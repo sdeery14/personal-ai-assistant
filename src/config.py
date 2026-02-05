@@ -51,6 +51,12 @@ class Settings(BaseSettings):
     weather_cache_ttl_forecast: int = 1800  # 30 minutes for forecast
     weather_api_timeout: int = 5  # 5 second timeout per request
 
+    # Knowledge Graph Configuration (Feature 007)
+    graph_entity_confidence_threshold: float = 0.7  # Min confidence for auto-extraction
+    graph_max_entities_per_conversation: int = 20  # Rate limit per conversation
+    graph_max_relationships_per_conversation: int = 30  # Rate limit per conversation
+    graph_max_entities_per_day: int = 100  # Daily rate limit per user
+
     @property
     def allowed_models_list(self) -> List[str]:
         """Parse comma-separated allowed models into a list."""
