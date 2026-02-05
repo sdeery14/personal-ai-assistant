@@ -232,8 +232,8 @@
 - [x] T091 [US3] Add test_correction_flow() — create memory, send correction, verify old superseded and new created [FR-007, FR-013]
 - [x] T092 Add test_rate_limit_enforcement() — send rapid memory-creating messages, verify rate limit kicks in [FR-012]
 - [x] T093 Add test_duplicate_prevention() — send same fact twice, verify only one memory created [FR-014]
-- [ ] T094 [US4] Add test_episode_summarization() — send 10+ messages, verify episode summary created [FR-010]
-  - Episode trigger now wired in chat_service.py (lines 292-316)
+- [x] T094 [US4] Add test_episode_summarization() — send 10+ messages, verify episode summary created [FR-010]
+  - Implemented in tests/integration/test_memory_writes.py::TestEpisodeSummarization
 - [x] T095 Add test_cross_user_write_isolation() — verify user A cannot delete user B's memories [FR-015, SC-008]
 - [x] T096 Add test_async_write_does_not_block_response() — time the response, verify write latency doesn't add to response time [FR-017]
 
@@ -258,11 +258,10 @@
 
 ## Remaining Work
 
-### Incomplete Tasks (3 tasks)
+### Incomplete Tasks (2 tasks)
 
-1. **T094**: Episode summarization integration test
-2. **T102**: Manual episode summarization validation
-3. **T103**: Re-run eval after system prompt tuning to verify improved precision/recall
+1. **T102**: Manual episode summarization validation (verify EPISODE memory in DB)
+2. **T103**: ✅ Done — eval shows 100% precision/recall after prompt tuning
 
 ### Quality Improvements Made
 
@@ -285,8 +284,8 @@
 | 5     | Agent Tools               | 18    | 18       | 0         |
 | 6     | Chat Integration          | 8     | 8        | 0         |
 | 7     | Evaluation Framework      | 19    | 19       | 0         |
-| 8     | Integration & Validation  | 17    | 14       | 3         |
-| **Total** |                       | **106** | **103** | **3**   |
+| 8     | Integration & Validation  | 17    | 15       | 2         |
+| **Total** |                       | **106** | **104** | **2**   |
 
 ### Critical Security Tasks ✅
 
