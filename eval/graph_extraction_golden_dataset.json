@@ -1,0 +1,200 @@
+{
+  "version": "1.0.0",
+  "description": "Golden dataset for evaluating knowledge graph entity extraction, relationship extraction, and graph query accuracy.",
+  "cases": [
+    {
+      "id": "entity-001-tool",
+      "user_prompt": "I'm building a web API using FastAPI and PostgreSQL.",
+      "expected_entities": [
+        {"name": "FastAPI", "type": "tool", "keywords": ["fastapi"]},
+        {"name": "PostgreSQL", "type": "tool", "keywords": ["postgresql", "postgres"]}
+      ],
+      "expected_relationships": [
+        {"type": "USES", "source_keywords": ["user", "person"], "target_keywords": ["fastapi"]},
+        {"type": "USES", "source_keywords": ["user", "person"], "target_keywords": ["postgresql", "postgres"]}
+      ],
+      "rubric": "Agent MUST extract FastAPI and PostgreSQL as tool entities. Should create USES relationships from the user to both tools.",
+      "tags": ["entity-extraction", "tool", "multiple"]
+    },
+    {
+      "id": "entity-002-person",
+      "user_prompt": "I work with Sarah Johnson on the backend team.",
+      "expected_entities": [
+        {"name": "Sarah Johnson", "type": "person", "keywords": ["sarah"]}
+      ],
+      "expected_relationships": [
+        {"type": "WORKS_WITH", "source_keywords": ["user", "person"], "target_keywords": ["sarah"]}
+      ],
+      "rubric": "Agent MUST extract Sarah Johnson as a person entity and create a WORKS_WITH relationship.",
+      "tags": ["entity-extraction", "person", "relationship"]
+    },
+    {
+      "id": "entity-003-project",
+      "user_prompt": "Project Phoenix is our main initiative this quarter. We're using React and TypeScript for the frontend.",
+      "expected_entities": [
+        {"name": "Project Phoenix", "type": "project", "keywords": ["phoenix"]},
+        {"name": "React", "type": "tool", "keywords": ["react"]},
+        {"name": "TypeScript", "type": "tool", "keywords": ["typescript"]}
+      ],
+      "expected_relationships": [
+        {"type": "USES", "source_keywords": ["phoenix"], "target_keywords": ["react"]},
+        {"type": "USES", "source_keywords": ["phoenix"], "target_keywords": ["typescript"]}
+      ],
+      "rubric": "Agent MUST extract Project Phoenix as a project entity and React/TypeScript as tool entities. Should create USES relationships from the project to the tools.",
+      "tags": ["entity-extraction", "project", "tool", "multiple"]
+    },
+    {
+      "id": "entity-004-organization",
+      "user_prompt": "I joined Acme Corp last year and I'm on the platform engineering team.",
+      "expected_entities": [
+        {"name": "Acme Corp", "type": "organization", "keywords": ["acme"]}
+      ],
+      "expected_relationships": [
+        {"type": "PART_OF", "source_keywords": ["user", "person"], "target_keywords": ["acme"]}
+      ],
+      "rubric": "Agent MUST extract Acme Corp as an organization entity. Should create a PART_OF relationship.",
+      "tags": ["entity-extraction", "organization"]
+    },
+    {
+      "id": "entity-005-concept",
+      "user_prompt": "We follow the microservices architecture pattern and practice test-driven development.",
+      "expected_entities": [
+        {"name": "microservices", "type": "concept", "keywords": ["microservices"]},
+        {"name": "test-driven development", "type": "concept", "keywords": ["test-driven", "tdd"]}
+      ],
+      "expected_relationships": [],
+      "rubric": "Agent MUST extract microservices and TDD as concept entities.",
+      "tags": ["entity-extraction", "concept"]
+    },
+    {
+      "id": "rel-001-prefers",
+      "user_prompt": "I prefer Python over JavaScript for backend work because of its readability.",
+      "expected_entities": [
+        {"name": "Python", "type": "tool", "keywords": ["python"]},
+        {"name": "JavaScript", "type": "tool", "keywords": ["javascript"]}
+      ],
+      "expected_relationships": [
+        {"type": "PREFERS", "source_keywords": ["user", "person"], "target_keywords": ["python"]}
+      ],
+      "rubric": "Agent MUST extract a PREFERS relationship for Python. Both Python and JavaScript should be extracted as tool entities.",
+      "tags": ["relationship-extraction", "prefers"]
+    },
+    {
+      "id": "rel-002-works-on",
+      "user_prompt": "I'm currently working on the data pipeline project to migrate our ETL to Apache Airflow.",
+      "expected_entities": [
+        {"name": "data pipeline", "type": "project", "keywords": ["data pipeline", "pipeline"]},
+        {"name": "Apache Airflow", "type": "tool", "keywords": ["airflow"]}
+      ],
+      "expected_relationships": [
+        {"type": "WORKS_ON", "source_keywords": ["user", "person"], "target_keywords": ["pipeline"]},
+        {"type": "USES", "source_keywords": ["pipeline"], "target_keywords": ["airflow"]}
+      ],
+      "rubric": "Agent MUST create a WORKS_ON relationship to the data pipeline project and a USES relationship from the project to Airflow.",
+      "tags": ["relationship-extraction", "works-on", "uses"]
+    },
+    {
+      "id": "rel-003-depends-on",
+      "user_prompt": "Our payment service depends on Stripe's API and Redis for caching.",
+      "expected_entities": [
+        {"name": "payment service", "type": "project", "keywords": ["payment"]},
+        {"name": "Stripe", "type": "tool", "keywords": ["stripe"]},
+        {"name": "Redis", "type": "tool", "keywords": ["redis"]}
+      ],
+      "expected_relationships": [
+        {"type": "DEPENDS_ON", "source_keywords": ["payment"], "target_keywords": ["stripe"]},
+        {"type": "DEPENDS_ON", "source_keywords": ["payment"], "target_keywords": ["redis"]}
+      ],
+      "rubric": "Agent MUST extract DEPENDS_ON relationships from the payment service to both Stripe and Redis.",
+      "tags": ["relationship-extraction", "depends-on"]
+    },
+    {
+      "id": "rel-004-decided",
+      "user_prompt": "We decided to use Kubernetes for container orchestration instead of Docker Swarm.",
+      "expected_entities": [
+        {"name": "Kubernetes", "type": "tool", "keywords": ["kubernetes", "k8s"]},
+        {"name": "Docker Swarm", "type": "tool", "keywords": ["docker swarm", "swarm"]}
+      ],
+      "expected_relationships": [
+        {"type": "DECIDED", "source_keywords": ["user", "person"], "target_keywords": ["kubernetes", "k8s"]}
+      ],
+      "rubric": "Agent MUST extract a DECIDED relationship for Kubernetes. Both Kubernetes and Docker Swarm should be extracted as tools.",
+      "tags": ["relationship-extraction", "decided"]
+    },
+    {
+      "id": "rel-005-knows",
+      "user_prompt": "I know Dr. Emily Chen from the AI research conference last year. She's a machine learning expert at DeepMind.",
+      "expected_entities": [
+        {"name": "Emily Chen", "type": "person", "keywords": ["emily", "chen"]},
+        {"name": "DeepMind", "type": "organization", "keywords": ["deepmind"]}
+      ],
+      "expected_relationships": [
+        {"type": "KNOWS", "source_keywords": ["user", "person"], "target_keywords": ["emily", "chen"]},
+        {"type": "PART_OF", "source_keywords": ["emily", "chen"], "target_keywords": ["deepmind"]}
+      ],
+      "rubric": "Agent MUST extract Emily Chen as a person, DeepMind as an organization, and create KNOWS and PART_OF relationships.",
+      "tags": ["relationship-extraction", "knows", "part-of"]
+    },
+    {
+      "id": "negative-001-no-entities",
+      "user_prompt": "Can you help me debug this error? I'm getting a null pointer exception.",
+      "expected_entities": [],
+      "expected_relationships": [],
+      "rubric": "Agent should NOT extract any entities or relationships from this generic debugging request. No save_entity or save_relationship tool calls expected.",
+      "tags": ["negative", "no-extraction"]
+    },
+    {
+      "id": "negative-002-casual",
+      "user_prompt": "Thanks for the help! That fixed my issue.",
+      "expected_entities": [],
+      "expected_relationships": [],
+      "rubric": "Agent should NOT extract any entities from casual conversation. No save_entity or save_relationship tool calls expected.",
+      "tags": ["negative", "no-extraction"]
+    },
+    {
+      "id": "negative-003-ambiguous",
+      "user_prompt": "I need to figure out the best approach for this problem.",
+      "expected_entities": [],
+      "expected_relationships": [],
+      "rubric": "Agent should NOT extract entities from vague statements with no concrete entity mentions. No save_entity or save_relationship tool calls expected.",
+      "tags": ["negative", "no-extraction"]
+    },
+    {
+      "id": "complex-001-multi-entity",
+      "user_prompt": "On our team, Mike handles the React frontend, Lisa manages the Django backend, and I coordinate between both on Project Atlas.",
+      "expected_entities": [
+        {"name": "Mike", "type": "person", "keywords": ["mike"]},
+        {"name": "Lisa", "type": "person", "keywords": ["lisa"]},
+        {"name": "React", "type": "tool", "keywords": ["react"]},
+        {"name": "Django", "type": "tool", "keywords": ["django"]},
+        {"name": "Project Atlas", "type": "project", "keywords": ["atlas"]}
+      ],
+      "expected_relationships": [
+        {"type": "WORKS_WITH", "source_keywords": ["user", "person"], "target_keywords": ["mike"]},
+        {"type": "WORKS_WITH", "source_keywords": ["user", "person"], "target_keywords": ["lisa"]},
+        {"type": "WORKS_ON", "source_keywords": ["user", "person"], "target_keywords": ["atlas"]}
+      ],
+      "rubric": "Agent MUST extract multiple people, tools, and the project. Should create appropriate WORKS_WITH and WORKS_ON relationships.",
+      "tags": ["complex", "multi-entity", "multi-relationship"]
+    },
+    {
+      "id": "complex-002-mixed-types",
+      "user_prompt": "At Google, I use TensorFlow and PyTorch for the recommendation engine project. My mentor Dr. Smith suggested we adopt the transformer architecture.",
+      "expected_entities": [
+        {"name": "Google", "type": "organization", "keywords": ["google"]},
+        {"name": "TensorFlow", "type": "tool", "keywords": ["tensorflow"]},
+        {"name": "PyTorch", "type": "tool", "keywords": ["pytorch"]},
+        {"name": "recommendation engine", "type": "project", "keywords": ["recommendation"]},
+        {"name": "Dr. Smith", "type": "person", "keywords": ["smith"]},
+        {"name": "transformer", "type": "concept", "keywords": ["transformer"]}
+      ],
+      "expected_relationships": [
+        {"type": "PART_OF", "source_keywords": ["user", "person"], "target_keywords": ["google"]},
+        {"type": "USES", "source_keywords": ["user", "person"], "target_keywords": ["tensorflow"]},
+        {"type": "USES", "source_keywords": ["user", "person"], "target_keywords": ["pytorch"]}
+      ],
+      "rubric": "Agent MUST extract entities of multiple types (organization, tools, project, person, concept) and create appropriate relationships.",
+      "tags": ["complex", "mixed-types"]
+    }
+  ]
+}

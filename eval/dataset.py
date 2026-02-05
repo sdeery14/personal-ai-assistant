@@ -14,6 +14,8 @@ from pydantic import ValidationError
 
 from eval.models import (
     GoldenDataset,
+    GraphExtractionGoldenDataset,
+    GraphExtractionTestCase,
     MemoryGoldenDataset,
     MemoryTestCase,
     MemoryWriteGoldenDataset,
@@ -500,6 +502,95 @@ def get_memory_write_case_by_id(
     dataset: MemoryWriteGoldenDataset, case_id: str
 ) -> MemoryWriteTestCase | None:
     """Get a specific memory write test case by ID."""
+    for case in dataset.cases:
+        if case.id == case_id:
+            return case
+    return None
+
+
+# Graph Extraction dataset loading functions (Feature 007)
+
+
+def is_graph_extraction_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a graph extraction evaluation dataset.
+
+    Args:
+        path: Path to the dataset file.
+
+    Returns:
+        True if the file appears to be a graph extraction dataset.
+    """
+    path = Path(path)
+
+    # Check filename
+    if "graph_extraction" in path.name.lower():
+        return True
+
+    # Check content for graph-specific fields
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        cases = data.get("cases", [])
+        if cases and "expected_entities" in cases[0] and "expected_relationships" in cases[0]:
+            return True
+    except (json.JSONDecodeError, OSError, KeyError):
+        pass
+
+    return False
+
+
+def load_graph_extraction_dataset(path: str | Path) -> GraphExtractionGoldenDataset:
+    """Load and validate a graph extraction evaluation dataset from a JSON file.
+
+    Args:
+        path: Path to the graph extraction golden dataset JSON file.
+
+    Returns:
+        Validated GraphExtractionGoldenDataset instance.
+
+    Raises:
+        DatasetError: If the file cannot be read or validation fails.
+    """
+    path = Path(path)
+
+    if not path.exists():
+        raise DatasetError(f"Graph extraction dataset file not found: {path}")
+
+    if not path.is_file():
+        raise DatasetError(f"Graph extraction dataset path is not a file: {path}")
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise DatasetError(f"Invalid JSON in graph extraction dataset file: {e}")
+    except OSError as e:
+        raise DatasetError(f"Failed to read graph extraction dataset file: {e}")
+
+    if "cases" not in data:
+        raise DatasetError("Graph extraction dataset missing required field: 'cases'")
+
+    for idx, case in enumerate(data.get("cases", [])):
+        required_fields = ["id", "user_prompt", "rubric"]
+        missing = [f for f in required_fields if f not in case]
+        if missing:
+            raise DatasetError(
+                f"Graph extraction dataset case {idx} missing required fields: {missing}"
+            )
+
+    try:
+        dataset = GraphExtractionGoldenDataset.model_validate(data)
+    except ValidationError as e:
+        errors = _format_validation_errors(e)
+        raise DatasetError(f"Graph extraction dataset validation failed:\n{errors}")
+
+    return dataset
+
+
+def get_graph_extraction_case_by_id(
+    dataset: GraphExtractionGoldenDataset, case_id: str
+) -> GraphExtractionTestCase | None:
+    """Get a specific graph extraction test case by ID."""
     for case in dataset.cases:
         if case.id == case_id:
             return case

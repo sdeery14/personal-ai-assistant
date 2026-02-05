@@ -212,30 +212,30 @@
 
 ---
 
-## Phase 8: Evaluation Framework ⏳
+## Phase 8: Evaluation Framework ✅
 
 ### Golden Dataset
 
-- [ ] T115 Create `eval/graph_extraction_golden_dataset.json`
-- [ ] T116 Add 5+ entity extraction test cases (various entity types)
-- [ ] T117 Add 5+ relationship extraction test cases (various relationship types)
-- [ ] T118 Add 5+ graph query test cases (relationship questions)
-- [ ] T119 Add negative test cases (no entities to extract)
+- [x] T115 Create `eval/graph_extraction_golden_dataset.json`
+- [x] T116 Add 5+ entity extraction test cases (various entity types)
+- [x] T117 Add 5+ relationship extraction test cases (various relationship types)
+- [x] T118 Add 5+ graph query test cases (relationship questions)
+- [x] T119 Add negative test cases (no entities to extract)
 
 ### Eval Runner Integration
 
-- [ ] T120 Add graph extraction eval to runner.py
-- [ ] T121 Implement entity extraction precision/recall metrics
-- [ ] T122 Implement relationship extraction precision/recall metrics
-- [ ] T123 Implement graph query relevance scoring
+- [x] T120 Add graph extraction eval to runner.py
+- [x] T121 Implement entity extraction precision/recall metrics
+- [x] T122 Implement relationship extraction precision/recall metrics
+- [x] T123 Implement graph query relevance scoring
 
 ### Judge Scorer
 
-- [ ] T124 Create `eval/graph_extraction_judge.py`
-- [ ] T125 Implement entity extraction quality scorer
-- [ ] T126 Implement relationship extraction quality scorer
+- [x] T124 Create `eval/graph_extraction_judge.py`
+- [x] T125 Implement entity extraction quality scorer
+- [x] T126 Implement relationship extraction quality scorer
 
-**Checkpoint**: Evaluation framework complete for graph features. ⏳
+**Checkpoint**: Evaluation framework complete for graph features. ✅
 
 ---
 
@@ -276,9 +276,9 @@
 | 5 | Relationship Tool | 17 | 17 ✅ |
 | 6 | Query Tool | 18 | 17 ✅ (1 optional) |
 | 7 | Chat Integration | 11 | 11 ✅ |
-| 8 | Evaluation | 12 | 0 ⏳ |
+| 8 | Evaluation | 12 | 12 ✅ |
 | 9 | Integration & Validation | 14 | 10 ✅ |
-| **Total** | | **140** | **123/140** |
+| **Total** | | **140** | **135/140** |
 
 ---
 
@@ -308,7 +308,7 @@ Phase 5 (Relationship) ✅ ─┤
     ↓                      │
 Phase 6 (Query Tool) ✅ ───┘
                            ↓
-                      Phase 8 (Eval) ⏳
+                      Phase 8 (Eval) ✅
                            ↓
                       Phase 9 (Validation) ⏳
 ```
