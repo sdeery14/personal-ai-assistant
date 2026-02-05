@@ -23,6 +23,24 @@ def embedding_to_pgvector(embedding: list[float] | None) -> str | None:
     return "[" + ",".join(str(x) for x in embedding) + "]"
 
 
+def pgvector_to_embedding(pgvector_str: str | None) -> list[float] | None:
+    """Convert pgvector string format back to embedding list.
+
+    asyncpg returns pgvector columns as strings like '[0.1,0.2,...]'.
+    This parses them back to Python lists.
+    """
+    if pgvector_str is None:
+        return None
+    # Handle both string and list (in case asyncpg behavior changes)
+    if isinstance(pgvector_str, list):
+        return pgvector_str
+    # Strip brackets and split by comma
+    inner = pgvector_str.strip("[]")
+    if not inner:
+        return []
+    return [float(x) for x in inner.split(",")]
+
+
 class ConversationService:
     """Service for conversation and message CRUD operations."""
 
@@ -213,7 +231,7 @@ class ConversationService:
                 conversation_id=row["conversation_id"],
                 role=MessageRole(row["role"]),
                 content=row["content"],
-                embedding=row["embedding"],
+                embedding=pgvector_to_embedding(row["embedding"]),
                 correlation_id=row["correlation_id"],
                 created_at=row["created_at"],
             )

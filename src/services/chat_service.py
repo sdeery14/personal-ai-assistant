@@ -262,6 +262,7 @@ class ChatService:
                         sequence=sequence,
                         is_final=False,
                         correlation_id=correlation_id,
+                        conversation_id=str(conversation.id) if conversation else None,
                     )
 
                     # Accumulate response for persistence
@@ -286,6 +287,7 @@ class ChatService:
                 sequence=sequence,
                 is_final=True,
                 correlation_id=correlation_id,
+                conversation_id=str(conversation.id) if conversation else None,
             )
             yield final_chunk
 

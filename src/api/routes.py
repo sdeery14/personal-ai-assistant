@@ -91,6 +91,7 @@ async def generate_sse_stream(
             "sequence": chunk.sequence,
             "is_final": chunk.is_final,
             "correlation_id": str(chunk.correlation_id),
+            "conversation_id": chunk.conversation_id,
         }
         yield f"data: {json.dumps(chunk_dict)}\n\n"
 

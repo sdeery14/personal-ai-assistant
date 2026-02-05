@@ -14,6 +14,7 @@ class StreamChunk(BaseModel):
         sequence: Zero-indexed chunk number
         is_final: True if this is the last chunk
         correlation_id: Request tracking ID (UUID4)
+        conversation_id: Conversation ID for continuing the thread
         error_type: Optional error type for retraction chunks (e.g., "output_guardrail_violation")
         message: Optional user-facing message for retraction chunks
         redacted_length: Optional length of content that was redacted/retracted
@@ -23,6 +24,7 @@ class StreamChunk(BaseModel):
     sequence: int = Field(ge=0)
     is_final: bool = False
     correlation_id: UUID
+    conversation_id: Optional[str] = None
     error_type: Optional[str] = None
     message: Optional[str] = None
     redacted_length: Optional[int] = None
