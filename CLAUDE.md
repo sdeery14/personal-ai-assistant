@@ -101,7 +101,12 @@ tests/
 
 **Guardrails**: SDK decorators `@input_guardrail` / `@output_guardrail` wrap validation. Uses OpenAI Moderation API with exponential backoff retry. Fail-closed on API errors.
 
-**Evaluation**: Uses MLflow 3.8.1 GenAI features with a unified two-phase pattern. All evals that invoke the production agent use: Phase 1 — manual prediction loop with `mlflow.openai.autolog(disable=True)` to prevent orphaned traces; Phase 2 — scorer-only `genai_evaluate()` with pre-computed outputs (no `predict_fn`), creating the only traces (with assessments). This two-phase split is required because `Runner.run_sync()` (asyncio) deadlocks inside `genai_evaluate()`'s worker threads. Datasets are registered via `mlflow.genai.datasets.create_dataset` + `merge_records`. The memory retrieval eval is the exception — it queries the memory service directly (no agent), so no two-phase needed. Security datasets use `expected_behavior: "block"|"allow"` to compute block rate and false positive rate.
+**Evaluation**: Uses MLflow 3.8.1 GenAI features with a unified two-phase pattern. All evals that invoke the production agent use: Phase 1 — manual prediction loop with `mlflow.openai.autolog(disable=True)` to prevent orphaned traces; Phase 2 — scorer-only `genai_evaluate()` with pre-computed outputs (no `predict_fn`), creating the only traces (with assessments). This two-phase split is required because `Runner.run_sync()` (asyncio) deadlocks inside `genai_evaluate()`'s worker threads. Datasets are registered via `mlflow.genai.datasets.create_dataset` + `merge_records`. Eval types:
+- **Quality evals**: LLM judge scores response quality against rubrics
+- **Security evals**: Use `expected_behavior: "block"|"allow"` to compute block rate and false positive rate
+- **Memory retrieval eval**: Queries memory service directly (no agent), no two-phase needed
+- **Memory write eval**: Phase 1 extracts `save_memory_tool`/`delete_memory_tool` calls from agent, Phase 2 runs precision/recall scorers + LLM judge. Metrics: extraction_precision, extraction_recall, false_positive_rate, judge_pass_rate
+- **Weather eval**: Tests tool calling behavior with `weather_behavior_scorer`
 
 ## Testing Philosophy
 
@@ -123,8 +128,8 @@ Optional: `OPENAI_MODEL` (default: gpt-4o), `MAX_TOKENS` (default: 2000), `TIMEO
 
 ## Feature Roadmap Context
 
-Current: Features 001 (Core API) and 002 (Eval Framework) complete, 003 (Security Guardrails) complete.
+Current: Features 001 (Core API), 002 (Eval Framework), 003 (Security Guardrails), 004 (Memory v1 Read-Only), 005 (Weather Tool) complete. Feature 006 (Memory v2 Auto-Writes) in progress.
 
-Future: Memory retrieval (004), Weather tool (005), Voice (006), Edge client (007), Google integrations (008).
+Future: Entity relationships (007), Background jobs (008), Voice, Edge client, Google integrations.
 
 Each feature follows: spec → plan → tasks → implementation → eval coverage.

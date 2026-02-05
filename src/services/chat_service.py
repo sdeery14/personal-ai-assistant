@@ -32,30 +32,44 @@ When using retrieved memories:
 """
 
 MEMORY_WRITE_SYSTEM_PROMPT = """
-You have access to memory save and delete tools to remember important information about the user.
+You MUST use save_memory_tool to remember important user information. This is a core responsibility.
 
-When to save memories:
-- User shares personal facts (name, location, job, family, pets)
-- User expresses preferences (likes, dislikes, tool preferences, communication style)
-- User makes decisions or commitments
-- User shares project context or goals worth remembering
+ALWAYS CALL save_memory_tool when the user shares:
+- Personal facts: name, location, job/role, company, family members, pets, hobbies
+  Example: "I'm a software engineer at Google" → CALL save_memory_tool(content="User is a software engineer at Google", memory_type="fact", confidence=0.95)
+- Preferences: likes, dislikes, tool preferences, editor settings, formatting preferences
+  Example: "I prefer dark mode and tabs over spaces" → CALL save_memory_tool for EACH preference separately
+- Decisions: technology choices, commitments, plans, project decisions
+  Example: "I've decided to use PostgreSQL" → CALL save_memory_tool(content="User decided to use PostgreSQL for their database", memory_type="decision", confidence=0.95)
+- Project context: what they're building, tech stack, goals
+  Example: "I'm building a finance app with React Native" → CALL save_memory_tool(content="User is building a personal finance app using React Native", memory_type="note", confidence=0.9)
 
-Confidence guidelines:
-- 0.9-1.0: Explicitly stated ("My name is...", "I prefer...", "I decided to...")
-- 0.7-0.9: Strongly implied from context
-- 0.5-0.7: Somewhat uncertain - ask user to confirm before saving
-- Below 0.5: Too uncertain - do not save
+DO NOT SAVE trivial content:
+- Greetings: "Hello", "Hi there", "How are you?"
+- Thanks: "Thanks!", "Thank you for your help"
+- Simple acknowledgments: "OK", "Got it", "Sounds good"
+- Uncertain/hypothetical: "I might...", "I'm thinking maybe...", "not sure yet"
 
-When to delete memories:
-- User says something contradicts a stored memory (save the correction, delete the old)
-- User explicitly asks to forget something
-- User indicates information is outdated
+Confidence scoring:
+- 0.9-1.0: Explicit statements ("My name is...", "I live in...", "I prefer...", "I've decided...")
+- 0.8-0.9: Clear implications ("I'm building X with Y" = tech decisions)
+- 0.7-0.8: Reasonable inference with context
 
-Important rules:
-- Never save trivial conversational content ("hello", "thanks", etc.)
-- Never save the user's messages verbatim - extract the key information
-- For corrections, save the new information and delete the old
-- Acknowledge when you save or delete a memory naturally in your response
+Memory types:
+- "fact": Personal info (name, location, job, family, pets)
+- "preference": Likes, dislikes, settings, style choices
+- "decision": Explicit choices, commitments, selections
+- "note": Project context, goals, background
+
+For CORRECTIONS (user updates info):
+1. SAVE the new information with save_memory_tool
+2. DELETE the old with delete_memory_tool
+Example: "Actually I moved to Seattle" → save Seattle location, delete old location
+
+For DELETIONS:
+- Use delete_memory_tool when user says "forget", "remove", "delete"
+
+CRITICAL: Call save_memory_tool for EACH distinct piece of memorable information. Multiple facts = multiple tool calls.
 """
 
 WEATHER_SYSTEM_PROMPT = """
