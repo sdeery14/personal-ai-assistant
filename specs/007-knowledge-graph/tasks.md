@@ -239,7 +239,7 @@
 
 ---
 
-## Phase 9: Integration Tests & Manual Validation ⏳
+## Phase 9: Integration Tests & Manual Validation ✅
 
 ### Integration Tests
 
@@ -258,10 +258,10 @@
 - [x] T136 Send message: "I work with Sarah on the backend" → verify relationship extraction
 - [x] T137 Ask "What tools do I use?" → verify graph query returns FastAPI
 - [x] T138 Ask "Who do I work with?" → verify graph query returns Sarah
-- [ ] T139 Run eval: `uv run python -m eval --verbose`
-- [ ] T140 Check MLflow at http://localhost:5000 — verify graph metrics logged
+- [x] T139 Run eval: `uv run python -m eval --verbose`
+- [x] T140 Check MLflow at http://localhost:5000 — verify graph metrics logged
 
-**Checkpoint**: Feature complete — tests pass, manual validation confirmed. ⏳
+**Checkpoint**: Feature complete — tests pass, manual validation confirmed. ✅
 
 ---
 
@@ -277,8 +277,8 @@
 | 6 | Query Tool | 18 | 17 ✅ (1 optional) |
 | 7 | Chat Integration | 11 | 11 ✅ |
 | 8 | Evaluation | 12 | 12 ✅ |
-| 9 | Integration & Validation | 14 | 10 ✅ |
-| **Total** | | **140** | **135/140** |
+| 9 | Integration & Validation | 14 | 14 ✅ |
+| **Total** | | **140** | **139/140** |
 
 ---
 
