@@ -2,14 +2,21 @@
 Sync wrapper for invoking the production agent during evaluation.
 
 This module provides a synchronous interface to invoke the production
-ChatService agent using Runner.run_sync(). The agent configuration
-(tools, guardrails, instructions) comes from ChatService.create_agent(),
-ensuring the eval tests the exact same agent as production.
+ChatService agent using asyncio.run() wrapping Runner.run(). The agent
+configuration (tools, guardrails, instructions) comes from
+ChatService.create_agent(), ensuring the eval tests the exact same agent
+as production.
+
+Database initialization and teardown is handled per invocation because
+asyncpg.Pool is bound to the event loop that created it — and each
+asyncio.run() creates a fresh loop. The ~50ms overhead per case is
+negligible vs. LLM API latency.
 
 MLflow tracing is enabled via mlflow.openai.autolog() to capture
 detailed execution traces during evaluation.
 """
 
+import asyncio
 import json
 import os
 from uuid import uuid4
@@ -28,6 +35,9 @@ from eval.config import get_eval_settings
 # Enable MLflow auto-tracing for OpenAI calls
 # This captures traces for debugging failed cases and enables future trace-based scorers
 mlflow.openai.autolog()
+
+# Track whether migrations have been run (idempotent, only need to run once per process)
+_db_migrated = False
 
 
 def invoke_production_agent(
@@ -77,7 +87,29 @@ def invoke_production_agent(
         "conversation_id": None,
     }
 
-    return Runner.run_sync(agent, input=prompt, context=context, max_turns=max_turns)
+    async def _run():
+        global _db_migrated
+        from src.database import init_database, run_migrations, close_database
+
+        try:
+            await init_database()
+            if not _db_migrated:
+                await run_migrations()
+                _db_migrated = True
+        except Exception:
+            pass  # Graceful degradation — tools will fail individually
+
+        try:
+            return await Runner.run(
+                agent, input=prompt, context=context, max_turns=max_turns
+            )
+        finally:
+            try:
+                await close_database()
+            except Exception:
+                pass
+
+    return asyncio.run(_run())
 
 
 def extract_tool_calls(result: RunResult) -> list[dict]:

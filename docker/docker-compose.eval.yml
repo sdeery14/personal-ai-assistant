@@ -1,0 +1,26 @@
+name: eval
+services:
+  eval:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        INSTALL_DEV: "true"
+    container_name: eval-runner
+    env_file:
+      - ../.env
+    environment:
+      - POSTGRES_URL=postgresql://assistant:assistant_dev_password@assistant-postgres:5432/assistant
+      - REDIS_URL=redis://assistant-redis:6379/0
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+    networks:
+      - assistant_default
+      - mlflow_default
+    entrypoint: ["uv", "run", "python", "-m", "eval"]
+    command: []
+
+networks:
+  assistant_default:
+    external: true
+  mlflow_default:
+    external: true

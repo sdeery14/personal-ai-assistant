@@ -51,6 +51,15 @@ uv run python -m eval --dry-run
 
 # Run eval with verbose output
 uv run python -m eval --verbose
+
+# Run eval inside Docker (requires both API and MLflow stacks running)
+docker compose -f docker/docker-compose.eval.yml run --rm eval --dataset eval/graph_extraction_golden_dataset.json --verbose
+
+# Dry-run eval in Docker
+docker compose -f docker/docker-compose.eval.yml run --rm eval --dry-run
+
+# Rebuild eval container after code changes
+docker compose -f docker/docker-compose.eval.yml build
 ```
 
 ### Dependency Management

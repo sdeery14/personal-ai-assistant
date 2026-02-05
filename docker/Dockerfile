@@ -12,8 +12,14 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Copy dependency files and README (needed by hatchling)
 COPY pyproject.toml uv.lock README.md ./
 
-# Install dependencies using uv (no dev dependencies)
-RUN uv sync --frozen --no-dev
+# Install dependencies using uv
+# Set INSTALL_DEV=true to include dev dependencies (e.g., for eval runner)
+ARG INSTALL_DEV=false
+RUN if [ "$INSTALL_DEV" = "true" ]; then \
+        uv sync --frozen; \
+    else \
+        uv sync --frozen --no-dev; \
+    fi
 
 # Copy application code
 COPY src/ ./src/
