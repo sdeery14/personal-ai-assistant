@@ -125,9 +125,7 @@ Introduce a safe, real-world external tool.
 
 ---
 
-## Upcoming Features
-
-### Feature 006 – Memory v2 (Automatic Writes)
+### Feature 006 – Memory v2 (Automatic Writes) ✅
 
 > _Implements Memory v2 from [vision-memory.md](vision-memory.md)_
 
@@ -152,7 +150,11 @@ Allow the assistant to remember important information automatically.
 - Background jobs
 - Proactive suggestions
 
+**Status:** Complete (spec `006-memory-auto-writes`)
+
 ---
+
+## Upcoming Features
 
 ### Feature 007 – Knowledge Graph
 

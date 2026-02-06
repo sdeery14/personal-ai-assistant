@@ -409,3 +409,111 @@ class RedisService:
         except Exception as e:
             logger.warning("redis_set_weather_cache_failed", error=str(e))
             return False
+
+    # Knowledge Graph rate limit methods (Feature 007)
+
+    async def check_graph_entity_rate_limit(
+        self, user_id: str, conversation_id: Optional[str] = None
+    ) -> tuple[bool, Optional[str]]:
+        """Check entity extraction rate limits.
+
+        Args:
+            user_id: User identifier
+            conversation_id: Optional conversation identifier
+
+        Returns:
+            Tuple of (allowed: bool, reason: Optional[str])
+        """
+        client = await get_redis()
+        if client is None:
+            return True, None
+
+        try:
+            # Check per-conversation limit if conversation_id provided
+            if conversation_id:
+                conv_key = f"graph_entity:conv:{conversation_id}"
+                conv_count = await client.get(conv_key)
+                limit = self.settings.graph_max_entities_per_conversation
+
+                if conv_count and int(conv_count) >= limit:
+                    return False, f"Max {limit} entities per conversation"
+
+            # Check daily limit
+            daily_key = f"graph_entity:daily:{user_id}"
+            daily_count = await client.get(daily_key)
+            daily_limit = self.settings.graph_max_entities_per_day
+
+            if daily_count and int(daily_count) >= daily_limit:
+                return False, f"Max {daily_limit} entities per day"
+
+            # Increment counters
+            if conversation_id:
+                conv_key = f"graph_entity:conv:{conversation_id}"
+                await client.incr(conv_key)
+                # No TTL for conversation - lasts as long as conversation is active
+
+            await client.incr(daily_key)
+            # Set TTL on daily key if it's new
+            ttl = await client.ttl(daily_key)
+            if ttl == -1:  # No TTL set
+                await client.expire(daily_key, 86400)  # 24 hours
+
+            return True, None
+
+        except Exception as e:
+            logger.warning("redis_graph_entity_rate_limit_failed", error=str(e))
+            return True, None
+
+    async def check_graph_relationship_rate_limit(
+        self, user_id: str, conversation_id: Optional[str] = None
+    ) -> tuple[bool, Optional[str]]:
+        """Check relationship extraction rate limits.
+
+        Args:
+            user_id: User identifier
+            conversation_id: Optional conversation identifier
+
+        Returns:
+            Tuple of (allowed: bool, reason: Optional[str])
+        """
+        client = await get_redis()
+        if client is None:
+            return True, None
+
+        try:
+            # Check per-conversation limit if conversation_id provided
+            if conversation_id:
+                conv_key = f"graph_rel:conv:{conversation_id}"
+                conv_count = await client.get(conv_key)
+                limit = self.settings.graph_max_relationships_per_conversation
+
+                if conv_count and int(conv_count) >= limit:
+                    return False, f"Max {limit} relationships per conversation"
+
+            # Increment counter
+            if conversation_id:
+                conv_key = f"graph_rel:conv:{conversation_id}"
+                await client.incr(conv_key)
+
+            return True, None
+
+        except Exception as e:
+            logger.warning("redis_graph_relationship_rate_limit_failed", error=str(e))
+            return True, None
+
+
+# Module-level convenience functions for tools
+async def check_graph_entity_rate_limit(
+    user_id: str, conversation_id: Optional[str] = None
+) -> tuple[bool, Optional[str]]:
+    """Check entity extraction rate limits."""
+    service = RedisService()
+    return await service.check_graph_entity_rate_limit(user_id, conversation_id)
+
+
+async def check_graph_relationship_rate_limit(
+    user_id: str, conversation_id: Optional[str] = None
+) -> tuple[bool, Optional[str]]:
+    """Check relationship extraction rate limits."""
+    service = RedisService()
+    return await service.check_graph_relationship_rate_limit(user_id, conversation_id)

@@ -612,3 +612,170 @@ class WeatherMetrics(BaseModel):
         ...,
         description="True if success_rate >= 0.95 AND latency_p95 < 3000ms",
     )
+
+
+# Graph Extraction models for Feature 007 evaluation
+
+
+class GraphExpectedEntity(BaseModel):
+    """An expected entity to be extracted."""
+
+    name: str = Field(..., description="Expected entity name")
+    type: str = Field(
+        ...,
+        pattern=r"^(person|project|tool|concept|organization)$",
+        description="Expected entity type",
+    )
+    keywords: list[str] = Field(
+        ...,
+        min_length=1,
+        description="Keywords to match against extracted entity names",
+    )
+
+
+class GraphExpectedRelationship(BaseModel):
+    """An expected relationship to be extracted."""
+
+    type: str = Field(
+        ...,
+        pattern=r"^(USES|PREFERS|DECIDED|WORKS_ON|WORKS_WITH|KNOWS|DEPENDS_ON|PART_OF)$",
+        description="Expected relationship type",
+    )
+    source_keywords: list[str] = Field(
+        default_factory=list,
+        description="Keywords to match against source entity name",
+    )
+    target_keywords: list[str] = Field(
+        default_factory=list,
+        description="Keywords to match against target entity name",
+    )
+
+
+class GraphExtractionTestCase(BaseModel):
+    """A test case for graph extraction evaluation."""
+
+    id: str = Field(
+        ...,
+        pattern=r"^[a-z0-9-]+$",
+        description="Unique case identifier",
+    )
+    user_prompt: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="Message to send to the assistant",
+    )
+    expected_entities: list[GraphExpectedEntity] = Field(
+        default_factory=list,
+        description="Entities expected to be extracted",
+    )
+    expected_relationships: list[GraphExpectedRelationship] = Field(
+        default_factory=list,
+        description="Relationships expected to be extracted",
+    )
+    rubric: str = Field(
+        ...,
+        min_length=10,
+        max_length=2000,
+        description="Evaluation criteria for judging extraction quality",
+    )
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Categorization tags",
+    )
+
+
+class GraphExtractionGoldenDataset(BaseModel):
+    """Complete graph extraction evaluation dataset."""
+
+    version: str = Field(
+        ...,
+        pattern=r"^\d+\.\d+\.\d+$",
+        description="Dataset schema version (semver)",
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Dataset purpose description",
+    )
+    cases: list[GraphExtractionTestCase] = Field(
+        ...,
+        min_length=5,
+        max_length=30,
+        description="Array of graph extraction test cases",
+    )
+
+    @field_validator("cases")
+    @classmethod
+    def unique_ids(
+        cls, v: list[GraphExtractionTestCase]
+    ) -> list[GraphExtractionTestCase]:
+        """Validate that all case IDs are unique."""
+        ids = [case.id for case in v]
+        if len(ids) != len(set(ids)):
+            duplicates = [id_ for id_ in ids if ids.count(id_) > 1]
+            raise ValueError(f"Case IDs must be unique. Duplicates: {set(duplicates)}")
+        return v
+
+
+class GraphExtractionEvalResult(BaseModel):
+    """Result of evaluating one graph extraction test case."""
+
+    case_id: str = Field(..., description="Reference to GraphExtractionTestCase.id")
+    response: str = Field(default="", description="Assistant's response text")
+    actual_entities: list[dict] = Field(
+        default_factory=list,
+        description="Entities extracted via save_entity tool calls",
+    )
+    actual_relationships: list[dict] = Field(
+        default_factory=list,
+        description="Relationships extracted via save_relationship tool calls",
+    )
+    entity_precision: float = Field(
+        ..., ge=0.0, le=1.0, description="Fraction of extracted entities that were expected"
+    )
+    entity_recall: float = Field(
+        ..., ge=0.0, le=1.0, description="Fraction of expected entities that were extracted"
+    )
+    relationship_precision: float = Field(
+        ..., ge=0.0, le=1.0, description="Fraction of extracted relationships that were expected"
+    )
+    relationship_recall: float = Field(
+        ..., ge=0.0, le=1.0, description="Fraction of expected relationships that were extracted"
+    )
+    entity_false_positives: int = Field(
+        ..., ge=0, description="Number of unexpected entity extractions"
+    )
+    relationship_false_positives: int = Field(
+        ..., ge=0, description="Number of unexpected relationship extractions"
+    )
+    latency_ms: int = Field(..., ge=0, description="Processing latency")
+    error: Optional[str] = Field(default=None, description="Error if evaluation failed")
+
+
+class GraphExtractionMetrics(BaseModel):
+    """Aggregate metrics for a graph extraction evaluation run."""
+
+    total_cases: int = Field(..., description="Total number of test cases")
+    entity_precision: float = Field(
+        ..., ge=0.0, le=1.0, description="Average entity precision across cases"
+    )
+    entity_recall: float = Field(
+        ..., ge=0.0, le=1.0, description="Average entity recall across cases"
+    )
+    relationship_precision: float = Field(
+        ..., ge=0.0, le=1.0, description="Average relationship precision across cases"
+    )
+    relationship_recall: float = Field(
+        ..., ge=0.0, le=1.0, description="Average relationship recall across cases"
+    )
+    entity_false_positive_rate: float = Field(
+        ..., ge=0.0, description="Average entity false positives per case"
+    )
+    relationship_false_positive_rate: float = Field(
+        ..., ge=0.0, description="Average relationship false positives per case"
+    )
+    error_cases: int = Field(..., ge=0, description="Cases that errored")
+    overall_passed: bool = Field(
+        ...,
+        description="True if entity_precision >= 0.60 AND entity_recall >= 0.60",
+    )

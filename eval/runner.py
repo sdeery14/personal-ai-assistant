@@ -30,11 +30,12 @@ from agents.exceptions import (
 
 from eval.assistant import extract_tool_calls, invoke_production_agent
 from eval.config import EvalSettings, get_eval_settings
-from eval.dataset import DatasetError, load_dataset, load_memory_dataset, load_memory_write_dataset, load_weather_dataset
+from eval.dataset import DatasetError, load_dataset, load_graph_extraction_dataset, load_memory_dataset, load_memory_write_dataset, load_weather_dataset
 from eval.judge import create_quality_judge, score_to_label, score_to_passed
 from eval.mlflow_datasets import (
     get_experiment_id,
     get_or_create_dataset,
+    prepare_graph_extraction_records,
     prepare_memory_retrieval_records,
     prepare_memory_write_records,
     prepare_quality_records,
@@ -42,10 +43,14 @@ from eval.mlflow_datasets import (
 )
 from eval.memory_judge import MemoryJudge
 from eval.memory_write_judge import MemoryWriteJudge
+from eval.graph_extraction_judge import GraphExtractionJudge
 from eval.models import (
     EvalResult,
     EvalRunMetrics,
     GoldenDataset,
+    GraphExtractionEvalResult,
+    GraphExtractionGoldenDataset,
+    GraphExtractionMetrics,
     MemoryEvalResult,
     MemoryGoldenDataset,
     MemoryMetrics,
@@ -97,6 +102,17 @@ class WeatherEvaluationResult:
 
     metrics: WeatherMetrics
     results: list[WeatherEvalResult]
+    mlflow_run_id: str | None
+    dataset_version: str
+    error: str | None = None
+
+
+@dataclass
+class GraphExtractionEvaluationResult:
+    """Complete results from a graph extraction evaluation run."""
+
+    metrics: GraphExtractionMetrics
+    results: list[GraphExtractionEvalResult]
     mlflow_run_id: str | None
     dataset_version: str
     error: str | None = None
@@ -1887,6 +1903,440 @@ def format_weather_summary(result: WeatherEvaluationResult) -> str:
             reasons.append(f"Success rate {m.success_rate:.1%} < 95%")
         if m.latency_p95 >= 3000:
             reasons.append(f"Latency P95 {m.latency_p95:.0f}ms >= 3000ms")
+        if reasons:
+            lines.append(f"   Reasons: {'; '.join(reasons)}")
+
+    lines.append("=" * 60)
+
+    return "\n".join(lines)
+
+
+def is_graph_extraction_dataset(path: str | Path) -> bool:
+    """Check if a dataset path is a graph extraction evaluation dataset."""
+    from eval.dataset import is_graph_extraction_dataset as _is_graph
+
+    return _is_graph(path)
+
+
+# Graph Extraction Evaluation Functions
+
+
+def run_graph_evaluation(
+    dataset_path: str | Path = "eval/graph_extraction_golden_dataset.json",
+    verbose: bool = False,
+    dry_run: bool = False,
+) -> GraphExtractionEvaluationResult:
+    """Run graph extraction evaluation using MLflow GenAI evaluate.
+
+    Two-phase approach required because Runner.run_sync() (asyncio) deadlocks
+    when called from inside genai_evaluate()'s worker threads.
+
+    Phase 1: Manual prediction loop with autolog DISABLED - invokes the
+    production agent for each case, extracts save_entity and save_relationship
+    tool calls, collects entity/relationship data.
+
+    Phase 2: Scorer-only genai_evaluate() - passes pre-computed outputs
+    (no predict_fn) to run entity/relationship precision/recall scorers.
+    This creates the only set of traces, each with assessments attached.
+
+    Args:
+        dataset_path: Path to the graph extraction golden dataset JSON file.
+        verbose: If True, print per-case details during evaluation.
+        dry_run: If True, validate dataset only without running evaluation.
+
+    Returns:
+        GraphExtractionEvaluationResult with metrics, per-case results, and MLflow run ID.
+    """
+    import statistics
+    import time
+
+    from mlflow.genai import scorer as scorer_decorator
+
+    settings = get_eval_settings()
+
+    # Load dataset
+    dataset = load_graph_extraction_dataset(dataset_path)
+
+    if verbose:
+        print(f"Loaded graph extraction dataset v{dataset.version} with {len(dataset.cases)} cases")
+
+    if dry_run:
+        return GraphExtractionEvaluationResult(
+            metrics=GraphExtractionMetrics(
+                total_cases=len(dataset.cases),
+                entity_precision=0.0,
+                entity_recall=0.0,
+                relationship_precision=0.0,
+                relationship_recall=0.0,
+                entity_false_positive_rate=0.0,
+                relationship_false_positive_rate=0.0,
+                error_cases=0,
+                overall_passed=False,
+            ),
+            results=[],
+            mlflow_run_id=None,
+            dataset_version=dataset.version,
+        )
+
+    # Set up MLflow
+    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+    mlflow.set_experiment(settings.mlflow_experiment_name + "-graph-extraction")
+
+    # Register dataset in MLflow
+    experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-graph-extraction")
+    mlflow_records = prepare_graph_extraction_records(dataset)
+    mlflow_dataset = get_or_create_dataset(
+        dataset_path=dataset_path,
+        version=dataset.version,
+        experiment_id=experiment_id,
+        records=mlflow_records,
+    )
+
+    # Force sequential scorer execution
+    os.environ["MLFLOW_GENAI_EVAL_MAX_WORKERS"] = "1"
+
+    api_key = settings.openai_api_key
+    actual_model = settings.openai_model
+    judge = GraphExtractionJudge()
+
+    results: list[GraphExtractionEvalResult] = []
+
+    with mlflow.start_run() as run:
+        run_id = run.info.run_id
+
+        mlflow.log_params({
+            "dataset_type": "graph_extraction",
+            "dataset_version": dataset.version,
+            "total_cases": len(dataset.cases),
+            "assistant_model": actual_model,
+            "entity_precision_threshold": 0.60,
+            "entity_recall_threshold": 0.60,
+            "mlflow_dataset_id": mlflow_dataset.dataset_id,
+        })
+
+        # ============================================================
+        # PHASE 1: Manual prediction loop (autolog disabled)
+        # ============================================================
+        mlflow.openai.autolog(disable=True)
+
+        # Store tool call data keyed by user_prompt for scorer lookup
+        tool_call_data: dict[str, dict] = {}
+        case_data: list[tuple] = []
+
+        if verbose:
+            print("Phase 1: Running agent predictions...")
+
+        for case in dataset.cases:
+            start_time = time.perf_counter()
+
+            try:
+                result = invoke_production_agent(
+                    case.user_prompt, model=actual_model, api_key=api_key,
+                    max_turns=10,
+                )
+                latency_ms = int((time.perf_counter() - start_time) * 1000)
+
+                tool_calls = extract_tool_calls(result)
+                entities = []
+                relationships = []
+                for tc in tool_calls:
+                    if tc["name"] == "save_entity":
+                        entities.append({
+                            "name": tc["arguments"].get("name", ""),
+                            "entity_type": tc["arguments"].get("entity_type", ""),
+                        })
+                    elif tc["name"] == "save_relationship":
+                        relationships.append({
+                            "relationship_type": tc["arguments"].get("relationship_type", ""),
+                            "source_entity_name": tc["arguments"].get("source_entity_name", ""),
+                            "target_entity_name": tc["arguments"].get("target_entity_name", ""),
+                        })
+
+                tool_call_data[case.user_prompt] = {
+                    "entities": entities,
+                    "relationships": relationships,
+                }
+                case_data.append((
+                    case, case.user_prompt, result.final_output,
+                    entities, relationships, latency_ms, None,
+                ))
+
+                if verbose:
+                    print(
+                        f"  {case.id}: predicted ({latency_ms}ms, "
+                        f"{len(entities)} entities, {len(relationships)} relationships)"
+                    )
+
+            except Exception as e:
+                latency_ms = int((time.perf_counter() - start_time) * 1000)
+                tool_call_data[case.user_prompt] = {"entities": [], "relationships": []}
+                case_data.append((
+                    case, case.user_prompt, f"[ERROR: {str(e)}]",
+                    [], [], latency_ms, str(e),
+                ))
+                if verbose:
+                    print(f"  {case.id}: ERROR ({latency_ms}ms) - {str(e)}")
+
+        # Re-enable autolog for Phase 2
+        mlflow.openai.autolog()
+
+        # ============================================================
+        # PHASE 2: Scorer-only genai_evaluate (creates traces with assessments)
+        # ============================================================
+        if verbose:
+            print("\nPhase 2: Running precision/recall scorers...")
+
+        # Build eval_data with pre-computed outputs
+        eval_data = []
+        for case, prompt, response, entities, rels, latency_ms, error in case_data:
+            eval_data.append({
+                "inputs": {"message": prompt},
+                "outputs": response,
+                "expectations": {
+                    "rubric": case.rubric,
+                    "entity_keywords": [e.keywords for e in case.expected_entities],
+                    "relationship_keywords": [
+                        {
+                            "type": r.type,
+                            "source_keywords": r.source_keywords,
+                            "target_keywords": r.target_keywords,
+                        }
+                        for r in case.expected_relationships
+                    ],
+                },
+            })
+
+        @scorer_decorator
+        def entity_precision_scorer(inputs, outputs, expectations) -> float:
+            """Precision: fraction of extracted entities that were expected."""
+            prompt = inputs.get("message", "")
+            tc = tool_call_data.get(prompt, {"entities": []})
+            expected_kws = expectations.get("entity_keywords", [])
+            return judge.evaluate_entity_precision(tc["entities"], expected_kws)
+
+        @scorer_decorator
+        def entity_recall_scorer(inputs, outputs, expectations) -> float:
+            """Recall: fraction of expected entities that were extracted."""
+            prompt = inputs.get("message", "")
+            tc = tool_call_data.get(prompt, {"entities": []})
+            expected_kws = expectations.get("entity_keywords", [])
+            return judge.evaluate_entity_recall(tc["entities"], expected_kws)
+
+        @scorer_decorator
+        def relationship_precision_scorer(inputs, outputs, expectations) -> float:
+            """Precision: fraction of extracted relationships that were expected."""
+            prompt = inputs.get("message", "")
+            tc = tool_call_data.get(prompt, {"relationships": []})
+            expected_kws = expectations.get("relationship_keywords", [])
+            return judge.evaluate_relationship_precision(tc["relationships"], expected_kws)
+
+        @scorer_decorator
+        def relationship_recall_scorer(inputs, outputs, expectations) -> float:
+            """Recall: fraction of expected relationships that were extracted."""
+            prompt = inputs.get("message", "")
+            tc = tool_call_data.get(prompt, {"relationships": []})
+            expected_kws = expectations.get("relationship_keywords", [])
+            return judge.evaluate_relationship_recall(tc["relationships"], expected_kws)
+
+        try:
+            eval_results = genai_evaluate(
+                data=eval_data,
+                scorers=[
+                    entity_precision_scorer,
+                    entity_recall_scorer,
+                    relationship_precision_scorer,
+                    relationship_recall_scorer,
+                ],
+            )
+
+            results_df = eval_results.tables["eval_results"]
+
+            for idx, (_, row) in enumerate(results_df.iterrows()):
+                case, prompt, response, entities, rels, latency_ms, error = case_data[idx]
+
+                ep = float(row.get("entity_precision_scorer/value", 0.0) or 0.0)
+                er = float(row.get("entity_recall_scorer/value", 0.0) or 0.0)
+                rp = float(row.get("relationship_precision_scorer/value", 0.0) or 0.0)
+                rr = float(row.get("relationship_recall_scorer/value", 0.0) or 0.0)
+
+                expected_entity_kws = [e.keywords for e in case.expected_entities]
+                expected_rel_kws = [
+                    {
+                        "type": r.type,
+                        "source_keywords": r.source_keywords,
+                        "target_keywords": r.target_keywords,
+                    }
+                    for r in case.expected_relationships
+                ]
+
+                results.append(GraphExtractionEvalResult(
+                    case_id=case.id,
+                    response=response,
+                    actual_entities=entities,
+                    actual_relationships=rels,
+                    entity_precision=ep,
+                    entity_recall=er,
+                    relationship_precision=rp,
+                    relationship_recall=rr,
+                    entity_false_positives=judge.count_entity_false_positives(
+                        entities, expected_entity_kws
+                    ),
+                    relationship_false_positives=judge.count_relationship_false_positives(
+                        rels, expected_rel_kws
+                    ),
+                    latency_ms=latency_ms,
+                    error=error,
+                ))
+
+                if verbose:
+                    status = "PASS" if ep >= 0.6 and er >= 0.6 else "FAIL"
+                    print(
+                        f"  {case.id}: {status} EP={ep:.2f} ER={er:.2f} "
+                        f"RP={rp:.2f} RR={rr:.2f} {latency_ms}ms"
+                    )
+
+        except Exception as e:
+            if verbose:
+                print(f"  Scorer evaluation failed: {str(e)}")
+            # Fall back to manual scoring
+            for case, prompt, response, entities, rels, latency_ms, pred_error in case_data:
+                expected_entity_kws = [ent.keywords for ent in case.expected_entities]
+                expected_rel_kws = [
+                    {
+                        "type": r.type,
+                        "source_keywords": r.source_keywords,
+                        "target_keywords": r.target_keywords,
+                    }
+                    for r in case.expected_relationships
+                ]
+
+                ep = judge.evaluate_entity_precision(entities, expected_entity_kws)
+                er = judge.evaluate_entity_recall(entities, expected_entity_kws)
+                rp = judge.evaluate_relationship_precision(rels, expected_rel_kws)
+                rr = judge.evaluate_relationship_recall(rels, expected_rel_kws)
+
+                results.append(GraphExtractionEvalResult(
+                    case_id=case.id,
+                    response=response,
+                    actual_entities=entities,
+                    actual_relationships=rels,
+                    entity_precision=ep,
+                    entity_recall=er,
+                    relationship_precision=rp,
+                    relationship_recall=rr,
+                    entity_false_positives=judge.count_entity_false_positives(
+                        entities, expected_entity_kws
+                    ),
+                    relationship_false_positives=judge.count_relationship_false_positives(
+                        rels, expected_rel_kws
+                    ),
+                    latency_ms=latency_ms,
+                    error=pred_error or str(e),
+                ))
+
+                if verbose:
+                    status = "PASS" if ep >= 0.6 and er >= 0.6 else "FAIL"
+                    print(
+                        f"  {case.id}: {status} EP={ep:.2f} ER={er:.2f} "
+                        f"RP={rp:.2f} RR={rr:.2f} {latency_ms}ms (no MLflow scorer)"
+                    )
+
+        # Compute aggregate metrics
+        valid_results = [r for r in results if r.error is None]
+        error_count = len(results) - len(valid_results)
+
+        if valid_results:
+            avg_ep = statistics.mean(r.entity_precision for r in valid_results)
+            avg_er = statistics.mean(r.entity_recall for r in valid_results)
+            avg_rp = statistics.mean(r.relationship_precision for r in valid_results)
+            avg_rr = statistics.mean(r.relationship_recall for r in valid_results)
+            avg_efp = statistics.mean(r.entity_false_positives for r in valid_results)
+            avg_rfp = statistics.mean(r.relationship_false_positives for r in valid_results)
+        else:
+            avg_ep = 0.0
+            avg_er = 0.0
+            avg_rp = 0.0
+            avg_rr = 0.0
+            avg_efp = 0.0
+            avg_rfp = 0.0
+
+        overall_passed = avg_ep >= 0.60 and avg_er >= 0.60
+
+        metrics = GraphExtractionMetrics(
+            total_cases=len(dataset.cases),
+            entity_precision=avg_ep,
+            entity_recall=avg_er,
+            relationship_precision=avg_rp,
+            relationship_recall=avg_rr,
+            entity_false_positive_rate=avg_efp,
+            relationship_false_positive_rate=avg_rfp,
+            error_cases=error_count,
+            overall_passed=overall_passed,
+        )
+
+        # Log metrics
+        mlflow.log_metrics({
+            "graph_entity_precision": avg_ep,
+            "graph_entity_recall": avg_er,
+            "graph_relationship_precision": avg_rp,
+            "graph_relationship_recall": avg_rr,
+            "graph_entity_fp_rate": avg_efp,
+            "graph_relationship_fp_rate": avg_rfp,
+            "graph_error_cases": error_count,
+            "graph_overall_passed": 1 if overall_passed else 0,
+        })
+
+        # Log per-case results as artifact
+        results_json = [r.model_dump() for r in results]
+        results_path = Path("graph_extraction_eval_results.json")
+        with open(results_path, "w") as f:
+            json.dump(results_json, f, indent=2, default=str)
+        mlflow.log_artifact(str(results_path))
+        results_path.unlink()
+
+    return GraphExtractionEvaluationResult(
+        metrics=metrics,
+        results=results,
+        mlflow_run_id=run_id,
+        dataset_version=dataset.version,
+    )
+
+
+def format_graph_extraction_summary(result: GraphExtractionEvaluationResult) -> str:
+    """Format graph extraction evaluation results as a summary string."""
+    m = result.metrics
+    lines = [
+        "",
+        "=" * 60,
+        "GRAPH EXTRACTION EVALUATION SUMMARY",
+        "=" * 60,
+        f"Dataset Version: {result.dataset_version}",
+        f"MLflow Run ID:   {result.mlflow_run_id or 'N/A'}",
+        "",
+        f"Total Cases:                     {m.total_cases}",
+        f"Error Cases:                     {m.error_cases}",
+        "",
+        "ENTITY METRICS:",
+        f"  Precision:                     {m.entity_precision:.1%} (threshold: >=60%)",
+        f"  Recall:                        {m.entity_recall:.1%} (threshold: >=60%)",
+        f"  Avg False Positives/Case:      {m.entity_false_positive_rate:.2f}",
+        "",
+        "RELATIONSHIP METRICS:",
+        f"  Precision:                     {m.relationship_precision:.1%}",
+        f"  Recall:                        {m.relationship_recall:.1%}",
+        f"  Avg False Positives/Case:      {m.relationship_false_positive_rate:.2f}",
+        "",
+    ]
+
+    if m.overall_passed:
+        lines.append("GRAPH EXTRACTION GATE: PASS")
+    else:
+        lines.append("GRAPH EXTRACTION GATE: FAIL")
+        reasons = []
+        if m.entity_precision < 0.60:
+            reasons.append(f"Entity precision {m.entity_precision:.1%} < 60%")
+        if m.entity_recall < 0.60:
+            reasons.append(f"Entity recall {m.entity_recall:.1%} < 60%")
         if reasons:
             lines.append(f"   Reasons: {'; '.join(reasons)}")
 

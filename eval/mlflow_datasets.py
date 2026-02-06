@@ -13,6 +13,7 @@ from mlflow.genai.datasets import create_dataset, search_datasets
 
 from eval.models import (
     GoldenDataset,
+    GraphExtractionGoldenDataset,
     MemoryGoldenDataset,
     MemoryWriteGoldenDataset,
     WeatherGoldenDataset,
@@ -25,6 +26,7 @@ DATASET_TYPE_MAP = {
     "memory_golden_dataset": "memory-retrieval",
     "memory_write_golden_dataset": "memory-write",
     "weather_golden_dataset": "weather",
+    "graph_extraction_golden_dataset": "graph-extraction",
 }
 
 
@@ -170,6 +172,30 @@ def prepare_weather_records(
                 "expected_fields": case.expected_fields,
                 "expected_error_keywords": case.expected_error_keywords,
                 "rubric": case.rubric,
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+def prepare_graph_extraction_records(
+    dataset: GraphExtractionGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert graph extraction dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {"message": case.user_prompt},
+            "expectations": {
+                "rubric": case.rubric,
+                "entity_keywords": [e.keywords for e in case.expected_entities],
+                "relationship_keywords": [
+                    {
+                        "type": r.type,
+                        "source_keywords": r.source_keywords,
+                        "target_keywords": r.target_keywords,
+                    }
+                    for r in case.expected_relationships
+                ],
             },
         }
         for case in dataset.cases

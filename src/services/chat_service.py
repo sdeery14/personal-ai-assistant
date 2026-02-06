@@ -87,6 +87,37 @@ When using weather data:
 - If weather cannot be retrieved, explain the issue and suggest trying again
 """
 
+GRAPH_SYSTEM_PROMPT = """
+You have access to knowledge graph tools for tracking entities and relationships.
+
+ENTITY EXTRACTION - Use save_entity when user mentions specific:
+- People: "Sarah", "my manager Dave", "my friend John" → type: person
+- Projects: "project Phoenix", "the API rewrite", "my startup" → type: project
+- Tools: "FastAPI", "PostgreSQL", "React", "Docker" → type: tool
+- Concepts: "microservices", "TDD", "agile methodology" → type: concept
+- Organizations: "Google", "the backend team", "my company" → type: organization
+
+RELATIONSHIP EXTRACTION - Use save_relationship when user expresses:
+- "I use FastAPI" → USES relationship (source: user context, target: FastAPI/tool)
+- "I prefer Python over JavaScript" → PREFERS relationship
+- "I work with Sarah" → WORKS_WITH relationship
+- "Project Phoenix uses PostgreSQL" → USES relationship between entities
+- "I've decided on React" → DECIDED relationship
+- "I work on the backend" → WORKS_ON relationship
+
+QUERYING - Use query_graph when user asks about relationships:
+- "What tools do I use?" → query for USES relationships
+- "Who do I work with?" → query for WORKS_WITH relationships
+- "What technologies does my project use?" → query about project relationships
+
+Confidence scoring for extraction:
+- 0.9-1.0: Explicit mentions ("I use FastAPI", "Sarah is my colleague")
+- 0.8-0.9: Clear context ("we're building with React" = project USES React)
+- 0.7-0.8: Reasonable inference from context
+
+Extract entities and relationships naturally as they come up in conversation. Don't force extraction for trivial mentions.
+"""
+
 
 class ChatService:
     """Service for streaming chat completions via OpenAI Agents SDK."""
@@ -130,6 +161,24 @@ class ChatService:
             tools.append(delete_memory_tool)
         except Exception as e:
             self.logger.warning("delete_memory_tool_unavailable", error=str(e))
+        # Knowledge Graph tools (Feature 007)
+        try:
+            from src.tools.save_entity import save_entity_tool
+            tools.append(save_entity_tool)
+            self._graph_available = True
+        except Exception as e:
+            self.logger.warning("save_entity_tool_unavailable", error=str(e))
+            self._graph_available = False
+        try:
+            from src.tools.save_relationship import save_relationship_tool
+            tools.append(save_relationship_tool)
+        except Exception as e:
+            self.logger.warning("save_relationship_tool_unavailable", error=str(e))
+        try:
+            from src.tools.query_graph import query_graph_tool
+            tools.append(query_graph_tool)
+        except Exception as e:
+            self.logger.warning("query_graph_tool_unavailable", error=str(e))
         # Weather tool (Feature 005)
         try:
             from src.tools.get_weather import get_weather_tool
@@ -164,10 +213,12 @@ class ChatService:
             instructions += "\n" + MEMORY_SYSTEM_PROMPT
             instructions += "\n" + MEMORY_WRITE_SYSTEM_PROMPT
 
-        # Get tools - weather tool sets _weather_available as side effect
+        # Get tools - sets _weather_available and _graph_available as side effects
         tools = self._get_tools()
         if getattr(self, '_weather_available', False):
             instructions += "\n" + WEATHER_SYSTEM_PROMPT
+        if getattr(self, '_graph_available', False):
+            instructions += "\n" + GRAPH_SYSTEM_PROMPT
 
         return Agent(
             name="Assistant",
