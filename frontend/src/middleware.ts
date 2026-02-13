@@ -6,6 +6,11 @@ const publicPaths = ["/login", "/setup", "/api/auth"];
 export default auth((req) => {
   const { pathname } = req.nextUrl;
 
+  // Allow root page (handles setup detection and routing)
+  if (pathname === "/") {
+    return NextResponse.next();
+  }
+
   // Allow public paths
   if (publicPaths.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
