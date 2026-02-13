@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A FastAPI-based streaming chat API that interfaces with OpenAI's Agents SDK. Features real-time SSE streaming, security guardrails (input/output moderation via OpenAI Moderation API), and an MLflow-based LLM-as-a-judge evaluation framework.
+A FastAPI-based streaming chat API that interfaces with OpenAI's Agents SDK, with a Next.js web frontend. Features real-time SSE streaming, security guardrails (input/output moderation via OpenAI Moderation API), an MLflow-based LLM-as-a-judge evaluation framework, and a web UI with authentication, conversation management, memory browsing, and knowledge graph exploration.
 
 ## Development Commands
 
@@ -26,6 +26,28 @@ docker logs chat-api -f
 # Stop services
 docker compose -f docker/docker-compose.api.yml down
 docker compose -f docker/docker-compose.mlflow.yml down
+```
+
+### Frontend Development (Next.js)
+
+```bash
+# Install dependencies
+cd frontend && npm install
+
+# Start development server (http://localhost:3000)
+cd frontend && npm run dev
+
+# Run unit tests (Vitest + React Testing Library)
+cd frontend && npm test
+
+# Run E2E tests (Playwright, requires dev server running)
+cd frontend && npx playwright test
+
+# Build for production
+cd frontend && npm run build
+
+# Start frontend + API with Docker
+docker compose -f docker/docker-compose.frontend.yml up -d
 ```
 
 ### Testing & Evaluation
@@ -79,16 +101,45 @@ uv run <command>     # Run in project environment
 src/
 ├── main.py              # FastAPI app, lifespan, exception handlers
 ├── config.py            # Pydantic settings (env vars)
+├── database.py          # asyncpg pool, migrations runner
 ├── api/
 │   ├── routes.py        # /health, /chat endpoints with SSE streaming
-│   └── middleware.py    # Correlation ID middleware
+│   ├── auth.py          # /auth/* endpoints (login, setup, refresh, status)
+│   ├── admin.py         # /admin/* endpoints (user CRUD)
+│   ├── conversations.py # /conversations/* endpoints
+│   ├── memories.py      # /memories/* endpoints
+│   ├── entities.py      # /entities/* endpoints
+│   ├── dependencies.py  # Auth dependencies (get_current_user, require_admin)
+│   └── middleware.py     # Correlation ID middleware
 ├── models/
 │   ├── request.py       # ChatRequest validation
-│   └── response.py      # StreamChunk, ErrorResponse models
+│   ├── response.py      # StreamChunk, ErrorResponse models
+│   ├── user.py          # User, RefreshToken models
+│   └── auth.py          # Auth request/response models
 └── services/
     ├── chat_service.py  # OpenAI Agents SDK integration, streaming
+    ├── auth_service.py  # JWT, password hashing, refresh tokens
+    ├── user_service.py  # User CRUD operations
     ├── guardrails.py    # Input/output moderation with retry logic
     └── logging_service.py
+
+frontend/                  # Next.js 15 App Router
+├── src/
+│   ├── app/
+│   │   ├── (auth)/      # Login, setup pages (no sidebar)
+│   │   ├── (main)/      # Chat, memory, knowledge, admin (with sidebar)
+│   │   └── api/auth/    # Auth.js API route
+│   ├── components/
+│   │   ├── chat/        # ChatPanel, MessageBubble, ChatInput, etc.
+│   │   ├── conversation/ # ConversationList, ConversationItem
+│   │   ├── memory/      # MemoryCard, MemoryList
+│   │   ├── knowledge/   # EntityDetail, EntityList
+│   │   ├── layout/      # Header, Sidebar, ErrorBoundary
+│   │   └── ui/          # Button, Input, Card, Dialog, Skeleton
+│   ├── hooks/           # useChat, useConversations, useMemories, useEntities
+│   ├── stores/          # Zustand chat-store
+│   ├── lib/             # api-client, auth (Auth.js), chat-stream (SSE)
+│   └── types/           # TypeScript interfaces
 
 eval/
 ├── __main__.py          # CLI entry point (python -m eval)

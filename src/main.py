@@ -14,6 +14,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from src.api.admin import router as admin_router
+from src.api.auth import router as auth_router
+from src.api.conversations import router as conversations_router
+from src.api.entities import router as entities_router
+from src.api.memories import router as memories_router
 from src.api.middleware import CorrelationIdMiddleware
 from src.api.routes import router
 from src.config import get_settings
@@ -154,4 +159,9 @@ app.add_middleware(
 app.add_middleware(CorrelationIdMiddleware)
 
 # Include API routes
+app.include_router(auth_router)
+app.include_router(admin_router)
+app.include_router(conversations_router)
+app.include_router(memories_router)
+app.include_router(entities_router)
 app.include_router(router)

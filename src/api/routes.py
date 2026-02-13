@@ -7,7 +7,7 @@ from typing import AsyncGenerator
 from uuid import UUID, uuid4
 
 import structlog
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from agents.exceptions import (
@@ -15,9 +15,11 @@ from agents.exceptions import (
     OutputGuardrailTripwireTriggered,
 )
 
+from src.api.dependencies import get_current_user
 from src.config import get_settings
 from src.models.request import ChatRequest
 from src.models.response import ErrorResponse, GuardrailErrorResponse, StreamChunk
+from src.models.user import User
 from src.services.chat_service import ChatService
 
 
@@ -195,23 +197,31 @@ async def generate_sse_stream_with_timeout(
 
 
 @router.post("/chat")
-async def chat(request: ChatRequest, http_request: Request) -> StreamingResponse:
+async def chat(
+    request: ChatRequest,
+    http_request: Request,
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
     """Send a message and receive streamed response.
 
     Accepts a text message and streams back the LLM's response in real-time
     using Server-Sent Events (SSE). Each chunk includes content, sequence number,
-    and final flag.
+    and final flag. Requires authentication — user_id is derived from the JWT token.
 
     Args:
-        request: ChatRequest with message, optional model/max_tokens, user_id, conversation_id
+        request: ChatRequest with message, optional model/max_tokens, conversation_id
         http_request: FastAPI request object for metadata
+        current_user: Authenticated user from JWT token
 
     Returns:
         StreamingResponse with SSE content type
 
     Raises:
-        HTTPException: 400 if input guardrail blocks the request
+        HTTPException: 401 if not authenticated, 400 if validation fails
     """
+    # Override user_id from JWT token (ignore any user_id in the request body)
+    request.user_id = str(current_user.id)
+
     # Use correlation ID from middleware if available, otherwise generate
     correlation_id = getattr(http_request.state, "correlation_id", None) or str(uuid4())
 

@@ -276,3 +276,187 @@ class ConversationService:
                 updated_at=row["updated_at"],
             )
         return None
+
+    async def list_conversations(
+        self,
+        user_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        """List conversations for a user, ordered by most recently updated.
+
+        Args:
+            user_id: User ID for scoping
+            limit: Maximum conversations to return
+            offset: Pagination offset
+
+        Returns:
+            Tuple of (conversation summaries with message preview, total count)
+        """
+        pool = await get_pool()
+
+        async with pool.acquire() as conn:
+            total = await conn.fetchval(
+                "SELECT COUNT(*) FROM conversations WHERE user_id = $1",
+                user_id,
+            )
+
+            rows = await conn.fetch(
+                """
+                SELECT
+                    c.id, c.title, c.created_at, c.updated_at,
+                    (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id) as message_count,
+                    (SELECT SUBSTRING(content, 1, 100) FROM messages
+                     WHERE conversation_id = c.id AND role = 'user'
+                     ORDER BY created_at ASC LIMIT 1) as message_preview
+                FROM conversations c
+                WHERE c.user_id = $1
+                ORDER BY c.updated_at DESC
+                LIMIT $2 OFFSET $3
+                """,
+                user_id,
+                limit,
+                offset,
+            )
+
+        items = [
+            {
+                "id": str(row["id"]),
+                "title": row["title"],
+                "message_preview": row["message_preview"] or "",
+                "message_count": row["message_count"],
+                "created_at": row["created_at"].isoformat(),
+                "updated_at": row["updated_at"].isoformat(),
+            }
+            for row in rows
+        ]
+
+        return items, total
+
+    async def update_conversation_title(
+        self,
+        conversation_id: UUID,
+        user_id: str,
+        title: str,
+    ) -> Optional[dict]:
+        """Update a conversation's title.
+
+        Args:
+            conversation_id: Conversation ID
+            user_id: User ID for security scoping
+            title: New title
+
+        Returns:
+            Updated conversation summary or None if not found
+        """
+        pool = await get_pool()
+
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                UPDATE conversations
+                SET title = $1, updated_at = NOW()
+                WHERE id = $2 AND user_id = $3
+                RETURNING id, user_id, title, created_at, updated_at
+                """,
+                title,
+                conversation_id,
+                user_id,
+            )
+
+        if row is None:
+            return None
+
+        # Get message count and preview
+        async with pool.acquire() as conn:
+            stats = await conn.fetchrow(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM messages WHERE conversation_id = $1) as message_count,
+                    (SELECT SUBSTRING(content, 1, 100) FROM messages
+                     WHERE conversation_id = $1 AND role = 'user'
+                     ORDER BY created_at ASC LIMIT 1) as message_preview
+                """,
+                conversation_id,
+            )
+
+        return {
+            "id": str(row["id"]),
+            "title": row["title"],
+            "message_preview": stats["message_preview"] or "" if stats else "",
+            "message_count": stats["message_count"] if stats else 0,
+            "created_at": row["created_at"].isoformat(),
+            "updated_at": row["updated_at"].isoformat(),
+        }
+
+    async def delete_conversation(
+        self,
+        conversation_id: UUID,
+        user_id: str,
+    ) -> bool:
+        """Delete a conversation and its messages.
+
+        Args:
+            conversation_id: Conversation ID
+            user_id: User ID for security scoping
+
+        Returns:
+            True if deleted, False if not found
+        """
+        pool = await get_pool()
+
+        async with pool.acquire() as conn:
+            # Messages have ON DELETE CASCADE (or we delete manually)
+            await conn.execute(
+                "DELETE FROM messages WHERE conversation_id = $1",
+                conversation_id,
+            )
+            result = await conn.execute(
+                "DELETE FROM conversations WHERE id = $1 AND user_id = $2",
+                conversation_id,
+                user_id,
+            )
+
+        deleted = result == "DELETE 1"
+        if deleted:
+            logger.info(
+                "conversation_deleted",
+                conversation_id=str(conversation_id),
+                user_id=user_id,
+            )
+        return deleted
+
+    async def set_auto_title(
+        self,
+        conversation_id: UUID,
+        user_id: str,
+        first_message: str,
+    ) -> None:
+        """Set conversation title from first user message if title is null.
+
+        Args:
+            conversation_id: Conversation ID
+            user_id: User ID for scoping
+            first_message: First user message to derive title from
+        """
+        # Truncate to ~80 chars at word boundary
+        title = first_message[:80]
+        if len(first_message) > 80:
+            last_space = title.rfind(" ")
+            if last_space > 40:
+                title = title[:last_space]
+            title += "..."
+
+        pool = await get_pool()
+
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE conversations
+                SET title = $1
+                WHERE id = $2 AND user_id = $3 AND title IS NULL
+                """,
+                title,
+                conversation_id,
+                user_id,
+            )

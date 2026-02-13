@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     weather_cache_ttl_forecast: int = 1800  # 30 minutes for forecast
     weather_api_timeout: int = 5  # 5 second timeout per request
 
+    # Authentication (Feature 008)
+    jwt_secret: str = "change-me-in-production"
+
     # Knowledge Graph Configuration (Feature 007)
     graph_entity_confidence_threshold: float = 0.7  # Min confidence for auto-extraction
     graph_max_entities_per_conversation: int = 20  # Rate limit per conversation

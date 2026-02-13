@@ -11,6 +11,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!frontend/src/lib/
 lib64/
 parts/
 sdist/
@@ -67,3 +68,19 @@ logs/
 
 mlflow.db
 mlruns/
+
+# Node.js / Frontend
+node_modules/
+.next/
+out/
+frontend/.env.local
+frontend/.env.*.local
+*.tsbuildinfo
+next-env.d.ts
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
+
+# Vitest
+frontend/coverage/
