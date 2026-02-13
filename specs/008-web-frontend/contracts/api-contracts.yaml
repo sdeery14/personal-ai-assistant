@@ -1,0 +1,758 @@
+openapi: "3.1.0"
+info:
+  title: Personal AI Assistant API — Feature 008 Extensions
+  description: >
+    New and modified endpoints required for the Web Frontend feature.
+    Extends the existing /health and /chat endpoints with authentication,
+    user management, conversation management, memory browsing, and
+    knowledge graph browsing.
+  version: "0.8.0"
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token issued by /auth/login
+
+  schemas:
+    # === Auth ===
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 100
+        password:
+          type: string
+          minLength: 8
+
+    LoginResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+          enum: [bearer]
+        expires_in:
+          type: integer
+          description: Access token TTL in seconds
+        user:
+          $ref: "#/components/schemas/UserSummary"
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    SetupRequest:
+      type: object
+      required: [username, password, display_name]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 100
+        password:
+          type: string
+          minLength: 8
+        display_name:
+          type: string
+          maxLength: 255
+
+    # === Users ===
+    UserSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        display_name:
+          type: string
+        is_admin:
+          type: boolean
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    CreateUserRequest:
+      type: object
+      required: [username, password, display_name]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 100
+        password:
+          type: string
+          minLength: 8
+        display_name:
+          type: string
+          maxLength: 255
+        is_admin:
+          type: boolean
+          default: false
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+          maxLength: 255
+        is_active:
+          type: boolean
+        password:
+          type: string
+          minLength: 8
+
+    # === Conversations ===
+    ConversationSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          nullable: true
+        message_preview:
+          type: string
+          description: First ~100 chars of the first user message
+        message_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ConversationDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          nullable: true
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageSummary"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    MessageSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [user, assistant, system]
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    UpdateConversationRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 500
+
+    # === Memories ===
+    MemoryItemResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        content:
+          type: string
+        type:
+          type: string
+          enum: [fact, preference, decision, note, episode]
+        importance:
+          type: number
+          minimum: 0
+          maximum: 1
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        source_conversation_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    # === Knowledge Graph ===
+    EntityResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+          enum: [person, project, tool, concept, organization]
+        description:
+          type: string
+          nullable: true
+        aliases:
+          type: array
+          items:
+            type: string
+        confidence:
+          type: number
+        mention_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        last_mentioned_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    RelationshipResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        source_entity:
+          $ref: "#/components/schemas/EntityResponse"
+        target_entity:
+          $ref: "#/components/schemas/EntityResponse"
+          nullable: true
+        relationship_type:
+          type: string
+          enum: [USES, PREFERS, DECIDED, WORKS_ON, WORKS_WITH, KNOWS, DEPENDS_ON, MENTIONED_IN, PART_OF]
+        context:
+          type: string
+          nullable: true
+        confidence:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+
+    # === Common ===
+    PaginatedResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: {}
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+
+security:
+  - bearerAuth: []
+
+paths:
+  # === Auth (no auth required) ===
+  /auth/setup:
+    post:
+      tags: [Auth]
+      summary: First-run admin setup
+      description: Creates the initial admin account. Only works when no users exist.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetupRequest"
+      responses:
+        "201":
+          description: Admin account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "409":
+          description: Setup already completed (users exist)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with username and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Invalid or expired refresh token
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user info
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSummary"
+        "401":
+          description: Not authenticated
+
+  /auth/status:
+    get:
+      tags: [Auth]
+      summary: Check if setup is needed
+      description: Returns whether any users exist (for first-run detection).
+      security: []
+      responses:
+        "200":
+          description: Setup status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  setup_required:
+                    type: boolean
+
+  # === Admin: User Management ===
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: List all users (admin only)
+      responses:
+        "200":
+          description: User list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserSummary"
+        "403":
+          description: Not an admin
+
+    post:
+      tags: [Admin]
+      summary: Create a new user (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSummary"
+        "403":
+          description: Not an admin
+        "409":
+          description: Username already exists
+
+  /admin/users/{user_id}:
+    patch:
+      tags: [Admin]
+      summary: Update user (admin only)
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSummary"
+        "403":
+          description: Not an admin
+        "404":
+          description: User not found
+
+    delete:
+      tags: [Admin]
+      summary: Delete user (admin only)
+      description: Permanently removes user and all associated data. Admin cannot delete themselves.
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: User deleted
+        "403":
+          description: Not an admin or trying to delete self
+        "404":
+          description: User not found
+
+  # === Conversations ===
+  /conversations:
+    get:
+      tags: [Conversations]
+      summary: List user's conversations
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Conversation list (ordered by updated_at desc)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ConversationSummary"
+
+  /conversations/{conversation_id}:
+    get:
+      tags: [Conversations]
+      summary: Get conversation with messages
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: message_limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+      responses:
+        "200":
+          description: Conversation with messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationDetail"
+        "404":
+          description: Conversation not found or belongs to another user
+
+    patch:
+      tags: [Conversations]
+      summary: Update conversation (rename)
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateConversationRequest"
+      responses:
+        "200":
+          description: Conversation updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationSummary"
+        "404":
+          description: Conversation not found
+
+    delete:
+      tags: [Conversations]
+      summary: Delete conversation and its messages
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Conversation deleted
+        "404":
+          description: Conversation not found
+
+  # === Memories ===
+  /memories:
+    get:
+      tags: [Memories]
+      summary: List/search user's memories
+      parameters:
+        - name: q
+          in: query
+          description: Search query (optional, returns all if omitted)
+          schema:
+            type: string
+        - name: type
+          in: query
+          description: Filter by memory type
+          schema:
+            type: string
+            enum: [fact, preference, decision, note, episode]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Memory list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/MemoryItemResponse"
+
+  /memories/{memory_id}:
+    delete:
+      tags: [Memories]
+      summary: Delete a memory item
+      parameters:
+        - name: memory_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Memory deleted (soft delete)
+        "404":
+          description: Memory not found or belongs to another user
+
+  # === Knowledge Graph ===
+  /entities:
+    get:
+      tags: [Knowledge Graph]
+      summary: Search/list user's entities
+      parameters:
+        - name: q
+          in: query
+          description: Search by entity name
+          schema:
+            type: string
+        - name: type
+          in: query
+          description: Filter by entity type
+          schema:
+            type: string
+            enum: [person, project, tool, concept, organization]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Entity list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/EntityResponse"
+
+  /entities/{entity_id}/relationships:
+    get:
+      tags: [Knowledge Graph]
+      summary: Get relationships for an entity
+      parameters:
+        - name: entity_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: type
+          in: query
+          description: Filter by relationship type
+          schema:
+            type: string
+            enum: [USES, PREFERS, DECIDED, WORKS_ON, WORKS_WITH, KNOWS, DEPENDS_ON, MENTIONED_IN, PART_OF]
+      responses:
+        "200":
+          description: Entity relationships
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RelationshipResponse"
+        "404":
+          description: Entity not found
+
+  # === Modified existing endpoint ===
+  /chat:
+    post:
+      tags: [Chat]
+      summary: Send message and receive streaming response (MODIFIED)
+      description: >
+        Existing endpoint. Modified to require authentication.
+        The user_id field is now derived from the JWT token and no longer
+        accepted in the request body. conversation_id is still optional.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: string
+                  minLength: 1
+                  maxLength: 8000
+                model:
+                  type: string
+                  nullable: true
+                max_tokens:
+                  type: integer
+                  minimum: 1
+                  maximum: 4000
+                  default: 2000
+                conversation_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+      responses:
+        "200":
+          description: SSE stream of StreamChunk events
+          content:
+            text/event-stream: {}
+        "401":
+          description: Not authenticated

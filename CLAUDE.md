@@ -1,4 +1,4 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -138,6 +138,8 @@ Optional: `OPENAI_MODEL` (default: gpt-4o), `MAX_TOKENS` (default: 2000), `TIMEO
 ## Feature Roadmap Context
 
 See `vision.md` for the full roadmap. Completed: 001–007. Next: 008 (Web Frontend).
+
+When a feature, idea, or capability is deferred or declared out of scope during any phase (specify, clarify, plan, implement), add it to the **Future Capabilities** section in `vision.md` so it is not lost.
 
 ## Spec-Kit Workflow
 

@@ -200,8 +200,9 @@ Gmail read/search, calendar read, explicit permission prompts, audit logging. No
 - Memory v4: Long-horizon personalization and planning
 - Tool-based reasoning (context-aware suggestions using memory + tools)
 - Task automation and write-capable integrations
-- Multi-modal inputs (images, documents)
+- Multi-modal inputs (images, documents, file uploads in chat)
 - Additional tool integrations
+- Frontend enhancements: dark mode / theme customization, user settings & preferences page, memory editing (content modification, not just deletion), interactive knowledge graph visualization (zoomable node-and-edge diagram)
 
 Each new capability must follow the constitution, include evaluation coverage, and be introduced as its own scoped feature.
 
