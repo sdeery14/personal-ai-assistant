@@ -163,7 +163,15 @@ Next.js app consuming the existing SSE chat API. Conversation view with streamin
 
 ---
 
-### Feature 009 – Background Jobs & Proactivity (Memory v3)
+### Feature 009 – Dark Mode & Theming
+
+> "The app looks great whether I prefer light or dark mode."
+
+System-aware theme detection (prefers-color-scheme) with manual toggle, persistent preference, and consistent dark/light palettes across all components. Tailwind CSS dark variant strategy with CSS custom properties for seamless switching.
+
+---
+
+### Feature 010 – Background Jobs & Proactivity (Memory v3)
 
 > "The assistant prepares helpful information before I ask for it."
 
@@ -171,7 +179,7 @@ Background job execution framework, morning briefings (news, weather, calendar),
 
 ---
 
-### Feature 010 – Voice Interaction
+### Feature 011 – Voice Interaction
 
 > "I can talk to the assistant and hear it respond."
 
@@ -179,7 +187,7 @@ Phased: TTS-only output first, then two-way voice with speech-to-text input and 
 
 ---
 
-### Feature 011 – Edge Client (Raspberry Pi)
+### Feature 012 – Edge Client (Raspberry Pi)
 
 > "I can interact with the assistant from a Raspberry Pi."
 
@@ -187,7 +195,7 @@ Text-based interface (CLI / button / simple display), connection to existing bac
 
 ---
 
-### Feature 012 – Google Integrations (Read-Only)
+### Feature 013 – Google Integrations (Read-Only)
 
 > "The assistant can tell me about my emails and calendar events."
 
