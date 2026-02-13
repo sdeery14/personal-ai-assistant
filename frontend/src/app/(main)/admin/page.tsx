@@ -109,7 +109,7 @@ export default function AdminPage() {
     <div className="h-full overflow-y-auto p-6">
       <div className="mx-auto max-w-4xl">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-xl font-semibold text-gray-900">
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
             User Management
           </h1>
           <Button onClick={() => setShowCreate(!showCreate)}>
@@ -118,7 +118,7 @@ export default function AdminPage() {
         </div>
 
         {error && (
-          <p className="mb-4 text-sm text-red-600">{error}</p>
+          <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>
         )}
 
         {/* Create user form */}
@@ -148,17 +148,17 @@ export default function AdminPage() {
                 required
                 minLength={8}
               />
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                 <input
                   type="checkbox"
                   checked={newIsAdmin}
                   onChange={(e) => setNewIsAdmin(e.target.checked)}
-                  className="rounded"
+                  className="rounded dark:bg-gray-800 dark:border-gray-600"
                 />
                 Admin privileges
               </label>
               {createError && (
-                <p className="text-sm text-red-600">{createError}</p>
+                <p className="text-sm text-red-600 dark:text-red-400">{createError}</p>
               )}
               <Button type="submit" isLoading={isCreating}>
                 Create
@@ -169,33 +169,33 @@ export default function AdminPage() {
 
         {/* User table */}
         {isLoading ? (
-          <p className="text-sm text-gray-400">Loading users...</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500">Loading users...</p>
         ) : (
-          <div className="overflow-hidden rounded-lg border border-gray-200">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+          <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+            <table className="w-full text-sm text-gray-900 dark:text-gray-100">
+              <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">User</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Username</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Role</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Created</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600">Actions</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-200">User</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-200">Username</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-200">Role</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-200">Status</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-200">Created</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-200">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {users.map((user) => (
-                  <tr key={user.id} className="bg-white">
-                    <td className="px-4 py-3 font-medium text-gray-900">
+                  <tr key={user.id} className="bg-white dark:bg-gray-800">
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                       {user.display_name}
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{user.username}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{user.username}</td>
                     <td className="px-4 py-3">
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs ${
                           user.is_admin
-                            ? "bg-purple-100 text-purple-700"
-                            : "bg-gray-100 text-gray-600"
+                            ? "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300"
+                            : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
                         }`}
                       >
                         {user.is_admin ? "Admin" : "User"}
@@ -205,14 +205,14 @@ export default function AdminPage() {
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs ${
                           user.is_active
-                            ? "bg-green-100 text-green-700"
-                            : "bg-red-100 text-red-700"
+                            ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-400"
+                            : "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-400"
                         }`}
                       >
                         {user.is_active ? "Active" : "Disabled"}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-400">
+                    <td className="px-4 py-3 text-gray-400 dark:text-gray-500">
                       {new Date(user.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -228,7 +228,7 @@ export default function AdminPage() {
                           variant="ghost"
                           size="sm"
                           onClick={() => setDeleteTarget(user)}
-                          className="text-red-500 hover:text-red-700"
+                          className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                         >
                           Delete
                         </Button>

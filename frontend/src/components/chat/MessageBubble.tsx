@@ -1,9 +1,12 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { useTheme } from "next-themes";
 import { ChatMessage } from "@/types/chat";
 
 interface MessageBubbleProps {
@@ -12,20 +15,26 @@ interface MessageBubbleProps {
 
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
         className={`max-w-[80%] rounded-lg px-4 py-3 ${
           isUser
-            ? "bg-blue-600 text-white"
-            : "bg-gray-100 text-gray-900"
+            ? "bg-blue-600 text-white dark:bg-blue-500"
+            : "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100"
         }`}
       >
         {isUser ? (
           <p className="whitespace-pre-wrap text-sm">{message.content}</p>
         ) : (
-          <div className="prose prose-sm max-w-none prose-p:my-1 prose-pre:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0">
+          <div className="prose prose-sm max-w-none prose-p:my-1 prose-pre:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 dark:prose-invert">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
@@ -36,7 +45,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                   if (match) {
                     return (
                       <SyntaxHighlighter
-                        style={oneLight}
+                        style={mounted && resolvedTheme === "dark" ? vscDarkPlus : oneLight}
                         language={match[1]}
                         PreTag="div"
                         className="rounded-md text-xs"
@@ -48,7 +57,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
                   return (
                     <code
-                      className="rounded bg-gray-200 px-1.5 py-0.5 text-xs"
+                      className="rounded bg-gray-200 px-1.5 py-0.5 text-xs dark:bg-gray-700"
                       {...props}
                     >
                       {children}

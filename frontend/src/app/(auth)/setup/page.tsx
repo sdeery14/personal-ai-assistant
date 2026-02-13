@@ -78,17 +78,17 @@ export default function SetupPage() {
   if (checking) {
     return (
       <Card padding="lg">
-        <p className="text-center text-gray-500">Checking setup status...</p>
+        <p className="text-center text-gray-500 dark:text-gray-400">Checking setup status...</p>
       </Card>
     );
   }
 
   return (
     <Card padding="lg">
-      <h1 className="text-2xl font-bold text-gray-900 text-center mb-2">
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 text-center mb-2">
         Welcome
       </h1>
-      <p className="text-sm text-gray-600 text-center mb-6">
+      <p className="text-sm text-gray-600 dark:text-gray-400 text-center mb-6">
         Create your admin account to get started.
       </p>
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -122,7 +122,7 @@ export default function SetupPage() {
           placeholder="Minimum 8 characters"
         />
         {error && (
-          <p className="text-sm text-red-600 text-center">{error}</p>
+          <p className="text-sm text-red-600 dark:text-red-400 text-center">{error}</p>
         )}
         <Button type="submit" className="w-full" isLoading={isLoading}>
           Create Admin Account

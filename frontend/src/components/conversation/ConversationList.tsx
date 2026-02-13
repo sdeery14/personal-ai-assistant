@@ -48,7 +48,7 @@ export function ConversationList({
           />
         ))}
         {conversations.length === 0 && !isLoading && (
-          <p className="px-3 py-4 text-center text-xs text-gray-400">
+          <p className="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500">
             No conversations yet
           </p>
         )}

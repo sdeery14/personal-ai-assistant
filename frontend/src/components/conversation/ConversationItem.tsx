@@ -53,8 +53,8 @@ export function ConversationItem({
     <div
       className={`group flex items-center gap-2 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors ${
         isActive
-          ? "bg-blue-50 text-blue-700"
-          : "text-gray-700 hover:bg-gray-100"
+          ? "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+          : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
       }`}
       onClick={() => !isEditing && onSelect(conversation.id)}
       onDoubleClick={startEditing}
@@ -67,13 +67,13 @@ export function ConversationItem({
             onChange={(e) => setEditValue(e.target.value)}
             onBlur={commitRename}
             onKeyDown={handleKeyDown}
-            className="w-full rounded border border-gray-300 px-1 py-0.5 text-sm"
+            className="w-full rounded border border-gray-300 px-1 py-0.5 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
           <p className="truncate">{title}</p>
         )}
-        <p className="truncate text-xs text-gray-400">
+        <p className="truncate text-xs text-gray-400 dark:text-gray-500">
           {new Date(conversation.updated_at).toLocaleDateString()}
         </p>
       </div>
@@ -83,7 +83,7 @@ export function ConversationItem({
             e.stopPropagation();
             onDelete(conversation.id);
           }}
-          className="hidden rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-red-500 group-hover:block"
+          className="hidden rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-red-500 group-hover:block dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-red-400"
           aria-label="Delete conversation"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">

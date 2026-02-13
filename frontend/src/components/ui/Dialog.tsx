@@ -40,12 +40,12 @@ export function Dialog({
   return (
     <dialog
       ref={dialogRef}
-      className="rounded-lg border-0 p-0 shadow-xl backdrop:bg-black/50"
+      className="rounded-lg border-0 p-0 shadow-xl backdrop:bg-black/50 dark:bg-gray-800 dark:border dark:border-gray-700 dark:shadow-gray-900/50"
       onClose={onClose}
     >
       <div className="p-6 max-w-md">
-        <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-        <p className="mt-2 text-sm text-gray-600">{description}</p>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
+        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{description}</p>
         <div className="mt-4 flex justify-end gap-3">
           <Button variant="secondary" onClick={onClose} disabled={isLoading}>
             Cancel

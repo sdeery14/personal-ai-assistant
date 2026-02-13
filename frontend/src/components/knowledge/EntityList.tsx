@@ -27,7 +27,7 @@ export function EntityList() {
   return (
     <div className="flex flex-col h-full">
       {/* Search and filter controls */}
-      <div className="flex gap-3 border-b border-gray-200 p-4">
+      <div className="flex gap-3 border-b border-gray-200 p-4 dark:border-gray-700">
         <div className="flex-1">
           <Input
             placeholder="Search entities..."
@@ -38,7 +38,7 @@ export function EntityList() {
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value as EntityType | "")}
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className="rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
         >
           <option value="">All types</option>
           {entityTypes.map((t) => (
@@ -63,7 +63,7 @@ export function EntityList() {
           ))}
 
           {entities.length === 0 && !isLoading && (
-            <p className="py-8 text-center text-sm text-gray-400">
+            <p className="py-8 text-center text-sm text-gray-400 dark:text-gray-500">
               {query || typeFilter
                 ? "No entities match your search."
                 : "No knowledge graph entities yet."}
@@ -71,7 +71,7 @@ export function EntityList() {
           )}
 
           {isLoading && (
-            <p className="py-4 text-center text-sm text-gray-400">Loading...</p>
+            <p className="py-4 text-center text-sm text-gray-400 dark:text-gray-500">Loading...</p>
           )}
 
           {hasMore && !isLoading && (

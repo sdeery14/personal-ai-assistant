@@ -31,11 +31,11 @@ export function ChatError({ error, onRetry }: ChatErrorProps) {
   const config = errorMessages[error.type];
 
   return (
-    <div className="mx-4 mb-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+    <div className="mx-4 mb-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-800 dark:bg-red-950">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm font-medium text-red-800">{config.title}</p>
-          <p className="mt-0.5 text-xs text-red-600">{error.message}</p>
+          <p className="text-sm font-medium text-red-800 dark:text-red-300">{config.title}</p>
+          <p className="mt-0.5 text-xs text-red-600 dark:text-red-400">{error.message}</p>
         </div>
         {onRetry && error.type !== "guardrail_violation" && (
           <Button variant="ghost" size="sm" onClick={onRetry}>

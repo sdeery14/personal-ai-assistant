@@ -34,7 +34,7 @@ export function Sidebar() {
   const sidebarContent = (
     <>
       {/* Navigation */}
-      <nav className="flex gap-1 border-b border-gray-200 px-3 py-2">
+      <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-700 px-3 py-2">
         {navItems.map((item) => (
           <Link
             key={item.href}
@@ -42,8 +42,8 @@ export function Sidebar() {
             onClick={() => setMobileOpen(false)}
             className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
               pathname.startsWith(item.href)
-                ? "bg-blue-100 text-blue-700"
-                : "text-gray-600 hover:bg-gray-100"
+                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
             }`}
           >
             {item.label}
@@ -55,8 +55,8 @@ export function Sidebar() {
             onClick={() => setMobileOpen(false)}
             className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
               pathname.startsWith("/admin")
-                ? "bg-blue-100 text-blue-700"
-                : "text-gray-600 hover:bg-gray-100"
+                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
             }`}
           >
             Admin
@@ -92,7 +92,7 @@ export function Sidebar() {
       {/* Mobile toggle button */}
       <button
         onClick={() => setMobileOpen(!mobileOpen)}
-        className="fixed left-3 top-3.5 z-50 rounded-md p-1 text-gray-600 hover:bg-gray-100 md:hidden"
+        className="fixed left-3 top-3.5 z-50 rounded-md p-1 text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 md:hidden"
         aria-label="Toggle sidebar"
       >
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
@@ -109,13 +109,13 @@ export function Sidebar() {
       )}
 
       {/* Desktop sidebar */}
-      <aside className="hidden h-full w-64 flex-col border-r border-gray-200 bg-gray-50 md:flex">
+      <aside className="hidden h-full w-64 flex-col border-r border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900 md:flex">
         {sidebarContent}
       </aside>
 
       {/* Mobile sidebar drawer */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-64 flex-col border-r border-gray-200 bg-gray-50 transition-transform md:hidden ${
+        className={`fixed inset-y-0 left-0 z-40 w-64 flex-col border-r border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900 transition-transform md:hidden ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >

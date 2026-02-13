@@ -42,7 +42,7 @@ function LoginForm() {
 
   return (
     <Card padding="lg">
-      <h1 className="text-2xl font-bold text-gray-900 text-center mb-6">
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 text-center mb-6">
         Sign In
       </h1>
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -64,7 +64,7 @@ function LoginForm() {
           autoComplete="current-password"
         />
         {error && (
-          <p className="text-sm text-red-600 text-center">{error}</p>
+          <p className="text-sm text-red-600 dark:text-red-400 text-center">{error}</p>
         )}
         <Button type="submit" className="w-full" isLoading={isLoading}>
           Sign In
@@ -76,7 +76,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<Card padding="lg"><p className="text-center text-gray-500">Loading...</p></Card>}>
+    <Suspense fallback={<Card padding="lg"><p className="text-center text-gray-500 dark:text-gray-400">Loading...</p></Card>}>
       <LoginForm />
     </Suspense>
   );
