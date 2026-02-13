@@ -7,8 +7,7 @@
 
 > **Related Documents:**
 >
-> - [vision.md](../../vision.md) – Feature 006 in roadmap
-> - [vision-memory.md](../../vision-memory.md) – Memory v2 phase definition
+> - [vision.md](../../vision.md) – Feature 006 in roadmap, Memory Architecture section
 > - [004-memory-v1-readonly-recall/spec.md](../004-memory-v1-readonly-recall/spec.md) – Foundation this builds on
 
 ---

@@ -1,301 +1,201 @@
-# Personal AI Assistant — Vision/Feature Roadmap
+# Personal AI Assistant — Vision
 
-This roadmap intentionally builds **capability + safety + confidence** in layers.
-Each feature delivers a clear, testable user capability and becomes the foundation for the next.
+This document is the single source of truth for the project's direction. It defines guiding principles, the memory architecture that underpins multiple features, and the feature roadmap.
 
-> **Related Documents:** See [vision-memory.md](vision-memory.md) for the long-term memory architecture vision.
+The roadmap intentionally builds **capability + safety + confidence** in layers. Each feature delivers a clear, testable user capability and becomes the foundation for the next.
 
 ---
 
-## Completed Features
+## Guiding Principles
 
-### Feature 001 – Core Streaming Chat API ✅
+### Build in Layers
 
-**Goal**
-Establish a reliable, observable interaction loop with the assistant.
+Each feature ships independently with eval coverage, builds on previous guarantees, and follows the constitution. No capability is introduced without the safety and observability foundations beneath it.
 
-**User Capability**
+### Memory Design Goals
+
+Memory is not a single feature — it is a **foundational capability** that evolves across multiple features.
+
+1. **Trust First** — The user must be able to understand what is remembered, why it was remembered, how it is used, and how it can be forgotten.
+2. **Progressive Disclosure** — Read-only recall before automatic writes. Explicit memory before inferred memory. Deterministic retrieval before semantic expansion.
+3. **Separation of Concerns** — Session state ≠ conversation history ≠ durable memory. Memory storage ≠ retrieval ≠ synthesis.
+4. **Evaluation-Ready** — Memory behavior must be testable: retrieval correctness, over-recall vs under-recall, safety regressions, cost and latency impact.
+
+### Safety & Guardrails
+
+All systems (memory and otherwise) must:
+
+- Fail closed
+- Support forgetting / reversal
+- Never cross user boundaries
+- Be auditable via logs and evals
+- Respect scope of consent and data minimization
+
+---
+
+## Memory Architecture
+
+### What Memory Is (and Is Not)
+
+**Memory IS:**
+- A structured, inspectable system for recall, continuity, and personalization
+- A mechanism for grounding assistant responses in past context
+- A substrate for background jobs, preparation, and proactive assistance
+- A system with clear provenance and reversibility
+
+**Memory IS NOT:**
+- A raw dump of chat transcripts
+- An unbounded embedding store
+- A black-box "the assistant remembers everything"
+- A replacement for reasoning or tools
+
+### Memory Layers
+
+| Layer | Purpose | Characteristics | Examples |
+|-------|---------|-----------------|----------|
+| **Session** (Ephemeral) | Conversational coherence | Short-lived, fast, safe to lose | Last N messages, current goal, recent tool results |
+| **Conversation** (Durable Transcript) | Source-of-truth history | Append-only, auditable, never injected wholesale | Messages, tool calls, model outputs |
+| **Long-Term** (Curated) | Recall and personalization | Intentional, human-readable, typed, searchable | "User prefers Poetry over pip", "Project uses FastAPI" |
+
+### Memory Content Types
+
+Memory items are **atomic and typed**, not free-form blobs.
+
+| Type | Description |
+|------|-------------|
+| Episode | Summary of a meaningful interaction window |
+| Fact | Stable, objective information |
+| Preference | User-stated or confirmed preference |
+| Decision | Chosen path or resolved option |
+| Note | Low-confidence or contextual information |
+
+Each memory item has: source (messages / job / tool), importance, optional expiration, and reversible deletion.
+
+### Retrieval Philosophy
+
+Memory retrieval must be **selective** (few high-signal items), **explainable** (why this memory surfaced), **composable** (keyword + semantic), and **budgeted** (token-aware). Memory is injected as contextual grounding, never as authoritative truth.
+
+The agent chooses retrieval method based on query type:
+
+- **Graph retrieval**: Relationship queries ("What tools do I use for project X?")
+- **Vector retrieval**: Narrative queries ("What did we discuss about the trip?")
+- **Combined**: Complex queries requiring both context and relationships
+
+### Summarization & Insight Extraction
+
+The assistant may summarize conversation windows, extract durable insights, and consolidate overlapping memories — but summaries are derived artifacts, raw transcripts remain canonical, and memory writes are observable and testable. Automatic memory creation is **earned**, not assumed.
+
+### Memory Eval Metrics
+
+| Metric | What It Measures |
+|--------|-----------------|
+| Recall@K | Did the right memories surface in top K? |
+| Precision | What % of retrieved memories were relevant? |
+| False injection | Did irrelevant/harmful memories get used? |
+| Latency | Retrieval time under budget? |
+| Token budget | Memory injection ≤ target token count? |
+
+---
+
+## Feature Roadmap
+
+### Feature 001 – Core Streaming Chat API
 
 > "I can send a message and receive a streamed response from the assistant."
 
-**Scope**
-
-- OpenAI Agents SDK integration
-- Server-side SSE streaming responses
-- Request lifecycle with correlation IDs
-- Structured logging and basic error handling
-
-**Status:** Complete (spec `001-streaming-chat-api`)
+OpenAI Agents SDK integration, server-side SSE streaming, request lifecycle with correlation IDs, structured logging and basic error handling.
 
 ---
 
-### Feature 002 – Evaluation Harness (MLflow) ✅
-
-**Goal**
-Prevent silent regressions in assistant behavior.
-
-**User Capability**
+### Feature 002 – Evaluation Harness (MLflow)
 
 > "I can tell if the assistant got better or worse after a change."
 
-**Scope**
-
-- Golden test dataset (small, deterministic)
-- LLM-as-judge scoring with rubrics
-- MLflow-backed run tracking
-- Pass/fail thresholds with regression gating
-- CI gate for prompt / routing changes
-
-**Status:** Complete (spec `002-judge-eval-framework`)
+Golden test dataset, LLM-as-judge scoring with rubrics, MLflow-backed run tracking, pass/fail thresholds with regression gating, CI gate for prompt/routing changes.
 
 ---
 
-### Feature 003 – Security Guardrails ✅
-
-**Goal**
-Protect users and the system from harmful inputs and outputs.
-
-**User Capability**
+### Feature 003 – Security Guardrails
 
 > "The assistant blocks dangerous requests and never produces harmful content."
 
-**Scope**
-
-- Input guardrails via OpenAI Moderation API
-- Output guardrails with stream retraction
-- Fail-closed behavior with exponential backoff retry
-- Security red-team golden dataset
-- Security-specific eval metrics (block rate, false positive rate)
-
-**Status:** Complete (spec `003-security-guardrails`)
+Input guardrails via OpenAI Moderation API, output guardrails with stream retraction, fail-closed behavior with exponential backoff retry, security red-team golden dataset, security-specific eval metrics (block rate, false positive rate).
 
 ---
 
-### Feature 004 – Memory v1 (Read-Only Recall) ✅
-
-> _Implements Memory v1 from [vision-memory.md](vision-memory.md)_
-
-**Goal**
-Enable safe retrieval of relevant past information.
-
-**User Capability**
+### Feature 004 – Memory v1 (Read-Only Recall)
 
 > "The assistant can look up relevant past information when answering."
 
-**Scope**
-
-- Hybrid search (keyword + semantic)
-- Read-only memory store with typed items (Fact, Preference, Decision, Note)
-- Explicit memory query tool for the Agent
-- Retrieval-only grounding in responses
-- Memory retrieval eval coverage
-
-**Explicitly Out of Scope**
-
-- Automatic memory writes
-- Summarization or insight extraction
-- Long-term personalization logic
-
-**Status:** Complete (spec `004-memory-v1-readonly-recall`)
+Hybrid search (keyword + semantic), read-only memory store with typed items, explicit memory query tool for the Agent, retrieval-only grounding in responses, memory retrieval eval coverage.
 
 ---
 
-### Feature 005 – External Tool v1: Weather Lookup ✅
-
-**Goal**
-Introduce a safe, real-world external tool.
-
-**User Capability**
+### Feature 005 – Weather Lookup
 
 > "The assistant can accurately tell me the weather."
 
-**Scope**
-
-- Single weather provider
-- Schema-validated tool calls
-- Caching of safe responses
-- Clear error states and fallbacks
-
-**Explicitly Out of Scope**
-
-- Advice or recommendations
-- Multi-provider failover
-
-**Status:** Complete (spec `005-weather-lookup`)
+Single weather provider, schema-validated tool calls, caching of safe responses, clear error states and fallbacks.
 
 ---
 
-### Feature 006 – Memory v2 (Automatic Writes) ✅
-
-> _Implements Memory v2 from [vision-memory.md](vision-memory.md)_
-
-**Goal**
-Allow the assistant to remember important information automatically.
-
-**User Capability**
+### Feature 006 – Memory v2 (Automatic Writes)
 
 > "The assistant remembers what I told it without me having to repeat myself."
 
-**Scope**
-
-- Automatic summarization of conversation windows
-- Insight extraction (facts, preferences, decisions)
-- User-observable memory writes with provenance
-- Memory correction and deletion via conversation
-- Memory write eval coverage (precision, relevance)
-
-**Explicitly Out of Scope**
-
-- Knowledge graph / entity relationships
-- Background jobs
-- Proactive suggestions
-
-**Status:** Complete (spec `006-memory-auto-writes`)
+Automatic summarization of conversation windows, insight extraction (facts, preferences, decisions), user-observable memory writes with provenance, memory correction and deletion via conversation.
 
 ---
-
-## Upcoming Features
 
 ### Feature 007 – Knowledge Graph
 
-> _Implements Knowledge Graph from [vision-memory.md](vision-memory.md)_
-
-**Goal**
-Enable structured relationship tracking between entities mentioned in conversations.
-
-**User Capability**
-
 > "The assistant understands how things I mention relate to each other."
 
-**Scope**
-
-- Entity extraction from conversations (people, projects, tools, concepts)
-- Relationship tracking with typed edges (USES, PREFERS, DECIDED, etc.)
-- Graph-based retrieval tool for relationship queries
-- Provenance linking all graph elements to source messages
-- Entity resolution with confidence scoring
-
-**Explicitly Out of Scope**
-
-- Complex entity merging (deferred to background jobs)
-- Cross-user graph connections
-- Automatic graph cleanup/consolidation
+Entity extraction from conversations (people, projects, tools, concepts), relationship tracking with typed edges, graph-based retrieval tool for relationship queries, provenance linking all graph elements to source messages, entity resolution with confidence scoring.
 
 ---
 
-### Feature 008 – Memory v3 (Background Jobs & Proactivity)
+### Feature 008 – Web Frontend (Next.js)
 
-> _Implements Memory v3 from [vision-memory.md](vision-memory.md)_
+> "I can chat with the assistant through a real UI in my browser."
 
-**Goal**
-Enable time-shifted intelligence and proactive preparation.
+Next.js app consuming the existing SSE chat API. Conversation view with streaming responses, memory/knowledge graph visibility. Provides the interaction layer that voice, edge clients, and background job notifications build on top of.
 
-**User Capability**
+---
+
+### Feature 009 – Background Jobs & Proactivity (Memory v3)
 
 > "The assistant prepares helpful information before I ask for it."
 
-**Scope**
-
-- Background job execution
-- Morning briefings (news, weather, calendar)
-- Trip/event preparation summaries
-- Opt-in proactive notifications
-- Graph consolidation and entity merging
-
-**Explicitly Out of Scope**
-
-- Autonomous actions
-- Unsolicited interruptions
+Background job execution framework, morning briefings (news, weather, calendar), trip/event preparation summaries, opt-in proactive notifications, graph consolidation and entity merging. All proactive behavior must cite memory sources, declare assumptions, and remain opt-in.
 
 ---
 
-### Feature 009 – Voice Interaction (Phased)
-
-#### Feature 009a – Voice Output (TTS Only)
-
-**Goal**
-Add audio output without increasing system complexity.
-
-**User Capability**
-
-> "I can hear the assistant's responses."
-
-**Scope**
-
-- Text-to-speech output
-- Same backend logic as text chat
-- No barge-in or interruptions
-
----
-
-#### Feature 009b – Two-Way Voice Chat
-
-**Goal**
-Enable natural spoken conversations.
-
-**User Capability**
+### Feature 010 – Voice Interaction
 
 > "I can talk to the assistant and hear it respond."
 
-**Scope**
-
-- Speech-to-text input
-- Turn-based voice conversations
-- Error handling for transcription failures
+Phased: TTS-only output first, then two-way voice with speech-to-text input and turn-based conversations.
 
 ---
 
-### Feature 010 – Edge Client v1: Raspberry Pi Interface
-
-**Goal**
-Deploy the assistant in a physical environment.
-
-**User Capability**
+### Feature 011 – Edge Client (Raspberry Pi)
 
 > "I can interact with the assistant from a Raspberry Pi."
 
-**Scope**
-
-- Text-based interface (CLI / button / simple display)
-- Connection to existing backend
-- Minimal local state
-
-**Explicitly Out of Scope**
-
-- On-device model inference
-- Voice (initially)
+Text-based interface (CLI / button / simple display), connection to existing backend, minimal local state.
 
 ---
 
-### Feature 011 – External Integrations v1: Google (Read-Only)
-
-**Goal**
-Allow the assistant to see personal context safely.
-
-**User Capability**
+### Feature 012 – Google Integrations (Read-Only)
 
 > "The assistant can tell me about my emails and calendar events."
 
-**Scope**
-
-- Gmail read/search
-- Calendar read
-- Explicit permission prompts
-- Audit logging
-
-**Explicitly Out of Scope**
-
-- Sending emails
-- Modifying or creating calendar events
+Gmail read/search, calendar read, explicit permission prompts, audit logging. No sending emails or modifying calendar events.
 
 ---
 
-## Future Capability Expansion
-
-**Goal**
-Safely extend assistant usefulness over time.
-
-**Examples**
+### Future Capabilities
 
 - Memory v4: Long-horizon personalization and planning
 - Tool-based reasoning (context-aware suggestions using memory + tools)
@@ -303,8 +203,17 @@ Safely extend assistant usefulness over time.
 - Multi-modal inputs (images, documents)
 - Additional tool integrations
 
-Each new capability must:
+Each new capability must follow the constitution, include evaluation coverage, and be introduced as its own scoped feature.
 
-- Follow the constitution
-- Include evaluation coverage
-- Be introduced as its own scoped feature
+---
+
+## Non-Goals
+
+- Replicate human memory
+- Achieve perfect recall
+- Infer sensitive traits
+- Act autonomously without oversight
+
+---
+
+> **Memory exists to make the assistant more helpful tomorrow — not more confident today.**

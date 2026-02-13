@@ -7,8 +7,7 @@
 
 > **Related Documents:**
 >
-> - [vision.md](../../vision.md) – Feature 007 in roadmap
-> - [vision-memory.md](../../vision-memory.md) – Knowledge Graph section
+> - [vision.md](../../vision.md) – Feature 007 in roadmap, Memory Architecture section
 > - [006-memory-auto-writes/spec.md](../006-memory-auto-writes/spec.md) – Memory extraction patterns this builds on
 
 ---

@@ -137,8 +137,42 @@ Optional: `OPENAI_MODEL` (default: gpt-4o), `MAX_TOKENS` (default: 2000), `TIMEO
 
 ## Feature Roadmap Context
 
-Current: Features 001 (Core API), 002 (Eval Framework), 003 (Security Guardrails), 004 (Memory v1 Read-Only), 005 (Weather Tool) complete. Feature 006 (Memory v2 Auto-Writes) in progress.
+See `vision.md` for the full roadmap. Completed: 001–007. Next: 008 (Web Frontend).
 
-Future: Entity relationships (007), Background jobs (008), Voice, Edge client, Google integrations.
+## Spec-Kit Workflow
 
-Each feature follows: spec → plan → tasks → implementation → eval coverage.
+This project uses a spec-driven development process. Each feature goes through these phases:
+
+1. **Specify** — Write feature spec from natural language description
+2. **Clarify** — Resolve ambiguities in the spec (optional)
+3. **Plan** — Technical architecture, data model, API contracts
+4. **Tasks** — Break plan into dependency-ordered, independently testable tasks
+5. **Analyze** — Cross-artifact consistency check (optional)
+6. **Implement** — Execute tasks phase by phase
+
+### How to Run
+
+When the user asks to run a spec-kit phase, read the corresponding prompt file for detailed instructions:
+
+| Phase | Prompt File |
+|-------|-------------|
+| Specify | `.github/prompts/speckit.specify.prompt.md` |
+| Clarify | `.github/prompts/speckit.clarify.prompt.md` |
+| Plan | `.github/prompts/speckit.plan.prompt.md` |
+| Tasks | `.github/prompts/speckit.tasks.prompt.md` |
+| Checklist | `.github/prompts/speckit.checklist.prompt.md` |
+| Analyze | `.github/prompts/speckit.analyze.prompt.md` |
+| Implement | `.github/prompts/speckit.implement.prompt.md` |
+
+### Key Resources
+
+- **Templates**: `.specify/templates/` (spec, plan, tasks, checklist templates)
+- **Constitution**: `.specify/memory/constitution.md` (project principles, non-negotiable)
+- **Scripts**: `.specify/scripts/powershell/` (branch creation, prerequisites, etc.)
+- **Vision**: `vision.md` (guiding principles, memory architecture, feature roadmap)
+
+### Conventions
+
+- Feature branches: `NNN-short-name` (e.g., `008-web-frontend`)
+- Spec artifacts go in: `specs/NNN-short-name/`
+- Each feature produces: `spec.md`, `plan.md`, `tasks.md`, and optionally `research.md`, `data-model.md`, `contracts/`, `quickstart.md`, `checklists/`

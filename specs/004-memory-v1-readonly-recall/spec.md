@@ -7,8 +7,7 @@
 
 > **Related Documents:**
 >
-> - [vision.md](../../vision.md) – Feature 004 in roadmap
-> - [vision-memory.md](../../vision-memory.md) – Memory v1 phase definition
+> - [vision.md](../../vision.md) – Feature 004 in roadmap, Memory Architecture section
 
 ---
 
