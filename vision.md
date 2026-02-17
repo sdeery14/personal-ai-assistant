@@ -171,15 +171,23 @@ System-aware theme detection (prefers-color-scheme) with manual toggle, persiste
 
 ---
 
-### Feature 010 – Background Jobs & Proactivity (Memory v3)
+### Feature 010 – Background Jobs & Scheduled Tasks
 
-> "The assistant prepares helpful information before I ask for it."
+> "The assistant can run tasks on a schedule and notify me of results."
 
-Background job execution framework, morning briefings (news, weather, calendar), trip/event preparation summaries, opt-in proactive notifications, graph consolidation and entity merging. All proactive behavior must cite memory sources, declare assumptions, and remain opt-in.
+Background job execution framework, cron-style scheduling, morning briefings (weather, calendar summary), trip/event preparation from templates, opt-in notifications via the frontend. Proves the plumbing for scheduled execution — jobs are configured explicitly, not autonomously chosen.
 
 ---
 
-### Feature 011 – Voice Interaction
+### Feature 011 – Proactive Relevance Engine (Memory v3)
+
+> "The assistant connects what it can do to what might be helpful, and gets better at it over time."
+
+Reasoning layer that connects user context (memory, knowledge graph, schedule) with available capabilities (tools, integrations) to surface timely, relevant suggestions. Relevance scoring based on user patterns and entity relationships. Feedback loop: tracks which suggestions the user engaged with vs. dismissed, adjusts future behavior accordingly. All proactive suggestions cite sources, declare confidence, and respect opt-in preferences. Builds on Feature 010 scheduling infrastructure and Feature 007 knowledge graph.
+
+---
+
+### Feature 012 – Voice Interaction
 
 > "I can talk to the assistant and hear it respond."
 
@@ -187,7 +195,7 @@ Phased: TTS-only output first, then two-way voice with speech-to-text input and 
 
 ---
 
-### Feature 012 – Edge Client (Raspberry Pi)
+### Feature 013 – Edge Client (Raspberry Pi)
 
 > "I can interact with the assistant from a Raspberry Pi."
 
@@ -195,7 +203,7 @@ Text-based interface (CLI / button / simple display), connection to existing bac
 
 ---
 
-### Feature 013 – Google Integrations (Read-Only)
+### Feature 014 – Google Integrations (Read-Only)
 
 > "The assistant can tell me about my emails and calendar events."
 
@@ -206,11 +214,10 @@ Gmail read/search, calendar read, explicit permission prompts, audit logging. No
 ### Future Capabilities
 
 - Memory v4: Long-horizon personalization and planning
-- Tool-based reasoning (context-aware suggestions using memory + tools)
 - Task automation and write-capable integrations
 - Multi-modal inputs (images, documents, file uploads in chat)
 - Additional tool integrations
-- Frontend enhancements: dark mode / theme customization, user settings & preferences page, memory editing (content modification, not just deletion), interactive knowledge graph visualization (zoomable node-and-edge diagram)
+- Frontend enhancements: user settings & preferences page, memory editing (content modification, not just deletion), interactive knowledge graph visualization (zoomable node-and-edge diagram)
 
 Each new capability must follow the constitution, include evaluation coverage, and be introduced as its own scoped feature.
 
