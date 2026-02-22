@@ -31,6 +31,24 @@ All systems (memory and otherwise) must:
 - Be auditable via logs and evals
 - Respect scope of consent and data minimization
 
+### Cost & Resource Awareness
+
+- **Token budgets**: Each request and feature has an explicit token budget; memory injection, system prompts, and tool outputs are metered against it
+- **Caching strategy**: Redis for embeddings, weather responses, and rate-limit counters — avoid redundant API calls
+- **Model tiering**: Use cheaper models (e.g., GPT-4o-mini) where quality is sufficient (guardrails, summarization); reserve expensive models for user-facing generation
+- **Observable cost**: Log token usage per request, track per-feature spend in evals, surface cost regressions alongside quality regressions
+
+---
+
+## Multi-User Architecture
+
+This is a **multi-tenant system** with strict per-user data isolation.
+
+- Every data table is scoped by `user_id`; all queries enforce isolation at the application layer
+- **Role model**: admin (user management, system configuration) vs. regular user (own data only)
+- Admins manage accounts but **cannot access other users' data** — admin privileges grant management, not visibility
+- Future consideration: database-level Row-Level Security (RLS) for defense-in-depth, ensuring isolation holds even if application-layer checks are bypassed
+
 ---
 
 ## Memory Architecture
@@ -97,6 +115,40 @@ The assistant may summarize conversation windows, extract durable insights, and 
 
 ---
 
+## Data Lifecycle & Portability
+
+- **Backup**: PostgreSQL is the single point of failure; the `postgres_data` Docker volume holds all state. An automated `pg_dump` strategy (scheduled, versioned, off-host) is needed before production use.
+- **Export**: Per-user data export (conversations, memories, knowledge graph) in a portable format for data portability and compliance (e.g., GDPR right to data portability).
+- **Retention**: Memory `expires_at` exists but no cleanup job yet. Define retention policies per data type — ephemeral session data (days), conversation transcripts (indefinite), memories (user-controlled or expiry-based).
+- **Deletion**: Soft deletes exist across the data model. A full user data purge capability is needed for account deletion — removing all conversations, memories, entities, relationships, and auth tokens for a given user.
+- **Disaster recovery**: Documented restore procedures from backup, including database recreation, volume restoration, and verification steps.
+
+---
+
+## Integration Extensibility
+
+### Current Pattern
+
+Tools are `@function_tool`-decorated async functions in `src/tools/`, dynamically imported with graceful fallback in `ChatService._get_tools()`. Each tool is self-contained: validates inputs, instantiates its service on-demand, and returns JSON. Context (user_id, correlation_id, conversation_id) is injected via `RunContextWrapper`.
+
+### Adding New Integrations
+
+New integrations follow the same pattern: tool module (`src/tools/`) + service module (`src/services/`) + feature-specific system prompt fragment. The tool handles orchestration, the service handles external API interaction, and the system prompt teaches the agent when and how to use the tool.
+
+### Vision: Tool Registry
+
+Replace the manual import chain in `ChatService._get_tools()` with a lightweight tool registry — a declarative structure mapping each tool to its metadata (feature ID, required system prompt, required services, enabled-by-default flag). This enables:
+
+- Dynamic tool discovery and feature-flag gating
+- Per-user tool enablement preferences
+- Cleaner startup and dependency validation
+
+### Future Plugin Considerations
+
+For third-party or community tools: discovery (registry listing), validation (schema conformance, sandboxed execution), and capability declarations (what data the tool reads/writes).
+
+---
+
 ## Feature Roadmap
 
 ### Feature 001 – Core Streaming Chat API
@@ -135,7 +187,7 @@ Hybrid search (keyword + semantic), read-only memory store with typed items, exp
 
 > "The assistant can accurately tell me the weather."
 
-Single weather provider, schema-validated tool calls, caching of safe responses, clear error states and fallbacks.
+Single weather provider, schema-validated tool calls, caching of safe responses, clear error states and fallbacks. *(Placed before Memory v2 as a low-risk proof-of-concept for the tool-calling pattern, validating the `@function_tool` integration model before the more complex automatic memory writes.)*
 
 ---
 
@@ -171,53 +223,124 @@ System-aware theme detection (prefers-color-scheme) with manual toggle, persiste
 
 ---
 
-### Feature 010 – Background Jobs & Scheduled Tasks
+### Feature 010 – Agent Notifications
+
+> "The assistant can send me messages even when I'm not actively chatting."
+
+Notification infrastructure that gives the agent a voice outside of reactive chat. In-app notifications for when the user is in the frontend, email delivery for when they're not.
+
+- **Notification store**: `notifications` table in PostgreSQL (user_id, message, type, read/unread, source, created_at), scoped by user_id
+- **Agent tool**: `send_notification` — the agent decides during conversation when something is worth notifying about (e.g., "I'll remind you about this later")
+- **In-app delivery**: Bell icon, notification panel with unread count in the frontend
+- **Email delivery**: SMTP or transactional email service (SendGrid, SES) for out-of-app reach
+- **User preferences**: Per-user control over delivery channels (in-app only, email, both) and quiet hours
+- **Not in scope**: No scheduling or autonomous triggers — notifications are created during active conversations. Background Jobs (Feature 011) adds the scheduler that creates notifications without user interaction.
+
+---
+
+### Feature 011 – Background Jobs & Scheduled Tasks
 
 > "The assistant can run tasks on a schedule and notify me of results."
 
 Background job execution framework, cron-style scheduling, morning briefings (weather, calendar summary), trip/event preparation from templates, opt-in notifications via the frontend. Proves the plumbing for scheduled execution — jobs are configured explicitly, not autonomously chosen.
 
+- **Job runner**: Python async task queue (e.g., APScheduler or Celery with Redis broker, leveraging existing Redis infrastructure)
+- **Notification transport**: Leverages Feature 010 notification infrastructure; adds WebSocket push for real-time delivery
+- **Job types**: cron-scheduled (morning briefing), event-triggered (new entity detected), user-initiated (run now)
+- **Persistence**: Job definitions and run history stored in PostgreSQL, scoped by user_id
+- **Observability**: Structured logging per job execution, success/failure metrics, duration tracking
+- **Scope**: Jobs are explicitly configured by user or admin, not autonomously chosen by the assistant
+- **Open questions**: Max concurrent jobs per user, retry policy, job timeout limits
+
 ---
 
-### Feature 011 – Proactive Relevance Engine (Memory v3)
+### Feature 012 – Proactive Relevance Engine (Memory v3)
 
 > "The assistant connects what it can do to what might be helpful, and gets better at it over time."
 
-Reasoning layer that connects user context (memory, knowledge graph, schedule) with available capabilities (tools, integrations) to surface timely, relevant suggestions. Relevance scoring based on user patterns and entity relationships. Feedback loop: tracks which suggestions the user engaged with vs. dismissed, adjusts future behavior accordingly. All proactive suggestions cite sources, declare confidence, and respect opt-in preferences. Builds on Feature 010 scheduling infrastructure and Feature 007 knowledge graph.
+Reasoning layer that connects user context (memory, knowledge graph, schedule) with available capabilities (tools, integrations) to surface timely, relevant suggestions. Relevance scoring based on user patterns and entity relationships. Feedback loop: tracks which suggestions the user engaged with vs. dismissed, adjusts future behavior accordingly. All proactive suggestions cite sources, declare confidence, and respect opt-in preferences. Builds on Feature 011 scheduling infrastructure and Feature 007 knowledge graph.
+
+- **Relevance scoring**: Entity recency, mention frequency, relationship strength, user engagement history
+- **Feedback loop**: Track suggestion engagement vs. dismissal, adjust scoring weights over time
+- **Confidence thresholds**: Suggestions below threshold are suppressed; thresholds adapt per user based on feedback
+- **Privacy**: All suggestions cite sources, declare confidence, respect opt-in preferences
+- **Dependencies**: Feature 007 (knowledge graph), Feature 011 (scheduling infrastructure)
+- **Eval coverage**: Suggestion precision, engagement rate, false-positive suppression rate
 
 ---
 
-### Feature 012 – Voice Interaction
+### Feature 013 – Voice Interaction
 
 > "I can talk to the assistant and hear it respond."
 
 Phased: TTS-only output first, then two-way voice with speech-to-text input and turn-based conversations.
 
+- **Phase 1 (TTS output)**: Browser-based Web Speech API or OpenAI TTS, streamed alongside text SSE
+- **Phase 2 (STT input)**: Browser MediaRecorder → Whisper API or Web Speech Recognition
+- **Latency target**: First audio chunk within 500ms of response start
+- **Architecture**: Voice is a frontend transport layer; backend remains text-based SSE — no audio processing server-side
+- **Fallback**: Text always available; voice is additive, never required
+- **Open questions**: Wake word detection, continuous listening vs. push-to-talk, audio storage policy
+
 ---
 
-### Feature 013 – Edge Client (Raspberry Pi)
+### Feature 014 – Edge Client (Raspberry Pi)
 
 > "I can interact with the assistant from a Raspberry Pi."
 
 Text-based interface (CLI / button / simple display), connection to existing backend, minimal local state.
 
+- **Interface**: CLI-based TUI (e.g., Textual) or minimal web kiosk (lightweight browser)
+- **Connectivity**: Always-online assumed for v1; offline graceful degradation (queued messages, cached last response) as stretch goal
+- **Authentication**: Device-level API token (long-lived), not interactive login
+- **Local state**: Minimal — last N messages cached for display continuity, no local database
+- **Hardware targets**: Raspberry Pi 4/5 with network access
+- **Deployment**: Docker container or systemd service
+- **Open questions**: Display hardware (e-ink, HDMI, none), audio integration with Feature 013
+
 ---
 
-### Feature 014 – Google Integrations (Read-Only)
+### Feature 015 – Google Integrations (Read-Only)
 
 > "The assistant can tell me about my emails and calendar events."
 
 Gmail read/search, calendar read, explicit permission prompts, audit logging. No sending emails or modifying calendar events.
 
+- **Auth**: OAuth 2.0 with offline refresh tokens, scoped to read-only (`gmail.readonly`, `calendar.readonly`); no write scopes requested
+- **Gmail**: Search/read messages, thread summarization, label filtering
+- **Calendar**: Read events, free/busy lookup, upcoming event summaries
+- **Token storage**: Encrypted in PostgreSQL, per-user, revocable
+- **Audit**: All Google API calls logged with correlation IDs
+- **Rate limiting**: Respect Google API quotas, back off on 429s
+- **Scope enforcement**: Read-only scopes only; write-capable integrations are a separate future feature
+- **Privacy**: Email content processed in-memory for tool responses, not persisted to memory unless user explicitly saves
+- **Open questions**: Attachment handling, shared calendar support, re-consent flow
+
 ---
 
 ### Future Capabilities
 
+#### Memory & Intelligence
+
 - Memory v4: Long-horizon personalization and planning
-- Task automation and write-capable integrations
+- Cross-user insights (opt-in): Aggregate patterns across consenting users
+
+#### Interaction & Modality
+
 - Multi-modal inputs (images, documents, file uploads in chat)
-- Additional tool integrations
-- Frontend enhancements: user settings & preferences page, memory editing (content modification, not just deletion), interactive knowledge graph visualization (zoomable node-and-edge diagram)
+- Interactive knowledge graph visualization (zoomable node-and-edge diagram)
+
+#### Integrations & Automation
+
+- Write-capable integrations (send email, create calendar events)
+- Additional tool integrations (Notion, Slack, GitHub, etc.)
+- Task automation pipelines (multi-step workflows)
+
+#### Frontend & UX
+
+- User settings & preferences page
+- Memory editing (content modification, not just deletion)
+- Conversation search and filtering
 
 Each new capability must follow the constitution, include evaluation coverage, and be introduced as its own scoped feature.
 
