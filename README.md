@@ -15,6 +15,7 @@ A FastAPI-based streaming chat API that interfaces with OpenAI's Agents SDK for 
 
 - **Docker & Docker Compose** (required for development and deployment)
 - **Python 3.11+** and [uv](https://docs.astral.sh/uv/) (for dependency management and running tests)
+- **Node.js 20+** and npm (for frontend development)
 - **OpenAI API key** with access to chat models and moderation API
 
 ## Quick Start (Docker - Recommended)
@@ -46,7 +47,25 @@ docker compose -f docker/docker-compose.api.yml up -d --env-file .env
 docker ps
 ```
 
-### 3. Test the API
+### 3. Start the Frontend
+
+**Option A: Local dev server (recommended for development)**
+
+```powershell
+cd frontend
+cp .env.example .env.local   # Uses API at localhost:8000 by default
+npm install
+npm run dev                   # http://localhost:3000
+```
+
+**Option B: Docker (production-like)**
+
+```powershell
+docker compose -f docker/docker-compose.frontend.yml up -d
+# Runs frontend at http://localhost:3000 with API at http://localhost:8000
+```
+
+### 4. Test the API
 
 ```powershell
 # Health check
@@ -58,11 +77,17 @@ curl -X POST http://localhost:8000/v1/chat/completions `
   -d '{"messages": [{"role": "user", "content": "Hello!"}], "stream": true}'
 ```
 
-### 4. Run Tests & Evals
+### 5. Run Tests & Evals
 
 ```powershell
-# Run unit and integration tests (hits Docker services)
-uv run pytest tests/ -v
+# Run unit tests (no Docker needed, everything mocked)
+uv run pytest tests/unit/ -v
+
+# Run integration tests (hits Docker services on localhost:8000)
+uv run pytest tests/integration/ -v
+
+# Run frontend tests
+cd frontend && npm test
 
 # Run MLflow evaluation suite
 uv run python -m eval
@@ -71,7 +96,7 @@ uv run python -m eval
 start http://localhost:5000
 ```
 
-### 5. Development Workflow
+### 6. Development Workflow
 
 ```powershell
 # Make code changes, then rebuild and restart
