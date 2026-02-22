@@ -109,6 +109,7 @@ async def update_user(
         display_name=request.display_name,
         is_active=request.is_active,
         password=request.password,
+        email=request.email,
     )
 
     if updated is None:

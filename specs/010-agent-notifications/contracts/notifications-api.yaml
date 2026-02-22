@@ -1,0 +1,276 @@
+openapi: 3.1.0
+info:
+  title: Agent Notifications API
+  version: 1.0.0
+  description: Notification management endpoints for Feature 010
+
+paths:
+  /notifications:
+    get:
+      summary: List notifications
+      description: Returns paginated notifications for the authenticated user, excluding dismissed ones.
+      tags: [Notifications]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [reminder, info, warning]
+          description: Filter by notification type
+        - name: is_read
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Filter by read status
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Paginated notification list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Notification"
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /notifications/unread-count:
+    get:
+      summary: Get unread notification count
+      description: Returns the count of unread, non-dismissed notifications for the authenticated user.
+      tags: [Notifications]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Unread count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /notifications/{notification_id}/read:
+    patch:
+      summary: Mark notification as read
+      tags: [Notifications]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Notification marked as read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Notification not found
+
+  /notifications/read-all:
+    patch:
+      summary: Mark all notifications as read
+      description: Marks all non-dismissed notifications as read for the authenticated user.
+      tags: [Notifications]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: All notifications marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated_count:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /notifications/{notification_id}:
+    delete:
+      summary: Dismiss a notification
+      description: Soft-deletes a notification. It will no longer appear in list queries.
+      tags: [Notifications]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Notification dismissed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Notification not found
+
+  /notifications/preferences:
+    get:
+      summary: Get notification preferences
+      description: Returns notification preferences for the authenticated user, or defaults if not configured.
+      tags: [Notification Preferences]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Notification preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPreferences"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    put:
+      summary: Update notification preferences
+      description: Creates or updates notification preferences for the authenticated user.
+      tags: [Notification Preferences]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationPreferencesUpdate"
+      responses:
+        "200":
+          description: Preferences updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPreferences"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: Validation error
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        message:
+          type: string
+          maxLength: 500
+        type:
+          type: string
+          enum: [reminder, info, warning]
+        is_read:
+          type: boolean
+        conversation_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      required: [id, message, type, is_read, created_at]
+
+    NotificationPreferences:
+      type: object
+      properties:
+        delivery_channel:
+          type: string
+          enum: [in_app, email, both]
+          default: in_app
+        quiet_hours_start:
+          type: string
+          format: time
+          nullable: true
+          description: "HH:MM format, e.g. 22:00"
+        quiet_hours_end:
+          type: string
+          format: time
+          nullable: true
+          description: "HH:MM format, e.g. 07:00"
+        quiet_hours_timezone:
+          type: string
+          nullable: true
+          default: UTC
+          description: "IANA timezone, e.g. America/New_York"
+      required: [delivery_channel]
+
+    NotificationPreferencesUpdate:
+      type: object
+      properties:
+        delivery_channel:
+          type: string
+          enum: [in_app, email, both]
+        quiet_hours_start:
+          type: string
+          format: time
+          nullable: true
+        quiet_hours_end:
+          type: string
+          format: time
+          nullable: true
+        quiet_hours_timezone:
+          type: string
+          nullable: true
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid authentication token
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: string
+                example: Not authenticated

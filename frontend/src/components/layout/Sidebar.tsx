@@ -11,6 +11,7 @@ const navItems = [
   { href: "/chat", label: "Chat" },
   { href: "/memory", label: "Memory" },
   { href: "/knowledge", label: "Knowledge" },
+  { href: "/notifications", label: "Notifications" },
 ];
 
 export function Sidebar() {

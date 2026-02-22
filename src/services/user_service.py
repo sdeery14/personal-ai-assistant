@@ -177,12 +177,30 @@ class UserService:
             for row in rows
         ]
 
+    async def get_email(self, user_id: UUID) -> Optional[str]:
+        """Get the email address for a user.
+
+        Args:
+            user_id: User UUID
+
+        Returns:
+            Email string or None if not set
+        """
+        pool = await get_pool()
+
+        async with pool.acquire() as conn:
+            return await conn.fetchval(
+                "SELECT email FROM users WHERE id = $1",
+                user_id,
+            )
+
     async def update_user(
         self,
         user_id: UUID,
         display_name: Optional[str] = None,
         is_active: Optional[bool] = None,
         password: Optional[str] = None,
+        email: Optional[str] = None,
     ) -> Optional[User]:
         """Update user fields that are not None.
 
@@ -214,6 +232,11 @@ class UserService:
             password_hash = self.auth_service.hash_password(password)
             set_clauses.append(f"password_hash = ${param_idx}")
             params.append(password_hash)
+            param_idx += 1
+
+        if email is not None:
+            set_clauses.append(f"email = ${param_idx}")
+            params.append(email)
             param_idx += 1
 
         if not set_clauses:

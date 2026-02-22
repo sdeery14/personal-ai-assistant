@@ -1,4 +1,11 @@
 import { getSession } from "next-auth/react";
+import type {
+  Notification,
+  NotificationPreferences,
+  NotificationPreferencesUpdate,
+  PaginatedNotifications,
+  UnreadCountResponse,
+} from "@/types/notification";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -85,6 +92,16 @@ export const apiClient = {
     return handleResponse<T>(response);
   },
 
+  async put<T>(path: string, body: unknown): Promise<T> {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify(body),
+    });
+    return handleResponse<T>(response);
+  },
+
   async del(path: string): Promise<void> {
     const headers = await getAuthHeaders();
     const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -92,5 +109,34 @@ export const apiClient = {
       headers,
     });
     return handleResponse<void>(response);
+  },
+
+  // Notification API methods
+  async getNotifications(params?: Record<string, string | number>) {
+    return this.get<PaginatedNotifications>("/notifications", params);
+  },
+
+  async getUnreadCount() {
+    return this.get<UnreadCountResponse>("/notifications/unread-count");
+  },
+
+  async markNotificationAsRead(id: string) {
+    return this.patch<Notification>(`/notifications/${id}/read`, {});
+  },
+
+  async markAllNotificationsAsRead() {
+    return this.patch<{ updated_count: number }>("/notifications/read-all", {});
+  },
+
+  async dismissNotification(id: string) {
+    return this.del(`/notifications/${id}`);
+  },
+
+  async getNotificationPreferences() {
+    return this.get<NotificationPreferences>("/notifications/preferences");
+  },
+
+  async updateNotificationPreferences(prefs: NotificationPreferencesUpdate) {
+    return this.put<NotificationPreferences>("/notifications/preferences", prefs);
   },
 };

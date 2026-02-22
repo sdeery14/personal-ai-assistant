@@ -13,6 +13,7 @@ class User(BaseModel):
     id: UUID
     username: str
     display_name: str
+    email: Optional[str] = None
     is_admin: bool = False
     is_active: bool = True
     created_at: datetime
