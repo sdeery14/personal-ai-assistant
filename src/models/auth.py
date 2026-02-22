@@ -121,12 +121,14 @@ class CreateUserRequest(BaseModel):
         password: New user's password (min 8 chars)
         display_name: Human-readable display name (max 255 chars)
         is_admin: Whether the new user has admin privileges
+        email: Optional email address for notifications
     """
 
     username: str = Field(..., min_length=3, max_length=100)
     password: str = Field(..., min_length=8)
     display_name: str = Field(..., max_length=255)
     is_admin: bool = False
+    email: Optional[str] = Field(default=None, max_length=255)
 
     @field_validator("username")
     @classmethod
@@ -158,11 +160,13 @@ class UpdateUserRequest(BaseModel):
         display_name: New display name (max 255 chars)
         is_active: Enable or disable the user account
         password: New password (min 8 chars if provided)
+        email: Email address for notifications (max 255 chars)
     """
 
     display_name: Optional[str] = Field(default=None, max_length=255)
     is_active: Optional[bool] = None
     password: Optional[str] = Field(default=None, min_length=8)
+    email: Optional[str] = Field(default=None, max_length=255)
 
     @field_validator("password")
     @classmethod

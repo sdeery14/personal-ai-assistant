@@ -60,6 +60,16 @@ class Settings(BaseSettings):
     graph_max_relationships_per_conversation: int = 30  # Rate limit per conversation
     graph_max_entities_per_day: int = 100  # Daily rate limit per user
 
+    # Notification Configuration (Feature 010)
+    notification_rate_limit_per_hour: int = 10  # Per-user hourly cap (dev: 10, prod: higher)
+    notification_email_enabled: bool = False  # Master switch for email delivery
+    notification_email_from: str = "noreply@assistant.local"
+    notification_smtp_host: str = "localhost"
+    notification_smtp_port: int = 587
+    notification_smtp_username: str = ""
+    notification_smtp_password: str = ""
+    notification_smtp_use_tls: bool = True
+
     @property
     def allowed_models_list(self) -> List[str]:
         """Parse comma-separated allowed models into a list."""

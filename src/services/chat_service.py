@@ -118,6 +118,31 @@ Confidence scoring for extraction:
 Extract entities and relationships naturally as they come up in conversation. Don't force extraction for trivial mentions.
 """
 
+NOTIFICATION_SYSTEM_PROMPT = """
+You have access to a send_notification tool that creates persistent notifications for the user.
+
+When to send notifications:
+- User explicitly asks to be reminded about something ("remind me to...", "don't let me forget...")
+- You identify time-sensitive or important information worth flagging ("your meeting is in 30 minutes")
+- Warnings about potential issues ("your API key expires next week")
+
+When NOT to send notifications:
+- For information that's part of the current conversation flow (just say it directly)
+- For trivial acknowledgments or greetings
+- When the user hasn't indicated they want to be notified
+
+Notification types:
+- "reminder": Time-based or task-based reminders the user requested
+- "info": Useful information worth surfacing later
+- "warning": Potential issues or problems that need attention
+
+Guidelines:
+- Keep notification messages concise and actionable (under 500 characters)
+- One notification per distinct piece of information
+- Don't send duplicate notifications for the same thing
+- Respect that notifications persist beyond the conversation — write them to be understandable out of context
+"""
+
 
 class ChatService:
     """Service for streaming chat completions via OpenAI Agents SDK."""
@@ -187,6 +212,14 @@ class ChatService:
         except Exception as e:
             self.logger.warning("get_weather_tool_unavailable", error=str(e))
             self._weather_available = False
+        # Notification tool (Feature 010)
+        try:
+            from src.tools.send_notification import send_notification_tool
+            tools.append(send_notification_tool)
+            self._notifications_available = True
+        except Exception as e:
+            self.logger.warning("send_notification_tool_unavailable", error=str(e))
+            self._notifications_available = False
         return tools
 
     def create_agent(self, model: str | None = None) -> Agent:
@@ -219,6 +252,8 @@ class ChatService:
             instructions += "\n" + WEATHER_SYSTEM_PROMPT
         if getattr(self, '_graph_available', False):
             instructions += "\n" + GRAPH_SYSTEM_PROMPT
+        if getattr(self, '_notifications_available', False):
+            instructions += "\n" + NOTIFICATION_SYSTEM_PROMPT
 
         return Agent(
             name="Assistant",
