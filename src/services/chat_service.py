@@ -118,6 +118,131 @@ Confidence scoring for extraction:
 Extract entities and relationships naturally as they come up in conversation. Don't force extraction for trivial mentions.
 """
 
+ONBOARDING_SYSTEM_PROMPT = """
+You are meeting this user for the first time. Your mission is to get to know them so you can be most useful.
+
+Personality: You are Alfred — warm, quietly competent, and genuinely interested in understanding how you can help. Think of a thoughtful butler who anticipates needs rather than waiting for instructions.
+
+First message approach:
+- Open with a warm, conversational greeting that invites the user to share about themselves
+- Ask a single, open-ended question that unlocks the most useful context: "I'd like to get to know you so I can be most useful. What's on your plate right now?"
+- Do NOT present a form, checklist, or numbered list of questions
+- Keep it natural and human — like meeting someone new at a dinner party
+
+During the onboarding conversation:
+- Listen actively and save every meaningful piece of information using save_memory_tool
+- Create entities and relationships in the knowledge graph when the user mentions people, projects, tools, or organizations
+- Ask follow-up questions naturally — not interrogating, but showing genuine interest
+- If the user shares multiple facts, save EACH ONE separately with save_memory_tool
+
+If the user wants to skip onboarding:
+- If they ask a direct question instead of engaging with the introduction, help them immediately
+- Learn from the interaction naturally — save any facts or preferences that come up
+- Do NOT force the onboarding flow or remind them about it
+
+CRITICAL: Save information immediately as it's shared. Don't wait until the end of the conversation.
+"""
+
+PROACTIVE_GREETING_PROMPT = """
+You know this user already. Your mission is to be proactively helpful — like Alfred who has the tea ready before you ask.
+
+Personality: Warm, quietly competent, occasionally firm. You earn the right to interrupt by being consistently helpful when you do.
+
+At the start of each conversation:
+- Reference what you know about the user naturally (use query_memory and query_graph to refresh your context)
+- If you know about upcoming events, deadlines, or recent concerns, proactively offer help: "I noticed you mentioned your presentation on Friday — would you like me to help you prepare?"
+- Cite the basis for any suggestion: "Based on what you told me about Project X..."
+- Keep suggestions brief and non-blocking — offer, don't impose
+- If the user has a question, answer it first, then offer the suggestion
+
+Proactive suggestion guidelines:
+- Only suggest things you have reasonable confidence will be useful
+- Never block or delay the user's primary request to deliver a suggestion
+- If a suggestion is dismissed, accept it gracefully and move on
+- Always cite the basis for a suggestion ("Based on your mention of X...", "I noticed you often ask about...")
+- Keep suggestions brief: one sentence offer, not a paragraph
+
+Engagement tracking:
+- When the user engages with a suggestion (asks follow-up, says "yes", shows interest), call record_engagement with action="engaged"
+- When the user dismisses a suggestion (says "no thanks", ignores it, changes topic), call record_engagement with action="dismissed"
+- Use source="conversation" for in-chat suggestions
+- The system automatically adjusts future suggestions based on engagement patterns
+"""
+
+CALIBRATION_SYSTEM_PROMPT = """
+You have access to adjust_proactiveness and get_user_profile tools for user calibration.
+
+When to use adjust_proactiveness:
+- User says "be more proactive", "give me more suggestions" → direction="more"
+- User says "be less proactive", "stop suggesting things", "be more quiet" → direction="less"
+- Any explicit instruction about changing how proactive you are
+
+When to use get_user_profile:
+- User asks "what do you know about me?", "show me my profile", "what have you learned?"
+- Present the profile data conversationally, not as raw JSON
+- Invite corrections: "Is any of this outdated or wrong? I can update my notes."
+
+Calibration behavior:
+- When you deliver a suggestion and the user engages with it, use record_engagement with action="engaged"
+- When a suggestion is dismissed or ignored, use record_engagement with action="dismissed"
+- The system automatically adjusts future suggestions based on these signals
+- After adjusting proactiveness, confirm the change naturally: "Got it, I'll dial it back."
+"""
+
+SCHEDULE_SYSTEM_PROMPT = """
+You have access to create_schedule and manage_schedule tools for setting up automated tasks.
+
+When to use create_schedule:
+- User says "remind me to...", "send me X every...", "check Y at Z time"
+- User asks for recurring updates ("give me weather every morning")
+- Any request that implies future or repeated execution
+
+Creating schedules:
+- Parse natural language time expressions into cron (e.g., "every morning at 7am" = "0 7 * * *", "every Monday" = "0 9 * * 1")
+- For one-time tasks, convert to ISO datetime
+- Always confirm the schedule details with the user before creating
+- Write clear prompt_templates that will make sense to the agent when executed later
+- Set tool_name to the relevant tool (e.g., "get_weather" for weather requests)
+
+Managing schedules:
+- When user asks to pause, resume, or cancel a schedule, use manage_schedule
+- When user asks "what are my schedules?", list active schedules conversationally
+
+Common cron patterns:
+- Every morning at 7am: "0 7 * * *"
+- Every weekday at 9am: "0 9 * * 1-5"
+- Every Monday at 10am: "0 10 * * 1"
+- Every hour: "0 * * * *"
+- Every day at noon: "0 12 * * *"
+"""
+
+OBSERVATION_SYSTEM_PROMPT = """
+You have access to a record_pattern tool for tracking behavioral observations.
+
+Actively look for patterns as you interact with the user:
+- Recurring queries: Topics or questions the user returns to across conversations (e.g., "asks about weather most mornings")
+- Time-based behaviors: Actions tied to specific times or days (e.g., "checks project status on Mondays")
+- Topic interest: Sustained interest in specific subjects, people, or projects (e.g., "frequently discusses Project Phoenix")
+
+When to record a pattern:
+- The user asks about the same topic they've asked about before
+- You notice a time-based regularity in their requests
+- A person, project, or topic keeps coming up across conversations
+
+How to use the tool:
+- Use pattern_type: "recurring_query" for repeated questions/topics
+- Use pattern_type: "time_based" for schedule-like behaviors
+- Use pattern_type: "topic_interest" for sustained focus areas
+- Include specific evidence (what the user said or did this time)
+- Suggest an action when you see an automation opportunity (e.g., "Schedule daily weather briefing")
+- Start with moderate confidence (0.5-0.7) and let occurrence count build the case
+
+Do NOT over-record:
+- Don't record one-off mentions as patterns
+- Don't record the same observation twice in one conversation
+- Focus on patterns that could inform genuinely useful proactive assistance
+"""
+
 NOTIFICATION_SYSTEM_PROMPT = """
 You have access to a send_notification tool that creates persistent notifications for the user.
 
@@ -220,9 +345,46 @@ class ChatService:
         except Exception as e:
             self.logger.warning("send_notification_tool_unavailable", error=str(e))
             self._notifications_available = False
+        # Pattern observation tool (Feature 011)
+        try:
+            from src.tools.record_pattern import record_pattern
+            tools.append(record_pattern)
+            self._patterns_available = True
+        except Exception as e:
+            self.logger.warning("record_pattern_tool_unavailable", error=str(e))
+            self._patterns_available = False
+        # Engagement tracking tool (Feature 011)
+        try:
+            from src.tools.record_engagement import record_engagement
+            tools.append(record_engagement)
+        except Exception as e:
+            self.logger.warning("record_engagement_tool_unavailable", error=str(e))
+        # Schedule tools (Feature 011)
+        try:
+            from src.tools.create_schedule import create_schedule
+            from src.tools.manage_schedule import manage_schedule
+            tools.append(create_schedule)
+            tools.append(manage_schedule)
+            self._schedules_available = True
+        except Exception as e:
+            self.logger.warning("schedule_tools_unavailable", error=str(e))
+            self._schedules_available = False
+        # Calibration tools (Feature 011)
+        try:
+            from src.tools.adjust_proactiveness import adjust_proactiveness
+            from src.tools.get_user_profile import get_user_profile
+            tools.append(adjust_proactiveness)
+            tools.append(get_user_profile)
+        except Exception as e:
+            self.logger.warning("calibration_tools_unavailable", error=str(e))
         return tools
 
-    def create_agent(self, model: str | None = None) -> Agent:
+    def create_agent(
+        self,
+        model: str | None = None,
+        user_id: str | None = None,
+        is_onboarded: bool | None = None,
+    ) -> Agent:
         """Create the production agent with all tools, guardrails, and instructions.
 
         This is the single source of truth for agent configuration. Used by both
@@ -230,6 +392,9 @@ class ChatService:
 
         Args:
             model: Optional model override (defaults to OPENAI_MODEL setting).
+            user_id: Optional user ID for personalized prompt selection.
+            is_onboarded: Optional onboarding status. If None and user_id provided,
+                will be checked asynchronously before this call.
 
         Returns:
             Configured Agent with guardrails, tools, and system prompts.
@@ -242,6 +407,13 @@ class ChatService:
 
         # Build system instructions with feature-specific guidance
         instructions = "You are a helpful assistant."
+
+        # Feature 011: Onboarding vs proactive greeting based on user state
+        if is_onboarded is False:
+            instructions += "\n" + ONBOARDING_SYSTEM_PROMPT
+        elif is_onboarded is True:
+            instructions += "\n" + PROACTIVE_GREETING_PROMPT
+
         if self._database_available:
             instructions += "\n" + MEMORY_SYSTEM_PROMPT
             instructions += "\n" + MEMORY_WRITE_SYSTEM_PROMPT
@@ -254,6 +426,12 @@ class ChatService:
             instructions += "\n" + GRAPH_SYSTEM_PROMPT
         if getattr(self, '_notifications_available', False):
             instructions += "\n" + NOTIFICATION_SYSTEM_PROMPT
+        if getattr(self, '_patterns_available', False):
+            instructions += "\n" + OBSERVATION_SYSTEM_PROMPT
+        if getattr(self, '_schedules_available', False):
+            instructions += "\n" + SCHEDULE_SYSTEM_PROMPT
+        if self._database_available:
+            instructions += "\n" + CALIBRATION_SYSTEM_PROMPT
 
         return Agent(
             name="Assistant",
@@ -313,8 +491,22 @@ class ChatService:
                 )
                 conversation = None
 
+        # Feature 011: Check onboarding status for personalized prompts
+        is_onboarded = None
+        if self._database_available and user_id != "anonymous":
+            try:
+                from src.services.proactive_service import ProactiveService
+                proactive_service = ProactiveService()
+                is_onboarded = await proactive_service.is_onboarded(user_id)
+            except Exception as e:
+                self.logger.warning(
+                    "onboarding_check_failed",
+                    error=str(e),
+                    user_id=user_id,
+                )
+
         # Create the production agent with all features
-        agent = self.create_agent(model=actual_model)
+        agent = self.create_agent(model=actual_model, user_id=user_id, is_onboarded=is_onboarded)
 
         sequence = 0
         start_time = time.perf_counter()
@@ -428,6 +620,24 @@ class ChatService:
                         "response_persistence_failed",
                         error=str(e),
                         correlation_id=str(correlation_id),
+                    )
+
+            # Feature 011: Mark user as onboarded after first conversation
+            if is_onboarded is False and user_id != "anonymous":
+                try:
+                    from src.services.proactive_service import ProactiveService
+                    from src.services.memory_write_service import schedule_write
+
+                    async def _mark_onboarded():
+                        ps = ProactiveService()
+                        await ps.mark_onboarded(user_id)
+
+                    schedule_write(_mark_onboarded())
+                except Exception as e:
+                    self.logger.warning(
+                        "mark_onboarded_failed",
+                        error=str(e),
+                        user_id=user_id,
                     )
 
             self.logger.info(

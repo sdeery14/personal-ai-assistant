@@ -12,6 +12,7 @@ const navItems = [
   { href: "/memory", label: "Memory" },
   { href: "/knowledge", label: "Knowledge" },
   { href: "/notifications", label: "Notifications" },
+  { href: "/schedules", label: "Schedules" },
 ];
 
 export function Sidebar() {

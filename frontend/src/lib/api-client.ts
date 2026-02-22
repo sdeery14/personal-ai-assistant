@@ -6,6 +6,7 @@ import type {
   PaginatedNotifications,
   UnreadCountResponse,
 } from "@/types/notification";
+import type { PaginatedSchedules } from "@/types/schedule";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -138,5 +139,10 @@ export const apiClient = {
 
   async updateNotificationPreferences(prefs: NotificationPreferencesUpdate) {
     return this.put<NotificationPreferences>("/notifications/preferences", prefs);
+  },
+
+  // Schedule API methods
+  async getSchedules(params?: Record<string, string | number>) {
+    return this.get<PaginatedSchedules>("/schedules", params);
   },
 };

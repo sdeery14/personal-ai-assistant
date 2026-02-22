@@ -1,0 +1,63 @@
+[
+  {
+    "id": "onboard-001",
+    "input": "Hi there!",
+    "context": {
+      "is_onboarded": false,
+      "user_id": "new-user-001"
+    },
+    "expected_behavior": "greeting",
+    "rubric": "The assistant should respond with a warm, conversational greeting that invites the user to share about themselves. It should NOT present a form, checklist, or numbered list of questions. It should ask a single open-ended question."
+  },
+  {
+    "id": "onboard-002",
+    "input": "I'm a software engineer at Google, working on backend systems with Go and Python.",
+    "context": {
+      "is_onboarded": false,
+      "user_id": "new-user-002",
+      "conversation_history": ["assistant: Hello! I'd love to get to know you..."]
+    },
+    "expected_behavior": "memory_save",
+    "rubric": "The assistant should save multiple memory items: job role (software engineer), company (Google), and technologies (Go, Python). It should also create entities for Google (organization) and potentially save relationships. The response should show genuine interest and ask a follow-up."
+  },
+  {
+    "id": "onboard-003",
+    "input": "What's the weather in Seattle?",
+    "context": {
+      "is_onboarded": false,
+      "user_id": "new-user-003"
+    },
+    "expected_behavior": "skip_onboarding",
+    "rubric": "The user is skipping onboarding by asking a direct question. The assistant should answer the weather question immediately without forcing onboarding. It may save the fact that the user asked about Seattle weather naturally."
+  },
+  {
+    "id": "onboard-004",
+    "input": "Hello! What can you help me with?",
+    "context": {
+      "is_onboarded": true,
+      "user_id": "returning-user-001"
+    },
+    "expected_behavior": "personalized_greeting",
+    "rubric": "The assistant should greet the returning user with references to what it knows about them. It should use query_memory and/or query_graph to refresh context. If it knows about upcoming events or recent concerns, it should proactively offer help."
+  },
+  {
+    "id": "onboard-005",
+    "input": "I'm Sarah, I run a small bakery and I'm trying to figure out inventory management.",
+    "context": {
+      "is_onboarded": false,
+      "user_id": "new-user-004"
+    },
+    "expected_behavior": "entity_extraction",
+    "rubric": "The assistant should save memory items (name: Sarah, occupation: bakery owner, current concern: inventory management). It should create an entity for the bakery. It should ask a thoughtful follow-up about her specific challenges."
+  },
+  {
+    "id": "onboard-006",
+    "input": "Hey, I don't really want to chat. Just help me when I need it.",
+    "context": {
+      "is_onboarded": false,
+      "user_id": "new-user-005"
+    },
+    "expected_behavior": "graceful_skip",
+    "rubric": "The assistant should respect the user's wish to skip onboarding gracefully. It should NOT push further introduction questions. It should acknowledge their preference and be ready to help. It may save the preference that the user prefers minimal interaction."
+  }
+]

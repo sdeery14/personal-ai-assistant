@@ -70,6 +70,13 @@ class Settings(BaseSettings):
     notification_smtp_password: str = ""
     notification_smtp_use_tls: bool = True
 
+    # Proactive Assistant Configuration (Feature 011)
+    scheduler_poll_interval_seconds: int = 30  # How often the scheduler checks for due tasks
+    scheduler_max_concurrent_tasks: int = 5  # Max tasks executing simultaneously
+    pattern_occurrence_threshold: int = 3  # Min occurrences before suggesting automation
+    suggestion_confidence_threshold: float = 0.6  # Min confidence for proactive suggestions
+    proactive_check_interval_minutes: int = 15  # How often to check for proactive opportunities
+
     @property
     def allowed_models_list(self) -> List[str]:
         """Parse comma-separated allowed models into a list."""
