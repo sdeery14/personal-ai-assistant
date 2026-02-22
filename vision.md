@@ -234,42 +234,46 @@ Notification infrastructure that gives the agent a voice outside of reactive cha
 - **In-app delivery**: Bell icon, notification panel with unread count in the frontend
 - **Email delivery**: SMTP or transactional email service (SendGrid, SES) for out-of-app reach
 - **User preferences**: Per-user control over delivery channels (in-app only, email, both) and quiet hours
-- **Not in scope**: No scheduling or autonomous triggers — notifications are created during active conversations. Background Jobs (Feature 011) adds the scheduler that creates notifications without user interaction.
+- **Not in scope**: No scheduling or autonomous triggers — notifications are created during active conversations. The Proactive Assistant (Feature 011) adds the scheduler and reasoning that creates notifications without user interaction.
 
 ---
 
-### Feature 011 – Background Jobs & Scheduled Tasks
+### Feature 011 – Proactive Assistant ("The Alfred Engine")
 
-> "The assistant can run tasks on a schedule and notify me of results."
+> "From the first login, the assistant actively works to understand me and find ways to help — like a thoughtful butler who anticipates needs rather than waiting for instructions."
 
-Background job execution framework, cron-style scheduling, morning briefings (weather, calendar summary), trip/event preparation from templates, opt-in notifications via the frontend. Proves the plumbing for scheduled execution — jobs are configured explicitly, not autonomously chosen.
+The assistant has a persistent mission: understand the user, connect what it knows to what it can do, and proactively deliver help. It combines background job infrastructure with a reasoning layer that turns user context into timely, relevant action. The personality is warm, quietly competent, and occasionally firm — like Alfred Pennyworth, who has the tea ready before you ask, pushes back when you're being reckless, and earns the right to interrupt by being consistently helpful when he does.
 
-- **Job runner**: Python async task queue (e.g., APScheduler or Celery with Redis broker, leveraging existing Redis infrastructure)
-- **Notification transport**: Leverages Feature 010 notification infrastructure; adds WebSocket push for real-time delivery
-- **Job types**: cron-scheduled (morning briefing), event-triggered (new entity detected), user-initiated (run now)
-- **Persistence**: Job definitions and run history stored in PostgreSQL, scoped by user_id
-- **Observability**: Structured logging per job execution, success/failure metrics, duration tracking
-- **Scope**: Jobs are explicitly configured by user or admin, not autonomously chosen by the assistant
-- **Open questions**: Max concurrent jobs per user, retry policy, job timeout limits
+#### User Stories
 
----
+**US1 — First encounter (Alfred introduces himself)**: When a new user logs in for the first time, the agent opens with a warm, conversational prompt — not a form, but a genuine question designed to unlock the most useful context. "I'd like to get to know you so I can be most useful. What's on your plate right now?" If the user wants to skip and just ask something, the agent helps and learns from the interaction naturally.
 
-### Feature 012 – Proactive Relevance Engine (Memory v3)
+**US2 — Building the picture (Alfred observes)**: Across every conversation, the agent actively builds a model of the user — their work, routines, relationships, preferences, recurring concerns. It doesn't just store facts passively; it's looking for what would be useful to know next time. "They mentioned Sarah three times this week in the context of a deadline — this relationship matters." Memory writes and knowledge graph extraction are guided by the agent's intent to serve the user better.
 
-> "The assistant connects what it can do to what might be helpful, and gets better at it over time."
+**US3 — Proactive assistance (Alfred has the tea ready)**: The agent connects what it knows to what it can do. "You mentioned wanting to prepare for your Friday presentation — I can pull together notes from your recent conversations about Project X, and check the weather for your commute that morning." It offers, doesn't impose. The user can dismiss and the agent learns from that too.
 
-Reasoning layer that connects user context (memory, knowledge graph, schedule) with available capabilities (tools, integrations) to surface timely, relevant suggestions. Relevance scoring based on user patterns and entity relationships. Feedback loop: tracks which suggestions the user engaged with vs. dismissed, adjusts future behavior accordingly. All proactive suggestions cite sources, declare confidence, and respect opt-in preferences. Builds on Feature 011 scheduling infrastructure and Feature 007 knowledge graph.
+**US4 — Scheduled care (Alfred manages the household)**: The agent suggests routines based on patterns it notices: "I see you ask about weather most mornings — want me to just have that ready for you?" User-requested schedules ("remind me every Friday") and agent-suggested schedules both funnel into the same job system. Every scheduled task delivers results via Feature 010 notifications.
 
+**US5 — Calibration (Alfred reads the room)**: The agent tracks engagement — which suggestions land, which get dismissed — and adjusts its proactiveness per user. Three dismissed morning briefings in a row? It stops suggesting them. User always engages with meeting prep? It leans into that. The user can also explicitly say "be more/less proactive" and the agent respects it immediately.
+
+#### Technical Components
+
+- **Onboarding system prompt**: First-conversation behavior that prioritizes learning about the user through natural dialogue; saves discoveries to memory and knowledge graph immediately
+- **Relevance reasoning**: Connects user context (memory, knowledge graph, activity patterns) with available capabilities (tools, integrations) to identify opportunities to help
 - **Relevance scoring**: Entity recency, mention frequency, relationship strength, user engagement history
-- **Feedback loop**: Track suggestion engagement vs. dismissal, adjust scoring weights over time
-- **Confidence thresholds**: Suggestions below threshold are suppressed; thresholds adapt per user based on feedback
-- **Privacy**: All suggestions cite sources, declare confidence, respect opt-in preferences
-- **Dependencies**: Feature 007 (knowledge graph), Feature 011 (scheduling infrastructure)
-- **Eval coverage**: Suggestion precision, engagement rate, false-positive suppression rate
+- **Feedback loop**: Tracks suggestion engagement vs. dismissal, adjusts scoring weights and confidence thresholds per user over time
+- **Job runner**: Python async task queue (e.g., APScheduler or Celery with Redis broker, leveraging existing Redis infrastructure)
+- **Job types**: cron-scheduled (morning briefing), event-triggered (new entity detected), user-initiated (run now), agent-suggested (pattern-based)
+- **Persistence**: Job definitions, run history, and engagement metrics stored in PostgreSQL, scoped by user_id
+- **Notification transport**: Leverages Feature 010 notification infrastructure for all proactive delivery
+- **Observability**: Structured logging per job execution, suggestion precision metrics, engagement rate tracking
+- **Privacy**: All proactive suggestions cite sources, declare confidence, and respect user preferences; the user can inspect, correct, and control everything the agent "knows"
+- **Dependencies**: Feature 007 (knowledge graph), Feature 010 (notifications)
+- **Eval coverage**: Onboarding completion rate, suggestion precision, engagement rate, false-positive suppression rate, user satisfaction over time
 
 ---
 
-### Feature 013 – Voice Interaction
+### Feature 012 – Voice Interaction
 
 > "I can talk to the assistant and hear it respond."
 
@@ -284,7 +288,7 @@ Phased: TTS-only output first, then two-way voice with speech-to-text input and 
 
 ---
 
-### Feature 014 – Edge Client (Raspberry Pi)
+### Feature 013 – Edge Client (Raspberry Pi)
 
 > "I can interact with the assistant from a Raspberry Pi."
 
@@ -296,11 +300,11 @@ Text-based interface (CLI / button / simple display), connection to existing bac
 - **Local state**: Minimal — last N messages cached for display continuity, no local database
 - **Hardware targets**: Raspberry Pi 4/5 with network access
 - **Deployment**: Docker container or systemd service
-- **Open questions**: Display hardware (e-ink, HDMI, none), audio integration with Feature 013
+- **Open questions**: Display hardware (e-ink, HDMI, none), audio integration with Feature 012
 
 ---
 
-### Feature 015 – Google Integrations (Read-Only)
+### Feature 014 – Google Integrations (Read-Only)
 
 > "The assistant can tell me about my emails and calendar events."
 
@@ -351,7 +355,7 @@ Each new capability must follow the constitution, include evaluation coverage, a
 - Replicate human memory
 - Achieve perfect recall
 - Infer sensitive traits
-- Act autonomously without oversight
+- Act without transparency — the agent is proactive, but the user can always see what it knows, why it acted, and how to adjust it
 
 ---
 
