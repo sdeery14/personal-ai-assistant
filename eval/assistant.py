@@ -7,10 +7,12 @@ configuration (tools, guardrails, instructions) comes from
 ChatService.create_agent(), ensuring the eval tests the exact same agent
 as production.
 
-Database initialization and teardown is handled per invocation because
-asyncpg.Pool is bound to the event loop that created it — and each
-asyncio.run() creates a fresh loop. The ~50ms overhead per case is
-negligible vs. LLM API latency.
+Single-turn invocations (invoke_production_agent) use one asyncio.run()
+per call with DB init/close bracketing the agent run. Multi-turn
+conversations (invoke_onboarding_conversation) use a single asyncio.run()
+for all turns, sharing one event loop and one DB connection pool. This
+avoids the Windows ProactorEventLoop issue where closing the loop between
+turns causes httpx connection cleanup failures (APIConnectionError).
 
 MLflow tracing is enabled via mlflow.openai.autolog() to capture
 detailed execution traces during evaluation.
@@ -118,14 +120,20 @@ def invoke_onboarding_conversation(
     api_key: str | None = None,
     user_id: str = "eval-onboarding-user",
     max_turns: int = 10,
-) -> tuple[list[tuple[str, RunResult]], list[dict]]:
+    session_id: str | None = None,
+) -> tuple[list[tuple[str, RunResult]], list[dict], str]:
     """
     Run a multi-turn onboarding conversation against the production agent.
 
     Creates the agent with is_onboarded=False, sends a greeting trigger,
     then sends each user turn with accumulated conversation history.
-    Each turn uses a fresh asyncio event loop (same pattern as
-    invoke_production_agent).
+    All turns run within a single asyncio.run() call, sharing one event
+    loop and one database connection pool. This avoids the Windows
+    ProactorEventLoop issue where closing the loop between turns causes
+    httpx connection cleanup failures.
+
+    Each turn is recorded as an MLflow trace tagged with a shared session ID,
+    enabling MLflow's multi-turn evaluation and session-grouped trace viewing.
 
     Args:
         user_turns: Pre-scripted user messages for the conversation.
@@ -133,11 +141,14 @@ def invoke_onboarding_conversation(
         api_key: Optional OpenAI API key (defaults to OPENAI_API_KEY env var).
         user_id: User ID for memory scoping in tool calls.
         max_turns: Maximum agent turns per message (default 10).
+        session_id: Optional session ID for MLflow trace grouping. If None,
+            a unique ID is auto-generated.
 
     Returns:
         Tuple of:
         - List of (turn_label, RunResult) tuples for each turn
         - Aggregated list of all tool call dicts across the conversation
+        - The session ID used for MLflow trace grouping
     """
     settings = get_eval_settings()
     actual_api_key = api_key or settings.openai_api_key
@@ -156,6 +167,10 @@ def invoke_onboarding_conversation(
         "conversation_id": None,
     }
 
+    # Generate session ID if not provided (for MLflow multi-turn trace grouping)
+    if session_id is None:
+        session_id = f"onboarding-{str(uuid4())[:8]}"
+
     turn_results: list[tuple[str, RunResult]] = []
     all_tool_calls: list[dict] = []
     conversation_history: list[dict] = []
@@ -163,74 +178,78 @@ def invoke_onboarding_conversation(
     # Turn 0: System greeting trigger
     greeting_input = "[System: New user session started. Greet the user warmly and begin onboarding.]"
 
-    def _run_turn(input_data, history):
-        """Run a single turn with a fresh event loop."""
+    async def _run_conversation():
+        """Run all turns in a single event loop.
+
+        Uses one asyncio.run() for the entire conversation so that httpx
+        connections, asyncpg pools, and other loop-bound resources stay
+        valid across turns.  Each turn gets its own MLflow trace via
+        mlflow.start_span() at the root level.
+        """
         global _db_migrated
+        from src.database import init_database, run_migrations, close_database
 
-        async def _run():
-            global _db_migrated
-            from src.database import init_database, run_migrations, close_database
+        try:
+            await init_database()
+            if not _db_migrated:
+                await run_migrations()
+                _db_migrated = True
+        except Exception:
+            pass
 
+        try:
+            await _run_turn(greeting_input, [], "greeting", greeting_input)
+            for idx, user_message in enumerate(user_turns):
+                await _run_turn(
+                    user_message, conversation_history,
+                    f"turn-{idx + 1}", user_message,
+                )
+        finally:
             try:
-                await init_database()
-                if not _db_migrated:
-                    await run_migrations()
-                    _db_migrated = True
+                await close_database()
             except Exception:
                 pass
 
-            try:
+    async def _run_turn(input_data, history, turn_label, user_message):
+        """Run a single turn with MLflow session trace.
+
+        Each turn creates an MLflow trace (root span) tagged with the
+        shared session_id, enabling session-grouped viewing in the UI.
+        """
+        try:
+            with mlflow.start_span(name=f"onboarding_{turn_label}") as span:
+                span.set_inputs({"user_message": user_message})
+                mlflow.update_current_trace(
+                    metadata={"mlflow.trace.session": session_id},
+                    tags={"turn_label": turn_label, "user_id": user_id},
+                )
+
                 # Build input as conversation history + new message
                 if history:
                     messages = list(history)
                     if isinstance(input_data, str):
                         messages.append({"role": "user", "content": input_data})
-                    return await Runner.run(
+                    result = await Runner.run(
                         agent, input=messages, context=context, max_turns=max_turns
                     )
                 else:
-                    return await Runner.run(
+                    result = await Runner.run(
                         agent, input=input_data, context=context, max_turns=max_turns
                     )
-            finally:
-                try:
-                    await close_database()
-                except Exception:
-                    pass
 
-        return asyncio.run(_run())
+                span.set_outputs(result.final_output)
 
-    # Run greeting turn
-    try:
-        result = _run_turn(greeting_input, [])
-        turn_results.append(("greeting", result))
-        tool_calls = extract_tool_calls(result)
-        all_tool_calls.extend(tool_calls)
-
-        # Add to conversation history
-        conversation_history.append({"role": "user", "content": greeting_input})
-        conversation_history.append({"role": "assistant", "content": result.final_output})
-    except Exception as e:
-        # If greeting fails, still try user turns
-        conversation_history.append({"role": "user", "content": greeting_input})
-        conversation_history.append({"role": "assistant", "content": f"[ERROR: {str(e)}]"})
-
-    # Run user turns
-    for idx, user_message in enumerate(user_turns):
-        try:
-            result = _run_turn(user_message, conversation_history)
-            turn_results.append((f"turn-{idx + 1}", result))
+            turn_results.append((turn_label, result))
             tool_calls = extract_tool_calls(result)
             all_tool_calls.extend(tool_calls)
-
-            # Add to conversation history
             conversation_history.append({"role": "user", "content": user_message})
             conversation_history.append({"role": "assistant", "content": result.final_output})
         except Exception as e:
             conversation_history.append({"role": "user", "content": user_message})
             conversation_history.append({"role": "assistant", "content": f"[ERROR: {str(e)}]"})
 
-    return turn_results, all_tool_calls
+    asyncio.run(_run_conversation())
+    return turn_results, all_tool_calls, session_id
 
 
 def cleanup_onboarding_eval_data(user_id: str) -> None:

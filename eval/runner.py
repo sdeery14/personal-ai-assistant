@@ -2384,10 +2384,13 @@ def run_onboarding_evaluation(
     Phase 1: Run multi-turn conversations with autolog DISABLED - invokes the
     production agent with is_onboarded=False for each persona, accumulates
     conversation history, and extracts tool calls (memory saves, entity creates).
+    Each turn is traced with mlflow.start_span() and tagged with a session ID.
 
-    Phase 2: Scorer-only genai_evaluate() - passes conversation transcripts to
-    an LLM judge scorer for conversation quality assessment, plus extraction
-    recall scorers for memory/entity metrics.
+    Phase 2: Session-based trace evaluation - searches for Phase 1 session
+    traces, logs expectations on the first trace per session, then runs
+    genai_evaluate(data=session_traces) with session-level scorers. Assessments
+    attach directly to the conversation traces (no orphaned scorer traces).
+    Also computes extraction recall from Phase 1 database queries.
 
     Args:
         dataset_path: Path to the onboarding golden dataset JSON file.
@@ -2400,7 +2403,6 @@ def run_onboarding_evaluation(
     import statistics
 
     import httpx
-    from mlflow.genai import scorer as scorer_decorator
 
     settings = get_eval_settings()
 
@@ -2466,10 +2468,13 @@ def run_onboarding_evaluation(
 
         # ============================================================
         # PHASE 1: Multi-turn conversation loop (autolog disabled)
+        # Manual @mlflow.trace in invoke_onboarding_conversation
+        # creates per-turn traces with session IDs for multi-turn eval.
         # ============================================================
         mlflow.openai.autolog(disable=True)
 
         case_data: list[tuple] = []
+        run_prefix = run_id[:8]
 
         if verbose:
             print("Phase 1: Running multi-turn onboarding conversations...")
@@ -2477,17 +2482,19 @@ def run_onboarding_evaluation(
         for case in dataset.cases:
             start_time = time.perf_counter()
             eval_user_id = f"eval-onboarding-{case.id}"
+            case_session_id = f"onboarding-{run_prefix}-{case.id}"
 
             # Clean up any data from previous eval runs for this user
             cleanup_onboarding_eval_data(eval_user_id)
 
             try:
-                turn_results, all_tool_calls = invoke_onboarding_conversation(
+                turn_results, all_tool_calls, _ = invoke_onboarding_conversation(
                     user_turns=case.user_turns,
                     model=actual_model,
                     api_key=api_key,
-                    user_id=f"eval-onboarding-{case.id}",
+                    user_id=eval_user_id,
                     max_turns=10,
+                    session_id=case_session_id,
                 )
                 latency_ms = int((time.perf_counter() - start_time) * 1000)
 
@@ -2535,176 +2542,254 @@ def run_onboarding_evaluation(
         mlflow.openai.autolog()
 
         # ============================================================
-        # PHASE 2: Scorer-only genai_evaluate
+        # PHASE 2: Session-based multi-turn quality evaluation
+        #
+        # Uses MLflow's native session trace approach:
+        # 1. Search for session traces created in Phase 1
+        # 2. Log expectations on first trace per session
+        # 3. Evaluate with session-level scorers via genai_evaluate
+        # 4. Assessments attach directly to conversation traces
+        #
+        # Extraction metrics (memory/entity recall) computed from
+        # Phase 1 database queries (independent of trace evaluation).
         # ============================================================
         if verbose:
-            print("\nPhase 2: Running conversation quality scorer...")
+            print("\nPhase 2: Running multi-turn conversation quality evaluation...")
 
-        eval_data = []
-        case_tool_data: dict[str, dict] = {}
-
+        # Compute memory/entity recall from Phase 1 data
+        extraction_by_case: dict[str, dict] = {}
         for case, transcript, memory_writes, entity_creates, tool_calls, turn_count, latency_ms, error in case_data:
-            eval_data.append({
-                "inputs": {
-                    "persona": case.persona,
-                    "user_turns": "\n".join(case.user_turns),
-                },
-                "outputs": transcript,
-                "expectations": {
-                    "rubric": case.rubric,
-                    "memories_to_save": case.expectations.memories_to_save,
-                    "entities_to_create": case.expectations.entities_to_create,
-                    "topics_to_explore": case.expectations.topics_to_explore,
-                },
-            })
-            case_tool_data[case.persona] = {
-                "memory_writes": memory_writes,
-                "entity_creates": entity_creates,
+            extraction_by_case[case.id] = {
+                "memory_recall": judge.evaluate_memory_recall(
+                    memory_writes, case.expectations.memories_to_save
+                ),
+                "entity_recall": judge.evaluate_entity_recall(
+                    entity_creates, case.expectations.entities_to_create
+                ),
             }
 
-        @scorer_decorator
-        def onboarding_quality(inputs, outputs, expectations) -> str:
-            """LLM judge: rate the onboarding conversation quality."""
-            persona = inputs.get("persona", "")
-            conversation = outputs if isinstance(outputs, str) else str(outputs)
-            rubric = expectations.get("rubric", "")
-            topics = expectations.get("topics_to_explore", [])
+        # Multi-turn quality evaluation via session traces
+        quality_by_case: dict[str, str] = {}  # case_id -> quality_rating
 
-            resp = httpx.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": judge_model,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": (
-                                "You are evaluating an AI assistant's onboarding conversation "
-                                "with a new user. Rate the conversation quality as one of: "
-                                "excellent, good, adequate, poor.\n\n"
-                                "Evaluate:\n"
-                                "1. Did the assistant ask about the user's routine/schedule?\n"
-                                "2. Did it ask about goals or upcoming events?\n"
-                                "3. Was the tone warm but professional (butler-like, not chatbot-like)?\n"
-                                "4. Did it propose actionable ways to help based on what it learned?\n"
-                                "5. Did the conversation feel natural, not interrogative?\n\n"
-                                "Answer ONLY one word: excellent, good, adequate, or poor."
-                            ),
-                        },
-                        {
-                            "role": "user",
-                            "content": (
-                                f"**User Persona**: {persona}\n\n"
-                                f"**Expected Topics**: {', '.join(topics) if topics else 'N/A'}\n\n"
-                                f"**Conversation**:\n{conversation}\n\n"
-                                f"**Evaluation Rubric**: {rubric}\n\n"
-                                "Rate the conversation quality (excellent/good/adequate/poor):"
-                            ),
-                        },
-                    ],
-                    "max_tokens": 10,
-                    "temperature": 0.0,
-                },
-                timeout=30.0,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            answer = data["choices"][0]["message"]["content"].strip().lower()
-            for valid in ("excellent", "good", "adequate", "poor"):
-                if valid in answer:
-                    return valid
-            return "poor"
+        from collections import defaultdict
+        from typing import Literal
 
-        @scorer_decorator
-        def memory_recall_scorer(inputs, outputs, expectations) -> float:
-            """Recall: fraction of expected memories that were saved."""
-            persona = inputs.get("persona", "")
-            tc = case_tool_data.get(persona, {"memory_writes": []})
-            expected = expectations.get("memories_to_save", [])
-            return judge.evaluate_memory_recall(tc["memory_writes"], expected)
-
-        @scorer_decorator
-        def entity_recall_scorer(inputs, outputs, expectations) -> float:
-            """Recall: fraction of expected entities that were created."""
-            persona = inputs.get("persona", "")
-            tc = case_tool_data.get(persona, {"entity_creates": []})
-            expected = expectations.get("entities_to_create", [])
-            return judge.evaluate_entity_recall(tc["entity_creates"], expected)
+        from mlflow.genai.judges import make_judge
+        from mlflow.genai.scorers import ConversationCompleteness
 
         try:
-            eval_results = genai_evaluate(
-                data=eval_data,
-                scorers=[onboarding_quality, memory_recall_scorer, entity_recall_scorer],
+            # Step 1: Retrieve session traces from Phase 1
+            session_traces = mlflow.search_traces(
+                locations=[experiment_id],
+                return_type="list",
             )
 
-            results_df = eval_results.tables["eval_results"]
+            # Filter to this run's session traces only
+            session_traces = [
+                t for t in session_traces
+                if t.info.request_metadata.get("mlflow.sourceRun") == run_id
+                and t.info.request_metadata.get("mlflow.trace.session")
+            ]
 
-            for idx, (_, row) in enumerate(results_df.iterrows()):
-                case, transcript, memory_writes, entity_creates, tool_calls, turn_count, latency_ms, error = case_data[idx]
+            # Step 2: Map sessions to cases and log expectations
+            # Session IDs follow pattern: onboarding-{run_prefix}-{case.id}
+            case_by_session: dict[str, Any] = {}
+            for case in dataset.cases:
+                case_session_id = f"onboarding-{run_prefix}-{case.id}"
+                case_by_session[case_session_id] = case
 
-                quality_value = row.get("onboarding_quality/value", None)
-                quality_rating = str(quality_value).strip().lower() if quality_value is not None else "poor"
-                quality_passed = quality_rating in ("excellent", "good")
+            # Group traces by session, sorted chronologically
+            by_session: dict[str, list] = defaultdict(list)
+            for t in session_traces:
+                session = t.info.request_metadata.get(
+                    "mlflow.trace.session", ""
+                )
+                by_session[session].append(t)
 
-                mem_recall = float(row.get("memory_recall_scorer/value", 0.0) or 0.0)
-                ent_recall = float(row.get("entity_recall_scorer/value", 0.0) or 0.0)
+            for session_id, traces_in_session in by_session.items():
+                traces_in_session.sort(key=lambda t: t.info.timestamp_ms)
+                first_trace = traces_in_session[0]
 
-                results.append(OnboardingCaseResult(
-                    case_id=case.id,
-                    persona=case.persona,
-                    turn_count=turn_count,
-                    conversation_transcript=transcript,
-                    tool_calls=tool_calls,
-                    memory_writes=memory_writes,
-                    entity_creates=entity_creates,
-                    memory_recall=mem_recall,
-                    entity_recall=ent_recall,
-                    quality_passed=quality_passed,
-                    quality_rating=quality_rating,
-                    total_latency_ms=latency_ms,
-                    error=error,
-                ))
-
-                if verbose:
-                    q_status = "PASS" if quality_passed else "FAIL"
-                    print(
-                        f"  {case.id}: Quality={quality_rating} ({q_status}) "
-                        f"MemR={mem_recall:.2f} EntR={ent_recall:.2f} {latency_ms}ms"
+                case = case_by_session.get(session_id)
+                if case:
+                    # Log expectations on the first trace per session
+                    # (where session-level assessments attach)
+                    mlflow.log_expectation(
+                        trace_id=first_trace.info.request_id,
+                        name="expectations",
+                        value={
+                            "rubric": case.rubric,
+                            "topics_to_explore": ", ".join(
+                                case.expectations.topics_to_explore
+                            ),
+                        },
                     )
+
+            if verbose:
+                print(
+                    f"  Found {len(session_traces)} session traces "
+                    f"across {len(by_session)} sessions"
+                )
+
+            # Step 3: Create custom session-level quality judge
+            # NOTE: Only {{ conversation }} is used as a template variable.
+            # {{ expectations }} causes silent failures (all nan) when
+            # running genai_evaluate on multi-session traces, so rubric
+            # criteria are embedded directly in the judge instructions.
+            onboarding_quality_judge = make_judge(
+                name="onboarding_quality",
+                instructions=(
+                    "You are evaluating an AI butler-style assistant's "
+                    "onboarding conversation with a new user.\n\n"
+                    "Conversation:\n{{ conversation }}\n\n"
+                    "Evaluate ALL of the following criteria:\n"
+                    "1. DISCOVERY: Did the assistant learn about the "
+                    "user's name, role, daily routine, and schedule?\n"
+                    "2. GOALS: Did it explore upcoming events, "
+                    "deadlines, goals, or challenges?\n"
+                    "3. TONE: Was the tone warm but professional — "
+                    "like a capable butler, not a chatbot? Was it "
+                    "conversational and not interrogative?\n"
+                    "4. ACTIONABLE HELP: Did it propose specific, "
+                    "concrete ways to help based on what it learned "
+                    "(e.g., reminders, scheduling, prep assistance)?\n"
+                    "5. MEMORY: Did the conversation show the assistant "
+                    "remembering and building on earlier details?\n\n"
+                    "Rating guide:\n"
+                    "- excellent: All 5 criteria strongly met\n"
+                    "- good: 4 criteria met, minor gaps\n"
+                    "- adequate: 2-3 criteria met\n"
+                    "- poor: Fewer than 2 criteria met\n\n"
+                    "Answer with ONLY one word: excellent, good, "
+                    "adequate, or poor."
+                ),
+                feedback_value_type=Literal[
+                    "excellent", "good", "adequate", "poor"
+                ],
+                model=f"openai:/{judge_model}",
+            )
+
+            # Step 4: Run trace-based session evaluation
+            # Assessments attach directly to the conversation traces
+            eval_results = genai_evaluate(
+                data=session_traces,
+                scorers=[
+                    onboarding_quality_judge,
+                    ConversationCompleteness(),
+                ],
+            )
+
+            # Step 5: Extract session-level quality ratings
+            # Session scorers populate results on one trace per session;
+            # the rest are nan. Map back via trace_metadata session ID.
+            results_df = eval_results.tables["eval_results"]
+            for _, row in results_df.iterrows():
+                quality_value = row.get("onboarding_quality/value")
+                if pd.notna(quality_value) and str(quality_value).strip():
+                    meta = row.get("trace_metadata", {})
+                    if isinstance(meta, dict):
+                        session = meta.get("mlflow.trace.session", "")
+                        case = case_by_session.get(session)
+                        if case:
+                            quality_by_case[case.id] = str(
+                                quality_value
+                            ).strip().lower()
+
+            if verbose:
+                print(
+                    f"  Quality ratings from genai_evaluate: "
+                    f"{len(quality_by_case)}/{len(dataset.cases)} cases"
+                )
 
         except Exception as e:
             if verbose:
-                print(f"  Scorer evaluation failed: {str(e)}")
-            for case, transcript, memory_writes, entity_creates, tool_calls, turn_count, latency_ms, pred_error in case_data:
-                mem_recall = judge.evaluate_memory_recall(
-                    memory_writes, case.expectations.memories_to_save
-                )
-                ent_recall = judge.evaluate_entity_recall(
-                    entity_creates, case.expectations.entities_to_create
+                import traceback
+                traceback.print_exc()
+                print(
+                    f"  Session trace evaluation failed ({e}), "
+                    f"falling back to direct LLM judge"
                 )
 
-                results.append(OnboardingCaseResult(
-                    case_id=case.id,
-                    persona=case.persona,
-                    turn_count=turn_count,
-                    conversation_transcript=transcript,
-                    tool_calls=tool_calls,
-                    memory_writes=memory_writes,
-                    entity_creates=entity_creates,
-                    memory_recall=mem_recall,
-                    entity_recall=ent_recall,
-                    total_latency_ms=latency_ms,
-                    error=pred_error or str(e),
-                ))
-
-                if verbose:
-                    print(
-                        f"  {case.id}: MemR={mem_recall:.2f} EntR={ent_recall:.2f} "
-                        f"{latency_ms}ms (no judge)"
+            # Fallback: direct LLM call per case if trace-based eval fails
+            for case, transcript, memory_writes, entity_creates, tool_calls, turn_count, latency_ms, error in case_data:
+                if error:
+                    continue
+                try:
+                    resp = httpx.post(
+                        "https://api.openai.com/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": judge_model,
+                            "messages": [
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        "Rate this onboarding conversation "
+                                        "as: excellent, good, adequate, or "
+                                        "poor. Answer ONLY one word."
+                                    ),
+                                },
+                                {
+                                    "role": "user",
+                                    "content": (
+                                        f"Conversation:\n{transcript}\n\n"
+                                        f"Rubric: {case.rubric}"
+                                    ),
+                                },
+                            ],
+                            "max_tokens": 10,
+                            "temperature": 0.0,
+                        },
+                        timeout=30.0,
                     )
+                    resp.raise_for_status()
+                    answer = resp.json()["choices"][0]["message"][
+                        "content"
+                    ].strip().lower()
+                    for valid in (
+                        "excellent", "good", "adequate", "poor"
+                    ):
+                        if valid in answer:
+                            quality_by_case[case.id] = valid
+                            break
+                    else:
+                        quality_by_case[case.id] = "poor"
+                except Exception:
+                    quality_by_case[case.id] = "poor"
+
+        # Build final per-case results from quality + extraction metrics
+        for case, transcript, memory_writes, entity_creates, tool_calls, turn_count, latency_ms, error in case_data:
+            quality_rating = quality_by_case.get(case.id, "poor")
+            quality_passed = quality_rating in ("excellent", "good")
+            extraction = extraction_by_case.get(case.id, {})
+            mem_recall = extraction.get("memory_recall", 0.0)
+            ent_recall = extraction.get("entity_recall", 0.0)
+
+            results.append(OnboardingCaseResult(
+                case_id=case.id,
+                persona=case.persona,
+                turn_count=turn_count,
+                conversation_transcript=transcript,
+                tool_calls=tool_calls,
+                memory_writes=memory_writes,
+                entity_creates=entity_creates,
+                memory_recall=mem_recall,
+                entity_recall=ent_recall,
+                quality_passed=quality_passed,
+                quality_rating=quality_rating,
+                total_latency_ms=latency_ms,
+                error=error,
+            ))
+
+            if verbose:
+                q_status = "PASS" if quality_passed else "FAIL"
+                print(
+                    f"  {case.id}: Quality={quality_rating} ({q_status}) "
+                    f"MemR={mem_recall:.2f} EntR={ent_recall:.2f} {latency_ms}ms"
+                )
 
         # Compute aggregate metrics
         valid_results = [r for r in results if r.error is None]

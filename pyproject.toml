@@ -17,7 +17,7 @@ dependencies = [
     # Development
     "python-dotenv>=1.0.0",
     # Evaluation Framework (Feature 002)
-    "mlflow>=3.8.1",
+    "mlflow>=3.10.0,<4.0",
     "litellm>=1.81.5",
     # Memory Feature (Feature 004)
     "asyncpg>=0.29.0",
