@@ -27,27 +27,29 @@ class TestOnboardingPromptInjection:
         """New users (is_onboarded=False) get the onboarding system prompt."""
         agent = chat_service.create_agent(is_onboarded=False)
         assert "meeting this user for the first time" in agent.instructions
+        assert "NEVER use generic chatbot phrases" in agent.instructions
 
     def test_returning_user_gets_proactive_prompt(self, chat_service):
         """Returning users (is_onboarded=True) get the proactive greeting prompt."""
         agent = chat_service.create_agent(is_onboarded=True)
-        assert "You know this user already" in agent.instructions
+        assert "have the tea ready" in agent.instructions
 
     def test_new_user_does_not_get_proactive_prompt(self, chat_service):
         """New users should NOT get the proactive greeting prompt."""
         agent = chat_service.create_agent(is_onboarded=False)
-        assert "You know this user already" not in agent.instructions
+        assert "have the tea ready" not in agent.instructions
 
     def test_returning_user_does_not_get_onboarding_prompt(self, chat_service):
         """Returning users should NOT get the onboarding prompt."""
         agent = chat_service.create_agent(is_onboarded=True)
         assert "meeting this user for the first time" not in agent.instructions
+        assert "NEVER use generic chatbot phrases" not in agent.instructions
 
     def test_no_onboarding_info_gives_default(self, chat_service):
         """When is_onboarded is None (e.g., anonymous user), neither prompt is injected."""
         agent = chat_service.create_agent(is_onboarded=None)
         assert "meeting this user for the first time" not in agent.instructions
-        assert "You know this user already" not in agent.instructions
+        assert "have the tea ready" not in agent.instructions
 
     def test_specialist_tools_available_when_db_available(self, chat_service):
         """Memory specialist should be available when database is available."""
@@ -70,7 +72,7 @@ class TestOnboardingBackwardCompatibility:
         """create_agent() still works without user_id/is_onboarded for eval framework."""
         agent = chat_service.create_agent()
         assert agent is not None
-        assert "helpful assistant" in agent.instructions
+        assert "personal assistant" in agent.instructions
 
     def test_create_agent_with_model_only(self, chat_service):
         """create_agent(model=...) still works as before."""

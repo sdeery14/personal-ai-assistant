@@ -131,7 +131,7 @@ class TestBuildOrchestratorInstructions:
         instructions = build_orchestrator_instructions(
             is_onboarded=None, availability={}
         )
-        assert "helpful assistant" in instructions
+        assert "personal assistant" in instructions
         assert "specialist agents" in instructions
 
     def test_onboarding_prompt_for_new_user(self):
@@ -140,14 +140,15 @@ class TestBuildOrchestratorInstructions:
             is_onboarded=False, availability={}
         )
         assert "meeting this user for the first time" in instructions
-        assert "You know this user already" not in instructions
+        assert "NEVER use generic chatbot phrases" in instructions
+        assert "have the tea ready" not in instructions
 
     def test_proactive_prompt_for_returning_user(self):
         """Returning users get proactive greeting prompt."""
         instructions = build_orchestrator_instructions(
             is_onboarded=True, availability={}
         )
-        assert "You know this user already" in instructions
+        assert "have the tea ready" in instructions
         assert "meeting this user for the first time" not in instructions
 
     def test_no_personality_prompt_when_none(self):
@@ -156,7 +157,7 @@ class TestBuildOrchestratorInstructions:
             is_onboarded=None, availability={}
         )
         assert "meeting this user for the first time" not in instructions
-        assert "You know this user already" not in instructions
+        assert "have the tea ready" not in instructions
 
     def test_routing_hints_for_available_specialists(self):
         """Available specialists should have routing hints in instructions."""

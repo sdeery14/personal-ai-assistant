@@ -124,9 +124,13 @@ class ChatService:
         # Detect greeting mode: empty message triggers auto-greeting
         is_greeting = not message
 
+        # Trigger lazy-load of conversation service to set _database_available.
+        # Must happen before the onboarding check below, even for greetings.
+        _ = self.conversation_service
+
         # Try to persist conversation and message (skip for greetings — ephemeral until user engages)
         conversation = None
-        if not is_greeting and self.conversation_service and self._database_available:
+        if not is_greeting and self._database_available:
             try:
                 conversation = await self.conversation_service.get_or_create_conversation(
                     user_id=user_id,
