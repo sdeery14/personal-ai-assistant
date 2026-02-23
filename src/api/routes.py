@@ -236,6 +236,7 @@ async def chat(
         message_length=len(request.message),
         user_id=request.user_id,
         conversation_id=request.conversation_id,
+        is_greeting=not request.message,
     )
 
     # Create streaming response with SSE content type

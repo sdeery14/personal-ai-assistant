@@ -33,61 +33,58 @@ export function Sidebar() {
 
   const isAdmin = (session?.user as { isAdmin?: boolean })?.isAdmin;
 
-  const sidebarContent = (
-    <>
-      {/* Navigation */}
-      <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-700 px-3 py-2">
-        {navItems.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={() => setMobileOpen(false)}
-            className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-              pathname.startsWith(item.href)
-                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-                : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-            }`}
-          >
-            {item.label}
-          </Link>
-        ))}
-        {isAdmin && (
-          <Link
-            href="/admin"
-            onClick={() => setMobileOpen(false)}
-            className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-              pathname.startsWith("/admin")
-                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-                : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-            }`}
-          >
-            Admin
-          </Link>
-        )}
-      </nav>
-
-      {/* Conversation list (only on chat page) */}
-      {pathname.startsWith("/chat") && (
-        <ConversationList
-          conversations={conversations}
-          activeId={conversationId}
-          total={total}
-          isLoading={isLoading}
-          onSelect={(id) => {
-            selectConversation(id);
-            setMobileOpen(false);
-          }}
-          onNew={() => {
-            newConversation();
-            setMobileOpen(false);
-          }}
-          onRename={renameConversation}
-          onDelete={deleteConversation}
-          onLoadMore={() => fetchConversations(conversations.length)}
-        />
+  // Mobile navigation (shown only in mobile drawer)
+  const mobileNav = (
+    <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-700 px-3 py-2">
+      {navItems.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          onClick={() => setMobileOpen(false)}
+          className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+            pathname.startsWith(item.href)
+              ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+              : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+          }`}
+        >
+          {item.label}
+        </Link>
+      ))}
+      {isAdmin && (
+        <Link
+          href="/admin"
+          onClick={() => setMobileOpen(false)}
+          className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+            pathname.startsWith("/admin")
+              ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+              : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+          }`}
+        >
+          Admin
+        </Link>
       )}
-    </>
+    </nav>
   );
+
+  const conversationList = pathname.startsWith("/chat") ? (
+    <ConversationList
+      conversations={conversations}
+      activeId={conversationId}
+      total={total}
+      isLoading={isLoading}
+      onSelect={(id) => {
+        selectConversation(id);
+        setMobileOpen(false);
+      }}
+      onNew={() => {
+        newConversation();
+        setMobileOpen(false);
+      }}
+      onRename={renameConversation}
+      onDelete={deleteConversation}
+      onLoadMore={() => fetchConversations(conversations.length)}
+    />
+  ) : null;
 
   return (
     <>
@@ -110,18 +107,21 @@ export function Sidebar() {
         />
       )}
 
-      {/* Desktop sidebar */}
-      <aside className="hidden h-full w-64 flex-col border-r border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900 md:flex">
-        {sidebarContent}
-      </aside>
+      {/* Desktop sidebar (conversation list only, no nav) */}
+      {conversationList && (
+        <aside className="hidden h-full w-64 flex-col border-r border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900 md:flex">
+          {conversationList}
+        </aside>
+      )}
 
-      {/* Mobile sidebar drawer */}
+      {/* Mobile sidebar drawer (includes nav + conversation list) */}
       <aside
         className={`fixed inset-y-0 left-0 z-40 w-64 flex-col border-r border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900 transition-transform md:hidden ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        {sidebarContent}
+        {mobileNav}
+        {conversationList}
       </aside>
     </>
   );

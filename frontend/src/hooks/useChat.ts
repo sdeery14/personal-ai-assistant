@@ -16,6 +16,7 @@ export function useChat() {
     isStreaming,
     error,
     lastFailedMessage,
+    greetingRequested,
     addUserMessage,
     addAssistantMessage,
     appendStreamChunk,
@@ -23,11 +24,16 @@ export function useChat() {
     setStreaming,
     setError,
     setLastFailedMessage,
+    setGreetingRequested,
     clearMessages,
   } = useChatStore();
 
-  const sendMessage = useCallback(
-    async (content: string) => {
+  /**
+   * Shared streaming logic. When `message` is provided, it's a normal chat.
+   * When omitted, it triggers an auto-greeting (no user bubble).
+   */
+  const streamResponse = useCallback(
+    async (message?: string) => {
       const accessToken = (session as { accessToken?: string })?.accessToken;
       if (!accessToken) {
         setError({
@@ -42,8 +48,6 @@ export function useChat() {
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
-      // Add user message to store
-      addUserMessage(content);
       setStreaming(true);
       setError(null);
       setLastFailedMessage(null);
@@ -53,7 +57,7 @@ export function useChat() {
 
       try {
         const stream = chatStream({
-          message: content,
+          message: message || undefined,
           conversationId: conversationId || undefined,
           accessToken,
           signal: controller.signal,
@@ -64,7 +68,9 @@ export function useChat() {
             // This is a StreamError
             const streamError = event as StreamError;
             setError(streamError);
-            setLastFailedMessage(content);
+            if (message) {
+              setLastFailedMessage(message);
+            }
             // Remove the empty assistant message
             useChatStore.setState((state) => ({
               messages: state.messages.filter((m) => m.id !== assistantId),
@@ -90,7 +96,9 @@ export function useChat() {
           type: "connection",
           message: "An unexpected error occurred. Please try again.",
         });
-        setLastFailedMessage(content);
+        if (message) {
+          setLastFailedMessage(message);
+        }
         useChatStore.setState((state) => ({
           messages: state.messages.filter((m) => m.id !== assistantId),
         }));
@@ -99,7 +107,6 @@ export function useChat() {
     [
       session,
       conversationId,
-      addUserMessage,
       addAssistantMessage,
       appendStreamChunk,
       finalizeStream,
@@ -108,6 +115,19 @@ export function useChat() {
       setLastFailedMessage,
     ],
   );
+
+  const sendMessage = useCallback(
+    async (content: string) => {
+      addUserMessage(content);
+      await streamResponse(content);
+    },
+    [addUserMessage, streamResponse],
+  );
+
+  const requestGreeting = useCallback(async () => {
+    setGreetingRequested(true);
+    await streamResponse();
+  }, [setGreetingRequested, streamResponse]);
 
   const retry = useCallback(() => {
     if (lastFailedMessage) {
@@ -126,7 +146,9 @@ export function useChat() {
     isStreaming,
     error,
     lastFailedMessage,
+    greetingRequested,
     sendMessage,
+    requestGreeting,
     retry,
     stopStreaming,
     clearMessages,

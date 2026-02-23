@@ -3,7 +3,7 @@ import { StreamChunk } from "@/types/chat";
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export interface ChatStreamOptions {
-  message: string;
+  message?: string;
   conversationId?: string;
   accessToken: string;
   signal?: AbortSignal;
@@ -23,7 +23,7 @@ export async function* chatStream(
 ): AsyncGenerator<StreamChunk | StreamError> {
   const { message, conversationId, accessToken, signal } = options;
 
-  const body: Record<string, unknown> = { message };
+  const body: Record<string, unknown> = { message: message ?? "" };
   if (conversationId) {
     body.conversation_id = conversationId;
   }

@@ -121,7 +121,7 @@ Extract entities and relationships naturally as they come up in conversation. Do
 ONBOARDING_SYSTEM_PROMPT = """
 You are meeting this user for the first time. Your mission is to get to know them so you can be most useful.
 
-Personality: You are Alfred — warm, quietly competent, and genuinely interested in understanding how you can help. Think of a thoughtful butler who anticipates needs rather than waiting for instructions.
+Personality: Warm, quietly competent, and genuinely interested in understanding how you can help. Think of a thoughtful butler who anticipates needs rather than waiting for instructions. Do not introduce yourself by name.
 
 First message approach:
 - Open with a warm, conversational greeting that invites the user to share about themselves
@@ -144,7 +144,7 @@ CRITICAL: Save information immediately as it's shared. Don't wait until the end 
 """
 
 PROACTIVE_GREETING_PROMPT = """
-You know this user already. Your mission is to be proactively helpful — like Alfred who has the tea ready before you ask.
+You know this user already. Your mission is to be proactively helpful — like a butler who has the tea ready before you ask.
 
 Personality: Warm, quietly competent, occasionally firm. You earn the right to interrupt by being consistently helpful when you do.
 
@@ -468,15 +468,17 @@ class ChatService:
         actual_model = model or settings.openai_model
         actual_max_tokens = max_tokens or settings.max_tokens
 
-        # Try to persist conversation and message
+        # Detect greeting mode: empty message triggers auto-greeting
+        is_greeting = not message
+
+        # Try to persist conversation and message (skip for greetings — ephemeral until user engages)
         conversation = None
-        if self.conversation_service and self._database_available:
+        if not is_greeting and self.conversation_service and self._database_available:
             try:
                 conversation = await self.conversation_service.get_or_create_conversation(
                     user_id=user_id,
                     conversation_id=conversation_id,
                 )
-                # Persist user message
                 await self.conversation_service.add_message(
                     conversation_id=conversation.id,
                     role="user",
@@ -529,7 +531,13 @@ class ChatService:
                 "user_id": user_id,
                 "conversation_id": str(conversation.id) if conversation else None,
             }
-            result = Runner.run_streamed(agent, input=message, context=context)
+            # For auto-greetings, use a synthetic instruction instead of empty string
+            agent_input = (
+                "[System: The user just opened a new conversation. Greet them according to your instructions.]"
+                if is_greeting
+                else message
+            )
+            result = Runner.run_streamed(agent, input=agent_input, context=context)
 
             async for event in result.stream_events():
                 if event.type == "raw_response_event" and isinstance(
@@ -622,8 +630,8 @@ class ChatService:
                         correlation_id=str(correlation_id),
                     )
 
-            # Feature 011: Mark user as onboarded after first conversation
-            if is_onboarded is False and user_id != "anonymous":
+            # Feature 011: Mark user as onboarded after first real message (not greeting)
+            if not is_greeting and is_onboarded is False and user_id != "anonymous":
                 try:
                     from src.services.proactive_service import ProactiveService
                     from src.services.memory_write_service import schedule_write
