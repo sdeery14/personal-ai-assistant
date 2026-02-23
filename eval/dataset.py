@@ -24,6 +24,7 @@ from eval.models import (
     WeatherGoldenDataset,
     WeatherTestCase,
 )
+from eval.onboarding_models import OnboardingGoldenDataset
 
 
 class DatasetError(Exception):
@@ -595,3 +596,82 @@ def get_graph_extraction_case_by_id(
         if case.id == case_id:
             return case
     return None
+
+
+# Onboarding dataset loading functions (Feature 011)
+
+
+def is_onboarding_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is an onboarding evaluation dataset.
+
+    Args:
+        path: Path to the dataset file.
+
+    Returns:
+        True if the file appears to be an onboarding dataset.
+    """
+    path = Path(path)
+
+    # Check filename
+    if "onboarding" in path.name.lower():
+        return True
+
+    # Check content for onboarding-specific fields
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        cases = data.get("cases", [])
+        if cases and "user_turns" in cases[0] and "persona" in cases[0]:
+            return True
+    except (json.JSONDecodeError, OSError, KeyError):
+        pass
+
+    return False
+
+
+def load_onboarding_dataset(path: str | Path) -> OnboardingGoldenDataset:
+    """Load and validate an onboarding evaluation dataset from a JSON file.
+
+    Args:
+        path: Path to the onboarding golden dataset JSON file.
+
+    Returns:
+        Validated OnboardingGoldenDataset instance.
+
+    Raises:
+        DatasetError: If the file cannot be read or validation fails.
+    """
+    path = Path(path)
+
+    if not path.exists():
+        raise DatasetError(f"Onboarding dataset file not found: {path}")
+
+    if not path.is_file():
+        raise DatasetError(f"Onboarding dataset path is not a file: {path}")
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise DatasetError(f"Invalid JSON in onboarding dataset file: {e}")
+    except OSError as e:
+        raise DatasetError(f"Failed to read onboarding dataset file: {e}")
+
+    if "cases" not in data:
+        raise DatasetError("Onboarding dataset missing required field: 'cases'")
+
+    for idx, case in enumerate(data.get("cases", [])):
+        required_fields = ["id", "persona", "user_turns", "expectations", "rubric"]
+        missing = [f for f in required_fields if f not in case]
+        if missing:
+            raise DatasetError(
+                f"Onboarding dataset case {idx} missing required fields: {missing}"
+            )
+
+    try:
+        dataset = OnboardingGoldenDataset.model_validate(data)
+    except ValidationError as e:
+        errors = _format_validation_errors(e)
+        raise DatasetError(f"Onboarding dataset validation failed:\n{errors}")
+
+    return dataset

@@ -112,6 +112,217 @@ def invoke_production_agent(
     return asyncio.run(_run())
 
 
+def invoke_onboarding_conversation(
+    user_turns: list[str],
+    model: str | None = None,
+    api_key: str | None = None,
+    user_id: str = "eval-onboarding-user",
+    max_turns: int = 10,
+) -> tuple[list[tuple[str, RunResult]], list[dict]]:
+    """
+    Run a multi-turn onboarding conversation against the production agent.
+
+    Creates the agent with is_onboarded=False, sends a greeting trigger,
+    then sends each user turn with accumulated conversation history.
+    Each turn uses a fresh asyncio event loop (same pattern as
+    invoke_production_agent).
+
+    Args:
+        user_turns: Pre-scripted user messages for the conversation.
+        model: Optional model override (defaults to OPENAI_MODEL env var).
+        api_key: Optional OpenAI API key (defaults to OPENAI_API_KEY env var).
+        user_id: User ID for memory scoping in tool calls.
+        max_turns: Maximum agent turns per message (default 10).
+
+    Returns:
+        Tuple of:
+        - List of (turn_label, RunResult) tuples for each turn
+        - Aggregated list of all tool call dicts across the conversation
+    """
+    settings = get_eval_settings()
+    actual_api_key = api_key or settings.openai_api_key
+
+    # Ensure OPENAI_API_KEY is in environment (required by OpenAI SDK)
+    os.environ["OPENAI_API_KEY"] = actual_api_key
+
+    from src.services.chat_service import ChatService
+
+    service = ChatService()
+    agent = service.create_agent(model=model, is_onboarded=False)
+
+    context = {
+        "user_id": user_id,
+        "correlation_id": str(uuid4()),
+        "conversation_id": None,
+    }
+
+    turn_results: list[tuple[str, RunResult]] = []
+    all_tool_calls: list[dict] = []
+    conversation_history: list[dict] = []
+
+    # Turn 0: System greeting trigger
+    greeting_input = "[System: New user session started. Greet the user warmly and begin onboarding.]"
+
+    def _run_turn(input_data, history):
+        """Run a single turn with a fresh event loop."""
+        global _db_migrated
+
+        async def _run():
+            global _db_migrated
+            from src.database import init_database, run_migrations, close_database
+
+            try:
+                await init_database()
+                if not _db_migrated:
+                    await run_migrations()
+                    _db_migrated = True
+            except Exception:
+                pass
+
+            try:
+                # Build input as conversation history + new message
+                if history:
+                    messages = list(history)
+                    if isinstance(input_data, str):
+                        messages.append({"role": "user", "content": input_data})
+                    return await Runner.run(
+                        agent, input=messages, context=context, max_turns=max_turns
+                    )
+                else:
+                    return await Runner.run(
+                        agent, input=input_data, context=context, max_turns=max_turns
+                    )
+            finally:
+                try:
+                    await close_database()
+                except Exception:
+                    pass
+
+        return asyncio.run(_run())
+
+    # Run greeting turn
+    try:
+        result = _run_turn(greeting_input, [])
+        turn_results.append(("greeting", result))
+        tool_calls = extract_tool_calls(result)
+        all_tool_calls.extend(tool_calls)
+
+        # Add to conversation history
+        conversation_history.append({"role": "user", "content": greeting_input})
+        conversation_history.append({"role": "assistant", "content": result.final_output})
+    except Exception as e:
+        # If greeting fails, still try user turns
+        conversation_history.append({"role": "user", "content": greeting_input})
+        conversation_history.append({"role": "assistant", "content": f"[ERROR: {str(e)}]"})
+
+    # Run user turns
+    for idx, user_message in enumerate(user_turns):
+        try:
+            result = _run_turn(user_message, conversation_history)
+            turn_results.append((f"turn-{idx + 1}", result))
+            tool_calls = extract_tool_calls(result)
+            all_tool_calls.extend(tool_calls)
+
+            # Add to conversation history
+            conversation_history.append({"role": "user", "content": user_message})
+            conversation_history.append({"role": "assistant", "content": result.final_output})
+        except Exception as e:
+            conversation_history.append({"role": "user", "content": user_message})
+            conversation_history.append({"role": "assistant", "content": f"[ERROR: {str(e)}]"})
+
+    return turn_results, all_tool_calls
+
+
+def cleanup_onboarding_eval_data(user_id: str) -> None:
+    """
+    Delete all memories and entities for an eval user before running a case.
+
+    Prevents cross-contamination from previous eval runs.
+
+    Args:
+        user_id: The eval user ID to clean up.
+    """
+    async def _cleanup():
+        from src.database import init_database, run_migrations, close_database
+
+        global _db_migrated
+
+        try:
+            pool = await init_database()
+            if not _db_migrated:
+                await run_migrations()
+                _db_migrated = True
+        except Exception:
+            return
+
+        try:
+            for table in ("memory_items", "entities", "relationships"):
+                try:
+                    await pool.execute(
+                        f"UPDATE {table} SET deleted_at = NOW() "
+                        f"WHERE user_id = $1 AND deleted_at IS NULL",
+                        user_id,
+                    )
+                except Exception:
+                    pass  # Table may not exist yet
+        finally:
+            await close_database()
+
+    asyncio.run(_cleanup())
+
+
+def query_saved_onboarding_data(user_id: str) -> tuple[list[str], list[str]]:
+    """
+    Query the database for memories and entities saved during an onboarding conversation.
+
+    Because the orchestrator delegates to specialist sub-agents, tool calls for
+    save_memory/save_entity don't appear in the top-level RunResult.new_items.
+    Instead, we query the database directly for what was actually persisted.
+
+    Args:
+        user_id: The user ID used during the onboarding conversation.
+
+    Returns:
+        Tuple of (memory_contents, entity_names) actually saved to the database.
+    """
+    async def _query():
+        from src.database import init_database, close_database
+
+        try:
+            pool = await init_database()
+        except Exception:
+            return [], []
+
+        try:
+            # Query memory_items for this user
+            memory_rows = await pool.fetch(
+                """
+                SELECT content FROM memory_items
+                WHERE user_id = $1 AND deleted_at IS NULL
+                ORDER BY created_at DESC
+                """,
+                user_id,
+            )
+            memory_contents = [row["content"] for row in memory_rows]
+
+            # Query entities for this user
+            entity_rows = await pool.fetch(
+                """
+                SELECT name FROM entities
+                WHERE user_id = $1 AND deleted_at IS NULL
+                ORDER BY created_at DESC
+                """,
+                user_id,
+            )
+            entity_names = [row["name"] for row in entity_rows]
+
+            return memory_contents, entity_names
+        finally:
+            await close_database()
+
+    return asyncio.run(_query())
+
+
 def extract_tool_calls(result: RunResult) -> list[dict]:
     """
     Extract tool call details from a RunResult.

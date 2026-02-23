@@ -18,6 +18,7 @@ from eval.models import (
     MemoryWriteGoldenDataset,
     WeatherGoldenDataset,
 )
+from eval.onboarding_models import OnboardingGoldenDataset
 
 # Map of dataset JSON filename stems to logical dataset type names
 DATASET_TYPE_MAP = {
@@ -27,6 +28,7 @@ DATASET_TYPE_MAP = {
     "memory_write_golden_dataset": "memory-write",
     "weather_golden_dataset": "weather",
     "graph_extraction_golden_dataset": "graph-extraction",
+    "onboarding_golden_dataset": "onboarding",
 }
 
 
@@ -196,6 +198,27 @@ def prepare_graph_extraction_records(
                     }
                     for r in case.expected_relationships
                 ],
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+def prepare_onboarding_records(
+    dataset: OnboardingGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert onboarding dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {
+                "persona": case.persona,
+                "user_turns": case.user_turns,
+            },
+            "expectations": {
+                "rubric": case.rubric,
+                "memories_to_save": case.expectations.memories_to_save,
+                "entities_to_create": case.expectations.entities_to_create,
+                "topics_to_explore": case.expectations.topics_to_explore,
             },
         }
         for case in dataset.cases

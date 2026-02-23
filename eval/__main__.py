@@ -24,20 +24,24 @@ from eval.runner import (
     GraphExtractionEvaluationResult,
     MemoryEvaluationResult,
     MemoryWriteEvaluationResult,
+    OnboardingEvaluationResult,
     WeatherEvaluationResult,
     format_graph_extraction_summary,
     format_memory_summary,
     format_memory_write_summary,
+    format_onboarding_summary,
     format_summary,
     format_weather_summary,
     is_graph_extraction_dataset,
     is_memory_dataset,
     is_memory_write_dataset,
+    is_onboarding_dataset,
     is_weather_dataset,
     run_evaluation,
     run_graph_evaluation,
     run_memory_evaluation,
     run_memory_write_evaluation,
+    run_onboarding_evaluation,
     run_weather_evaluation,
 )
 
@@ -195,6 +199,7 @@ def main() -> int:
         # Check dataset type
         is_graph_ext = is_graph_extraction_dataset(args.dataset)
         is_memory_write = is_memory_write_dataset(args.dataset)
+        is_onboarding = is_onboarding_dataset(args.dataset)
         is_memory = is_memory_dataset(args.dataset) and not is_memory_write
         is_weather = is_weather_dataset(args.dataset)
 
@@ -253,6 +258,37 @@ def main() -> int:
             )
 
             summary = format_memory_write_summary(result)
+            print(summary)
+
+            if result.metrics.overall_passed:
+                return 0
+            else:
+                return 1
+
+        elif is_onboarding:
+            # Onboarding evaluation flow
+            if args.dry_run:
+                print("Validating onboarding dataset (dry run)...")
+                result = run_onboarding_evaluation(
+                    dataset_path=args.dataset,
+                    verbose=args.verbose,
+                    dry_run=True,
+                )
+                print(f"Onboarding dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+
+            print("Running onboarding evaluation...")
+            if args.verbose:
+                print()
+
+            result = run_onboarding_evaluation(
+                dataset_path=args.dataset,
+                verbose=args.verbose,
+                dry_run=False,
+            )
+
+            summary = format_onboarding_summary(result)
             print(summary)
 
             if result.metrics.overall_passed:
