@@ -94,7 +94,7 @@ class TestWeatherToolRegistration:
         assert get_weather_tool.name == "get_weather"
 
     def test_weather_tool_in_chat_service(self, mock_settings, mock_request_settings):
-        """Test that weather tool is available in chat service tools."""
+        """Test that weather specialist is available in chat service."""
         with (
             patch("src.services.redis_service.get_redis", return_value=None),
             patch("src.tools.query_memory.MemoryService"),
@@ -102,14 +102,12 @@ class TestWeatherToolRegistration:
             from src.services.chat_service import ChatService
 
             service = ChatService()
-            tools = service._get_tools()
+            service._database_available = True
+            service._conversation_service = MagicMock()
 
-            # Find the weather tool
-            weather_tool = next(
-                (t for t in tools if getattr(t, "name", None) == "get_weather"),
-                None,
-            )
-            assert weather_tool is not None, "get_weather tool should be registered"
+            agent = service.create_agent()
+            tool_names = [t.name for t in agent.tools]
+            assert "ask_weather_agent" in tool_names, "ask_weather_agent should be registered"
 
 
 class TestWeatherEndpoint:
