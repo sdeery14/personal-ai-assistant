@@ -273,7 +273,39 @@ The assistant has a persistent mission: understand the user, connect what it kno
 
 ---
 
-### Feature 012 – Voice Interaction
+### Feature 012 – Prompt Registry
+
+> "I can version, track, and A/B test every prompt that drives the agent's behavior."
+
+Migrate system prompts from hardcoded string constants to MLflow's Prompt Registry. Every prompt change becomes a versioned, diffable artifact linked to eval results — closing the loop between "I changed a prompt" and "the agent got better/worse."
+
+- **Prompts to migrate**: ORCHESTRATOR_BASE_PROMPT, ONBOARDING_SYSTEM_PROMPT, PROACTIVE_GREETING_PROMPT, OBSERVATION_SYSTEM_PROMPT, SCHEDULE_SYSTEM_PROMPT, CALIBRATION_SYSTEM_PROMPT, specialist agent instructions (~10 prompts total)
+- **Version control**: Each prompt change creates an immutable version with diff tracking; no more guessing which prompt wording produced which eval results
+- **Aliases**: `@production` for live prompts, `@experiment` for A/B testing — swap prompts without code changes
+- **Eval lineage**: Tag eval runs with prompt versions used, enabling "which prompt version caused this regression?"
+- **Load pattern**: `mlflow.genai.load_prompt()` at agent creation time, replacing string constants in `agents.py` and `chat_service.py`
+- **Model config**: Store model parameters (temperature, max_tokens) alongside prompts for reproducibility
+- **Dependencies**: MLflow 3.10.0 (already installed), Feature 011 (prompts to migrate)
+
+---
+
+### Feature 013 – Eval Dashboard & Regression Pipeline
+
+> "I can see at a glance whether the agent is getting better or worse, and prompt changes are validated before going live."
+
+Aggregate eval results across runs, surface quality trends, detect regressions linked to prompt version changes, and gate prompt promotion on eval pass rates.
+
+- **Trend tracking**: Quality pass rates per eval over time, with prompt version annotations on the timeline
+- **Regression detection**: Alert when eval metrics drop after a prompt version change; link quality changes to specific prompt version transitions
+- **Automated eval runs**: New prompt version registered → run the full eval suite automatically
+- **Promotion gate**: All 11 Alfred evals must pass >=80% before alias promotion from `@experiment` to `@production`
+- **Rollback**: One-command alias revert to previous prompt version on regression
+- **Dashboard**: MLflow UI experiment views + custom summary reports aggregating all eval types
+- **Dependencies**: Feature 012 (prompt versioning provides the lineage data)
+
+---
+
+### Feature 014 – Voice Interaction
 
 > "I can talk to the assistant and hear it respond."
 
@@ -288,7 +320,7 @@ Phased: TTS-only output first, then two-way voice with speech-to-text input and 
 
 ---
 
-### Feature 013 – Edge Client (Raspberry Pi)
+### Feature 015 – Edge Client (Raspberry Pi)
 
 > "I can interact with the assistant from a Raspberry Pi."
 
@@ -300,11 +332,11 @@ Text-based interface (CLI / button / simple display), connection to existing bac
 - **Local state**: Minimal — last N messages cached for display continuity, no local database
 - **Hardware targets**: Raspberry Pi 4/5 with network access
 - **Deployment**: Docker container or systemd service
-- **Open questions**: Display hardware (e-ink, HDMI, none), audio integration with Feature 012
+- **Open questions**: Display hardware (e-ink, HDMI, none), audio integration with Feature 014
 
 ---
 
-### Feature 014 – Google Integrations (Read-Only)
+### Feature 016 – Google Integrations (Read-Only)
 
 > "The assistant can tell me about my emails and calendar events."
 
