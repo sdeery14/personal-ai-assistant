@@ -28,28 +28,26 @@ class TestChatRequest:
         request = ChatRequest(message="Hello, world!")
         assert request.message == "Hello, world!"
 
-    def test_empty_message_fails(self, mock_settings):
-        """Test empty message raises validation error."""
+    def test_empty_message_triggers_greeting(self, mock_settings):
+        """Test empty message is allowed (triggers auto-greeting)."""
         from src.models.request import ChatRequest
 
-        with pytest.raises(ValidationError) as exc_info:
-            ChatRequest(message="")
+        request = ChatRequest(message="")
+        assert request.message == ""
 
-        errors = exc_info.value.errors()
-        assert len(errors) >= 1
-        # Should fail on min_length or empty check
-
-    def test_whitespace_only_message_fails(self, mock_settings):
-        """Test whitespace-only message raises validation error."""
+    def test_whitespace_only_message_triggers_greeting(self, mock_settings):
+        """Test whitespace-only message is stripped to empty (triggers auto-greeting)."""
         from src.models.request import ChatRequest
 
-        with pytest.raises(ValidationError) as exc_info:
-            ChatRequest(message="   \t\n  ")
+        request = ChatRequest(message="   \t\n  ")
+        assert request.message == ""
 
-        errors = exc_info.value.errors()
-        assert any(
-            "empty" in str(e).lower() or "whitespace" in str(e).lower() for e in errors
-        )
+    def test_default_message_is_empty(self, mock_settings):
+        """Test message defaults to empty string when omitted."""
+        from src.models.request import ChatRequest
+
+        request = ChatRequest()
+        assert request.message == ""
 
     def test_message_too_long_fails(self, mock_settings):
         """Test message exceeding 8000 chars raises validation error."""

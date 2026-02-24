@@ -1,0 +1,81 @@
+{
+  "version": "1.0.0",
+  "description": "Multi-turn onboarding evaluation dataset. Tests the butler-style onboarding flow across 5 user personas, each with 3 pre-scripted conversation turns.",
+  "cases": [
+    {
+      "id": "onboard-busy-engineer",
+      "persona": "Senior software engineer at a fintech startup",
+      "user_turns": [
+        "I'm Sarah, a senior engineer at PayFlow -- a fintech startup, about 20 people. We're pre-Series A and things are moving fast.",
+        "My days are packed. Standup at 10, then coding until lunch. Afternoons are usually meetings and code reviews. I try to leave by 6 but it doesn't always happen.",
+        "Big thing coming up is our product launch in about 3 weeks. I'm leading the payments integration and there's still a lot to do. I also need to prep for a demo to potential investors next Friday."
+      ],
+      "expectations": {
+        "memories_to_save": ["sarah", "engineer", "payflow", "standup", "launch", "investor"],
+        "entities_to_create": ["PayFlow"],
+        "topics_to_explore": ["daily routine", "upcoming events", "goals"]
+      },
+      "rubric": "Agent should warmly greet, learn about the user's work and schedule, and propose specific ways to help with the product launch and investor demo. Should save key facts about name, role, company, schedule, and upcoming events. Tone should be warm but professional, not interrogative."
+    },
+    {
+      "id": "onboard-student",
+      "persona": "Computer science student with a part-time job",
+      "user_turns": [
+        "Hey, I'm Jake. I'm a junior studying CS at State University. I also work part-time at a coffee shop on weekends.",
+        "This semester is intense. I've got algorithms, databases, and my capstone project. The capstone is a mobile app for campus events -- we present in April. I also have a midterm in algorithms next Wednesday.",
+        "Honestly I'm struggling to balance everything. The coffee shop schedule changes every week and I keep forgetting assignment deadlines. My study group meets Tuesdays and Thursdays at 4pm."
+      ],
+      "expectations": {
+        "memories_to_save": ["jake", "student", "computer science", "capstone", "midterm", "coffee shop", "study group"],
+        "entities_to_create": ["State University"],
+        "topics_to_explore": ["schedule", "academics", "time management"]
+      },
+      "rubric": "Agent should be friendly and empathetic about the student's busy schedule. Should identify opportunities to help with deadline tracking, study scheduling, and balancing work/school. Should save information about classes, job, study group, and upcoming deadlines."
+    },
+    {
+      "id": "onboard-freelancer",
+      "persona": "Freelance graphic designer with multiple clients",
+      "user_turns": [
+        "Hi there! I'm Maria, a freelance graphic designer. I've been freelancing for about 3 years now. Currently juggling three active clients -- a restaurant chain, a tech startup, and a nonprofit.",
+        "My schedule is pretty flexible. I usually work from my home office, starting around 9. I have weekly check-ins with each client. The restaurant needs a full rebrand by end of March, the startup wants social media templates, and the nonprofit has a gala in 6 weeks that needs materials.",
+        "The hardest part is invoicing honestly. I always forget to send invoices on time and it messes up my cash flow. I also have a portfolio review with a potential new client next Tuesday."
+      ],
+      "expectations": {
+        "memories_to_save": ["maria", "freelance", "designer", "restaurant", "startup", "nonprofit", "invoice", "portfolio"],
+        "entities_to_create": [],
+        "topics_to_explore": ["client work", "schedule", "business management"]
+      },
+      "rubric": "Agent should understand the freelancer lifestyle and identify key pain points (invoicing, client management). Should propose help with deadline tracking, invoice reminders, and client meeting prep. Should save details about all three clients, deadlines, and the invoicing challenge."
+    },
+    {
+      "id": "onboard-executive",
+      "persona": "VP of Engineering at a mid-size SaaS company",
+      "user_turns": [
+        "I'm David, VP of Engineering at CloudSync. We're about 200 people, engineering is 60. I report directly to the CEO and manage 4 engineering directors.",
+        "This week is intense. Board meeting on Friday where I'm presenting our technical roadmap and hiring plan. We're trying to hire 10 engineers this quarter and it's been slow going. I also have a 1-on-1 with the CEO tomorrow about our platform migration.",
+        "Longer term, we're planning a major platform migration from our monolith to microservices. It's a 6-month project and I need to get buy-in from the board. I'm also trying to improve our engineering culture -- we just started doing weekly tech talks."
+      ],
+      "expectations": {
+        "memories_to_save": ["david", "vp", "cloudsync", "board meeting", "hiring", "migration", "tech talks"],
+        "entities_to_create": ["CloudSync"],
+        "topics_to_explore": ["leadership", "upcoming meetings", "strategic goals"]
+      },
+      "rubric": "Agent should adapt to an executive communication style -- more strategic, less casual. Should identify high-leverage ways to help: board meeting prep, hiring pipeline tracking, migration planning. Should save facts about role, company size, org structure, and strategic priorities."
+    },
+    {
+      "id": "onboard-creative",
+      "persona": "Author working on a novel with a flexible schedule",
+      "user_turns": [
+        "Hello! I'm Priya. I'm a full-time author -- I write literary fiction. Currently working on my third novel which is due to my editor in about 2 months.",
+        "I try to write every morning from 7 to noon. Afternoons I do research, handle correspondence with my agent, and sometimes do events or workshops. I teach a creative writing workshop at the community center every other Saturday.",
+        "I'm behind on my word count target. I aimed for 80,000 words and I'm at about 55,000. My agent also wants me to plan a book tour for my second novel which just came out. It's a lot to coordinate while trying to finish the new one."
+      ],
+      "expectations": {
+        "memories_to_save": ["priya", "author", "novel", "editor", "word count", "book tour", "workshop"],
+        "entities_to_create": [],
+        "topics_to_explore": ["writing routine", "deadlines", "upcoming events"]
+      },
+      "rubric": "Agent should respect the creative process and not be overly structured. Should identify ways to help with word count tracking, deadline management, and book tour planning. Should save details about writing schedule, book deadline, current progress, and the workshop commitment."
+    }
+  ]
+}

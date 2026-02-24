@@ -1,0 +1,74 @@
+[
+  {
+    "id": "proactive-001",
+    "input": "I check the weather every morning before my commute.",
+    "context": {
+      "is_onboarded": true,
+      "user_id": "returning-user-001",
+      "conversation_history": ["assistant: Good morning! How can I help today?"]
+    },
+    "expected_behavior": "pattern_detection",
+    "rubric": "The assistant should detect a recurring pattern (morning weather check before commute) and use record_pattern to save it with type 'recurring_query' or 'time_based'. It should acknowledge the habit naturally and may suggest setting up a morning weather briefing schedule."
+  },
+  {
+    "id": "proactive-002",
+    "input": "Can you remind me to check my team's standup notes every weekday at 9am?",
+    "context": {
+      "is_onboarded": true,
+      "user_id": "returning-user-002"
+    },
+    "expected_behavior": "schedule_creation",
+    "rubric": "The assistant should use create_schedule to set up a recurring task with a cron expression for weekdays at 9am (0 9 * * 1-5). The task_type should be 'reminder' or 'check_in'. The response should confirm the schedule and explain when it will trigger."
+  },
+  {
+    "id": "proactive-003",
+    "input": "What do you know about me?",
+    "context": {
+      "is_onboarded": true,
+      "user_id": "returning-user-003"
+    },
+    "expected_behavior": "profile_retrieval",
+    "rubric": "The assistant should use get_user_profile to retrieve the user's aggregated profile including facts, preferences, patterns, and key relationships. The response should present the information in a warm, organized way, not as a raw data dump. It should invite the user to correct anything that seems off."
+  },
+  {
+    "id": "proactive-004",
+    "input": "You're being too pushy with suggestions. Tone it down.",
+    "context": {
+      "is_onboarded": true,
+      "user_id": "returning-user-004"
+    },
+    "expected_behavior": "calibration_decrease",
+    "rubric": "The assistant should use adjust_proactiveness with direction 'less' to decrease the proactiveness level. The response should acknowledge the user's feedback gracefully, confirm the adjustment, and assure the user it will be less proactive going forward. It should NOT be defensive or ask unnecessary follow-up questions."
+  },
+  {
+    "id": "proactive-005",
+    "input": "Actually, I liked it when you suggested things. Can you do more of that?",
+    "context": {
+      "is_onboarded": true,
+      "user_id": "returning-user-005"
+    },
+    "expected_behavior": "calibration_increase",
+    "rubric": "The assistant should use adjust_proactiveness with direction 'more' to increase the proactiveness level. The response should acknowledge the preference warmly and confirm it will offer more proactive suggestions. It should explain what kinds of suggestions it might offer."
+  },
+  {
+    "id": "proactive-006",
+    "input": "I've been thinking about learning Python for data analysis. I keep looking up pandas tutorials.",
+    "context": {
+      "is_onboarded": true,
+      "user_id": "returning-user-006",
+      "conversation_history": ["assistant: How's your day going?"]
+    },
+    "expected_behavior": "pattern_and_memory",
+    "rubric": "The assistant should both save memory items (interest in Python, data analysis goal) AND detect a pattern (recurring topic_interest in pandas/data analysis). It should use record_pattern with type 'topic_interest'. The response should show genuine interest and offer helpful next steps or resources related to their learning goal."
+  },
+  {
+    "id": "proactive-007",
+    "input": "Pause my morning briefing schedule. I'm on vacation for two weeks.",
+    "context": {
+      "is_onboarded": true,
+      "user_id": "returning-user-007"
+    },
+    "expected_behavior": "schedule_management",
+    "rubric": "The assistant should use manage_schedule with action 'pause' to pause the morning briefing task. It should also save the vacation information to memory. The response should confirm the pause and may offer to resume the schedule automatically or remind the user to resume it when they return."
+  }
+]

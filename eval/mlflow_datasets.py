@@ -11,6 +11,19 @@ from typing import Any
 import mlflow
 from mlflow.genai.datasets import create_dataset, search_datasets
 
+from eval.alfred_models import (
+    ContradictionHandlingGoldenDataset,
+    ErrorRecoveryGoldenDataset,
+    KnowledgeConnectionsGoldenDataset,
+    LongConversationGoldenDataset,
+    MemoryInformedGoldenDataset,
+    MultiCapGoldenDataset,
+    NotificationJudgmentGoldenDataset,
+    ReturningGreetingGoldenDataset,
+    RoutingGoldenDataset,
+    ScheduleCronGoldenDataset,
+    ToneGoldenDataset,
+)
 from eval.models import (
     GoldenDataset,
     GraphExtractionGoldenDataset,
@@ -18,6 +31,7 @@ from eval.models import (
     MemoryWriteGoldenDataset,
     WeatherGoldenDataset,
 )
+from eval.onboarding_models import OnboardingGoldenDataset
 
 # Map of dataset JSON filename stems to logical dataset type names
 DATASET_TYPE_MAP = {
@@ -27,6 +41,18 @@ DATASET_TYPE_MAP = {
     "memory_write_golden_dataset": "memory-write",
     "weather_golden_dataset": "weather",
     "graph_extraction_golden_dataset": "graph-extraction",
+    "onboarding_golden_dataset": "onboarding",
+    "tone_golden_dataset": "tone",
+    "returning_greeting_golden_dataset": "returning-greeting",
+    "routing_golden_dataset": "routing",
+    "memory_informed_golden_dataset": "memory-informed-responses",
+    "multi_cap_golden_dataset": "multi-capability",
+    "notification_judgment_golden_dataset": "notification-judgment",
+    "error_recovery_golden_dataset": "error-recovery",
+    "schedule_cron_golden_dataset": "schedule-cron",
+    "knowledge_connections_golden_dataset": "knowledge-connections",
+    "contradiction_handling_golden_dataset": "contradiction-handling",
+    "long_conversation_golden_dataset": "long-conversation",
 }
 
 
@@ -196,6 +222,223 @@ def prepare_graph_extraction_records(
                     }
                     for r in case.expected_relationships
                 ],
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+def prepare_onboarding_records(
+    dataset: OnboardingGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert onboarding dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {
+                "persona": case.persona,
+                "user_turns": case.user_turns,
+            },
+            "expectations": {
+                "rubric": case.rubric,
+                "memories_to_save": case.expectations.memories_to_save,
+                "entities_to_create": case.expectations.entities_to_create,
+                "topics_to_explore": case.expectations.topics_to_explore,
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+# ============================================================
+# Alfred Eval Suite — MLflow Record Preparation
+# ============================================================
+
+
+def prepare_tone_records(
+    dataset: ToneGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert tone dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {"question": case.user_prompt},
+            "expectations": {"rubric": case.rubric},
+        }
+        for case in dataset.cases
+    ]
+
+
+def prepare_returning_greeting_records(
+    dataset: ReturningGreetingGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert returning greeting dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {"persona": case.persona},
+            "expectations": {
+                "rubric": case.rubric,
+                "expected_references": case.expected_references,
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+def prepare_routing_records(
+    dataset: RoutingGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert routing dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {"question": case.user_prompt},
+            "expectations": {
+                "rubric": case.rubric,
+                "expected_delegations": case.expected_delegations,
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+def prepare_memory_informed_records(
+    dataset: MemoryInformedGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert memory-informed dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {
+                "persona": case.persona,
+                "user_turns": case.user_turns,
+            },
+            "expectations": {
+                "rubric": case.rubric,
+                "expected_memory_usage": case.expected_memory_usage,
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+def prepare_multi_cap_records(
+    dataset: MultiCapGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert multi-capability dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {
+                "persona": case.persona,
+                "scenario": case.scenario,
+                "user_turns": case.user_turns,
+            },
+            "expectations": {
+                "rubric": case.rubric,
+                "expected_capabilities": case.expected_capabilities,
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+# ============================================================
+# Tier 2 Alfred Eval Suite — MLflow Record Preparation
+# ============================================================
+
+
+def prepare_notification_judgment_records(
+    dataset: NotificationJudgmentGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert notification judgment dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {"question": case.user_prompt},
+            "expectations": {
+                "rubric": case.rubric,
+                "expected_notification": case.expected_notification,
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+def prepare_error_recovery_records(
+    dataset: ErrorRecoveryGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert error recovery dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {"question": case.user_prompt},
+            "expectations": {
+                "rubric": case.rubric,
+                "scenario": case.scenario,
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+def prepare_schedule_cron_records(
+    dataset: ScheduleCronGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert schedule cron dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {"question": case.user_prompt},
+            "expectations": {
+                "rubric": case.rubric,
+                "expected_cron": case.expected_cron,
+                "expected_task_type": case.expected_task_type,
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+def prepare_knowledge_connections_records(
+    dataset: KnowledgeConnectionsGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert knowledge connections dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {"question": case.user_prompt},
+            "expectations": {
+                "rubric": case.rubric,
+                "expected_entity_references": case.expected_entity_references,
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+def prepare_contradiction_handling_records(
+    dataset: ContradictionHandlingGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert contradiction handling dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {
+                "persona": case.persona,
+                "user_turns": case.user_turns,
+            },
+            "expectations": {
+                "rubric": case.rubric,
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+def prepare_long_conversation_records(
+    dataset: LongConversationGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert long conversation dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {
+                "persona": case.persona,
+                "scenario": case.scenario,
+                "user_turns": case.user_turns,
+            },
+            "expectations": {
+                "rubric": case.rubric,
             },
         }
         for case in dataset.cases

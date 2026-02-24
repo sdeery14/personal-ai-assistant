@@ -8,6 +8,7 @@ interface ChatState {
   isStreaming: boolean;
   error: StreamError | null;
   lastFailedMessage: string | null;
+  greetingRequested: boolean;
 
   // Actions
   addUserMessage: (content: string) => string;
@@ -20,6 +21,7 @@ interface ChatState {
   clearMessages: () => void;
   setConversationId: (id: string | null) => void;
   loadMessages: (messages: ChatMessage[]) => void;
+  setGreetingRequested: (value: boolean) => void;
 }
 
 let messageCounter = 0;
@@ -33,6 +35,7 @@ export const useChatStore = create<ChatState>((set) => ({
   isStreaming: false,
   error: null,
   lastFailedMessage: null,
+  greetingRequested: false,
 
   addUserMessage: (content: string) => {
     const id = generateId();
@@ -108,6 +111,7 @@ export const useChatStore = create<ChatState>((set) => ({
       isStreaming: false,
       error: null,
       lastFailedMessage: null,
+      greetingRequested: false,
     });
   },
 
@@ -117,5 +121,9 @@ export const useChatStore = create<ChatState>((set) => ({
 
   loadMessages: (messages: ChatMessage[]) => {
     set({ messages });
+  },
+
+  setGreetingRequested: (value: boolean) => {
+    set({ greetingRequested: value });
   },
 }));

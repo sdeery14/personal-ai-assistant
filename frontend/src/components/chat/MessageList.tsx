@@ -58,9 +58,12 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
       className="flex-1 overflow-y-auto px-4 py-4"
     >
       <div className="mx-auto max-w-3xl space-y-4">
-        {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
-        ))}
+        {messages.map((message) =>
+          // Hide assistant placeholder until first chunk arrives
+          message.role === "assistant" && !message.content ? null : (
+            <MessageBubble key={message.id} message={message} />
+          )
+        )}
         {isStreaming &&
           !messages.some((m) => m.role === "assistant" && m.isStreaming) && (
             <StreamingIndicator />

@@ -20,24 +20,72 @@ from pathlib import Path
 from eval.config import get_eval_settings, reset_settings
 from eval.dataset import DatasetError
 from eval.runner import (
+    ContradictionHandlingEvaluationResult,
+    ErrorRecoveryEvaluationResult,
     EvaluationResult,
     GraphExtractionEvaluationResult,
+    KnowledgeConnectionsEvaluationResult,
+    LongConversationEvaluationResult,
     MemoryEvaluationResult,
+    MemoryInformedEvaluationResult,
     MemoryWriteEvaluationResult,
+    MultiCapEvaluationResult,
+    NotificationJudgmentEvaluationResult,
+    OnboardingEvaluationResult,
+    ReturningGreetingEvaluationResult,
+    RoutingEvaluationResult,
+    ScheduleCronEvaluationResult,
+    ToneEvaluationResult,
     WeatherEvaluationResult,
+    format_contradiction_handling_summary,
+    format_error_recovery_summary,
     format_graph_extraction_summary,
+    format_knowledge_connections_summary,
+    format_long_conversation_summary,
+    format_memory_informed_summary,
     format_memory_summary,
     format_memory_write_summary,
+    format_multi_cap_summary,
+    format_notification_judgment_summary,
+    format_onboarding_summary,
+    format_returning_greeting_summary,
+    format_routing_summary,
+    format_schedule_cron_summary,
     format_summary,
+    format_tone_summary,
     format_weather_summary,
+    is_contradiction_handling_dataset,
+    is_error_recovery_dataset,
     is_graph_extraction_dataset,
+    is_knowledge_connections_dataset,
+    is_long_conversation_dataset,
     is_memory_dataset,
+    is_memory_informed_dataset,
     is_memory_write_dataset,
+    is_multi_cap_dataset,
+    is_notification_judgment_dataset,
+    is_onboarding_dataset,
+    is_returning_greeting_dataset,
+    is_routing_dataset,
+    is_schedule_cron_dataset,
+    is_tone_dataset,
     is_weather_dataset,
+    run_contradiction_handling_evaluation,
+    run_error_recovery_evaluation,
     run_evaluation,
     run_graph_evaluation,
+    run_knowledge_connections_evaluation,
+    run_long_conversation_evaluation,
     run_memory_evaluation,
+    run_memory_informed_evaluation,
     run_memory_write_evaluation,
+    run_multi_cap_evaluation,
+    run_notification_judgment_evaluation,
+    run_onboarding_evaluation,
+    run_returning_greeting_evaluation,
+    run_routing_evaluation,
+    run_schedule_cron_evaluation,
+    run_tone_evaluation,
     run_weather_evaluation,
 )
 
@@ -192,10 +240,25 @@ def main() -> int:
         return 2
 
     try:
-        # Check dataset type
+        # Check dataset type (order matters — more specific checks first)
+        # Alfred evals use eval_type field for definitive detection, so check them
+        # before onboarding which uses heuristic field matching (user_turns + persona).
         is_graph_ext = is_graph_extraction_dataset(args.dataset)
         is_memory_write = is_memory_write_dataset(args.dataset)
-        is_memory = is_memory_dataset(args.dataset) and not is_memory_write
+        is_ret_greeting = is_returning_greeting_dataset(args.dataset)
+        is_mem_informed = is_memory_informed_dataset(args.dataset)
+        is_tone = is_tone_dataset(args.dataset)
+        is_routing = is_routing_dataset(args.dataset)
+        is_mcap = is_multi_cap_dataset(args.dataset)
+        # Tier 2 Alfred evals
+        is_notif = is_notification_judgment_dataset(args.dataset)
+        is_errrecov = is_error_recovery_dataset(args.dataset)
+        is_cron = is_schedule_cron_dataset(args.dataset)
+        is_kg = is_knowledge_connections_dataset(args.dataset)
+        is_contra = is_contradiction_handling_dataset(args.dataset)
+        is_longconv = is_long_conversation_dataset(args.dataset)
+        is_onboarding = is_onboarding_dataset(args.dataset) and not is_ret_greeting and not is_mem_informed and not is_mcap and not is_contra and not is_longconv
+        is_memory = is_memory_dataset(args.dataset) and not is_memory_write and not is_mem_informed
         is_weather = is_weather_dataset(args.dataset)
 
         if is_graph_ext:
@@ -259,6 +322,191 @@ def main() -> int:
                 return 0
             else:
                 return 1
+
+        elif is_onboarding:
+            # Onboarding evaluation flow
+            if args.dry_run:
+                print("Validating onboarding dataset (dry run)...")
+                result = run_onboarding_evaluation(
+                    dataset_path=args.dataset,
+                    verbose=args.verbose,
+                    dry_run=True,
+                )
+                print(f"Onboarding dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+
+            print("Running onboarding evaluation...")
+            if args.verbose:
+                print()
+
+            result = run_onboarding_evaluation(
+                dataset_path=args.dataset,
+                verbose=args.verbose,
+                dry_run=False,
+            )
+
+            summary = format_onboarding_summary(result)
+            print(summary)
+
+            if result.metrics.overall_passed:
+                return 0
+            else:
+                return 1
+
+        elif is_ret_greeting:
+            if args.dry_run:
+                print("Validating returning greeting dataset (dry run)...")
+                result = run_returning_greeting_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=True)
+                print(f"Returning greeting dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+            print("Running returning greeting evaluation...")
+            if args.verbose:
+                print()
+            result = run_returning_greeting_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=False)
+            print(format_returning_greeting_summary(result))
+            return 0 if result.metrics.overall_passed else 1
+
+        elif is_mem_informed:
+            if args.dry_run:
+                print("Validating memory-informed dataset (dry run)...")
+                result = run_memory_informed_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=True)
+                print(f"Memory-informed dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+            print("Running memory-informed evaluation...")
+            if args.verbose:
+                print()
+            result = run_memory_informed_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=False)
+            print(format_memory_informed_summary(result))
+            return 0 if result.metrics.overall_passed else 1
+
+        elif is_tone:
+            if args.dry_run:
+                print("Validating tone dataset (dry run)...")
+                result = run_tone_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=True)
+                print(f"Tone dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+            print("Running tone & personality evaluation...")
+            if args.verbose:
+                print()
+            result = run_tone_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=False)
+            print(format_tone_summary(result))
+            return 0 if result.metrics.overall_passed else 1
+
+        elif is_routing:
+            if args.dry_run:
+                print("Validating routing dataset (dry run)...")
+                result = run_routing_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=True)
+                print(f"Routing dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+            print("Running orchestrator routing evaluation...")
+            if args.verbose:
+                print()
+            result = run_routing_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=False)
+            print(format_routing_summary(result))
+            return 0 if result.metrics.overall_passed else 1
+
+        elif is_mcap:
+            if args.dry_run:
+                print("Validating multi-capability dataset (dry run)...")
+                result = run_multi_cap_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=True)
+                print(f"Multi-capability dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+            print("Running multi-capability evaluation...")
+            if args.verbose:
+                print()
+            result = run_multi_cap_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=False)
+            print(format_multi_cap_summary(result))
+            return 0 if result.metrics.overall_passed else 1
+
+        elif is_notif:
+            if args.dry_run:
+                print("Validating notification judgment dataset (dry run)...")
+                result = run_notification_judgment_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=True)
+                print(f"Notification judgment dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+            print("Running notification judgment evaluation...")
+            if args.verbose:
+                print()
+            result = run_notification_judgment_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=False)
+            print(format_notification_judgment_summary(result))
+            return 0 if result.metrics.overall_passed else 1
+
+        elif is_errrecov:
+            if args.dry_run:
+                print("Validating error recovery dataset (dry run)...")
+                result = run_error_recovery_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=True)
+                print(f"Error recovery dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+            print("Running error recovery evaluation...")
+            if args.verbose:
+                print()
+            result = run_error_recovery_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=False)
+            print(format_error_recovery_summary(result))
+            return 0 if result.metrics.overall_passed else 1
+
+        elif is_cron:
+            if args.dry_run:
+                print("Validating schedule cron dataset (dry run)...")
+                result = run_schedule_cron_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=True)
+                print(f"Schedule cron dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+            print("Running schedule cron accuracy evaluation...")
+            if args.verbose:
+                print()
+            result = run_schedule_cron_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=False)
+            print(format_schedule_cron_summary(result))
+            return 0 if result.metrics.overall_passed else 1
+
+        elif is_kg:
+            if args.dry_run:
+                print("Validating knowledge connections dataset (dry run)...")
+                result = run_knowledge_connections_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=True)
+                print(f"Knowledge connections dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+            print("Running knowledge graph connections evaluation...")
+            if args.verbose:
+                print()
+            result = run_knowledge_connections_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=False)
+            print(format_knowledge_connections_summary(result))
+            return 0 if result.metrics.overall_passed else 1
+
+        elif is_contra:
+            if args.dry_run:
+                print("Validating contradiction handling dataset (dry run)...")
+                result = run_contradiction_handling_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=True)
+                print(f"Contradiction handling dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+            print("Running contradiction handling evaluation...")
+            if args.verbose:
+                print()
+            result = run_contradiction_handling_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=False)
+            print(format_contradiction_handling_summary(result))
+            return 0 if result.metrics.overall_passed else 1
+
+        elif is_longconv:
+            if args.dry_run:
+                print("Validating long conversation dataset (dry run)...")
+                result = run_long_conversation_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=True)
+                print(f"Long conversation dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+            print("Running long conversation coherence evaluation...")
+            if args.verbose:
+                print()
+            result = run_long_conversation_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=False)
+            print(format_long_conversation_summary(result))
+            return 0 if result.metrics.overall_passed else 1
 
         elif is_weather:
             # Weather evaluation flow

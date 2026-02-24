@@ -1,0 +1,63 @@
+{
+  "version": "1.0.0",
+  "description": "Notification judgment evaluation - tests whether the agent correctly decides when to create notifications",
+  "eval_type": "notification_judgment",
+  "cases": [
+    {
+      "id": "notif-explicit-reminder",
+      "user_prompt": "Remind me to call the dentist tomorrow at 3pm",
+      "expected_notification": true,
+      "rubric": "Agent should acknowledge the reminder request and create a notification or scheduled task for the specified time. Response should confirm the time and action.",
+      "tags": ["explicit", "reminder"]
+    },
+    {
+      "id": "notif-implicit-reminder",
+      "user_prompt": "I need to pick up groceries on the way home today, can you remind me?",
+      "expected_notification": true,
+      "rubric": "Agent should create a reminder notification or schedule for the grocery errand. Response should confirm the reminder was set up.",
+      "tags": ["implicit", "reminder"]
+    },
+    {
+      "id": "notif-no-notification",
+      "user_prompt": "What's the capital of France?",
+      "expected_notification": false,
+      "rubric": "Agent should answer the factual question directly without creating any notifications or reminders. Response should be informative and concise.",
+      "tags": ["no-notification", "factual"]
+    },
+    {
+      "id": "notif-warning-urgent",
+      "user_prompt": "My server is showing high CPU usage, remind me to check on it in an hour",
+      "expected_notification": true,
+      "rubric": "Agent should recognize the reminder request and create a scheduled reminder or notification to check on the server later. Response should acknowledge the concern and confirm the reminder.",
+      "tags": ["warning", "urgent"]
+    },
+    {
+      "id": "notif-conversational",
+      "user_prompt": "Tell me a fun fact about dolphins",
+      "expected_notification": false,
+      "rubric": "Agent should provide an interesting dolphin fact without creating any notifications. Response should be engaging and informative.",
+      "tags": ["no-notification", "conversational"]
+    },
+    {
+      "id": "notif-ambiguous-action",
+      "user_prompt": "Don't let me forget about the team dinner Friday",
+      "expected_notification": true,
+      "rubric": "Agent should interpret this as a reminder request and create a notification for Friday. Response should confirm it will remind the user about the dinner.",
+      "tags": ["implicit", "reminder"]
+    },
+    {
+      "id": "notif-info-type",
+      "user_prompt": "Let me know the weather forecast for this weekend",
+      "expected_notification": null,
+      "rubric": "Agent may either provide the weather directly or create a notification/reminder for the weekend forecast. Either approach is acceptable if the response is helpful.",
+      "tags": ["ambiguous", "weather"]
+    },
+    {
+      "id": "notif-greeting-no-notif",
+      "user_prompt": "Good morning! How are you today?",
+      "expected_notification": false,
+      "rubric": "Agent should respond warmly to the greeting without creating notifications. Response should be personable and butler-like.",
+      "tags": ["no-notification", "greeting"]
+    }
+  ]
+}

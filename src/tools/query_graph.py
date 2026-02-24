@@ -124,6 +124,10 @@ async def query_graph(
             )
 
             # Format for response
+            # Build lookup of related entity names by id
+            related_name_map = {e.id: e.name for e in related_entities}
+            related_name_map[entity.id] = entity.name
+
             entity_dict = {
                 "name": entity.name,
                 "type": entity.type.value,
@@ -133,18 +137,11 @@ async def query_graph(
                 "relationships": [
                     {
                         "type": rel.relationship_type.value,
-                        "target": next(
-                            (
-                                e.name
-                                for e in related_entities
-                                if e.id == rel.target_entity_id
-                            ),
-                            None,
-                        ),
+                        "source": related_name_map.get(rel.source_entity_id, "unknown"),
+                        "target": related_name_map.get(rel.target_entity_id, "unknown"),
                         "context": rel.context,
                     }
                     for rel in relationships
-                    if rel.source_entity_id == entity.id
                 ],
                 "related_to": [
                     {

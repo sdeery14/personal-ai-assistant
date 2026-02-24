@@ -1,0 +1,109 @@
+{
+  "version": "1.0.0",
+  "description": "Multi-Capability Conversations evaluation: Tests whether Alfred synthesizes multiple capabilities (memory, weather, knowledge) in goal-oriented conversations.",
+  "eval_type": "multi_cap",
+  "cases": [
+    {
+      "id": "mcap-week-planning",
+      "persona": "Professional planning their work week",
+      "scenario": "Planning a productive week that accounts for weather, existing commitments, and personal routines",
+      "seed_memories": [
+        {"content": "User's name is Nadia Okafor", "type": "fact", "confidence": 0.95},
+        {"content": "Nadia is a marketing director in Chicago", "type": "fact", "confidence": 0.9},
+        {"content": "Nadia has a client presentation on Wednesday afternoon", "type": "fact", "confidence": 0.85},
+        {"content": "Nadia prefers outdoor walking meetings when the weather is good", "type": "preference", "confidence": 0.8},
+        {"content": "Nadia's team standup is every morning at 9:30am", "type": "fact", "confidence": 0.85}
+      ],
+      "seed_entities": [
+        {"name": "Chicago", "type": "concept", "description": "Nadia's city"},
+        {"name": "Client Presentation", "type": "project", "description": "Wednesday afternoon presentation"}
+      ],
+      "user_turns": [
+        "I want to plan out my week. What does it look like outside — should I plan any walking meetings?",
+        "Good to know. Can you help me block out time for the client presentation prep? I usually need about 4 hours total.",
+        "Perfect. One more thing — remind me to pick up dry cleaning on a day when it's not raining."
+      ],
+      "expected_capabilities": ["memory", "weather"],
+      "rubric": "Agent should check weather for Chicago, reference the Wednesday presentation and 9:30am standups from memory, and synthesize a coherent plan. Walking meetings should be suggested on good-weather days. Presentation prep should be scheduled around existing commitments. Dry cleaning reminder should be on a clear day. The overall plan should feel integrated, not like separate tool outputs stitched together.",
+      "tags": ["planning", "weather", "memory"]
+    },
+    {
+      "id": "mcap-meeting-prep",
+      "persona": "Manager preparing for a team review meeting",
+      "scenario": "Preparing for a meeting by pulling together team member details and project status",
+      "seed_memories": [
+        {"content": "User's name is James Morton", "type": "fact", "confidence": 0.95},
+        {"content": "James manages a team of 5 at Apex Solutions", "type": "fact", "confidence": 0.9},
+        {"content": "The quarterly review meeting is tomorrow", "type": "fact", "confidence": 0.85},
+        {"content": "Team member Anna finished the redesign project 2 days early", "type": "fact", "confidence": 0.85},
+        {"content": "Team member Tom has been struggling with the API integration and may need pairing support", "type": "note", "confidence": 0.8}
+      ],
+      "seed_entities": [
+        {"name": "Apex Solutions", "type": "organization", "description": "James's company"},
+        {"name": "Anna", "type": "person", "description": "Team member who completed redesign early"},
+        {"name": "Tom", "type": "person", "description": "Team member struggling with API integration"}
+      ],
+      "seed_relationships": [
+        {"source": "Anna", "target": "Apex Solutions", "type": "PART_OF"},
+        {"source": "Tom", "target": "Apex Solutions", "type": "PART_OF"}
+      ],
+      "user_turns": [
+        "I have my quarterly review meeting tomorrow. Can you help me prepare talking points for each team member?",
+        "Good. What's the best way to bring up Tom's struggles without making it feel punitive?",
+        "Thanks. Can you draft an agenda for the meeting?"
+      ],
+      "expected_capabilities": ["memory", "knowledge"],
+      "rubric": "Agent should reference the team of 5, Anna's early completion, and Tom's API struggles from memory. Should use knowledge of team relationships to provide nuanced advice. The agenda and talking points should feel specific to this team, not generic. Advice about Tom should be constructive and management-appropriate.",
+      "tags": ["meeting", "management", "knowledge"]
+    },
+    {
+      "id": "mcap-project-review",
+      "persona": "Tech lead reviewing project status and planning next steps",
+      "scenario": "Reviewing a project by combining stored knowledge about team members, deadlines, and blockers",
+      "seed_memories": [
+        {"content": "User's name is Casey Wright", "type": "fact", "confidence": 0.95},
+        {"content": "Casey is tech lead on Project Horizon at DataSync", "type": "fact", "confidence": 0.9},
+        {"content": "Project Horizon has a hard deadline of March 31st", "type": "fact", "confidence": 0.9},
+        {"content": "The frontend module is complete, backend is 70% done", "type": "fact", "confidence": 0.85},
+        {"content": "The main blocker is the third-party payment API which has been unreliable", "type": "fact", "confidence": 0.85},
+        {"content": "Casey decided to build a fallback payment handler as a contingency", "type": "decision", "confidence": 0.8}
+      ],
+      "seed_entities": [
+        {"name": "Project Horizon", "type": "project", "description": "DataSync project with March 31 deadline"},
+        {"name": "DataSync", "type": "organization", "description": "Casey's company"}
+      ],
+      "user_turns": [
+        "Give me a status overview of Project Horizon. Where do we stand?",
+        "What are the biggest risks to hitting our deadline?",
+        "Should I escalate the payment API issue or keep working on the fallback?"
+      ],
+      "expected_capabilities": ["memory", "knowledge"],
+      "rubric": "Agent should provide accurate status (frontend complete, backend 70%, March 31 deadline), identify the payment API as the main risk, and reference Casey's fallback decision. Advice should weigh escalation vs. fallback tradeoffs based on the specific context. Should feel like a knowledgeable technical advisor, not generic project management advice.",
+      "tags": ["project", "technical", "decision"]
+    },
+    {
+      "id": "mcap-routine-change",
+      "persona": "Professional adapting their routine after a life change",
+      "scenario": "Restructuring daily routine after starting a new role, incorporating existing preferences",
+      "seed_memories": [
+        {"content": "User's name is Morgan Lee", "type": "fact", "confidence": 0.95},
+        {"content": "Morgan just accepted a new role as Director of Operations at a new company", "type": "fact", "confidence": 0.9},
+        {"content": "Morgan previously worked 9-5 but the new role requires more flexible hours", "type": "fact", "confidence": 0.85},
+        {"content": "Morgan meditates every morning for 20 minutes and doesn't want to give that up", "type": "preference", "confidence": 0.9},
+        {"content": "Morgan has a school pickup at 3:15pm every weekday", "type": "fact", "confidence": 0.9},
+        {"content": "Morgan prefers to exercise in the evening rather than morning", "type": "preference", "confidence": 0.8}
+      ],
+      "seed_entities": [
+        {"name": "Director of Operations", "type": "concept", "description": "Morgan's new role"}
+      ],
+      "user_turns": [
+        "I'm starting my new job next week and I need to rethink my daily routine. What do you suggest?",
+        "That's helpful. How do I handle the 3:15 pickup when I might have afternoon meetings?",
+        "One more thing — I really want to keep my morning meditation. How does that fit in?"
+      ],
+      "expected_capabilities": ["memory"],
+      "rubric": "Agent should build a routine that preserves the morning meditation (20 min), works around the 3:15pm pickup, accommodates evening exercise preference, and adapts to the new flexible-hours role. Each turn should refine the plan based on the constraint raised. Should feel like personalized coaching, not generic time management advice.",
+      "tags": ["routine", "personal", "scheduling"]
+    }
+  ]
+}

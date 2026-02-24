@@ -30,11 +30,11 @@ class TestGuardrailsCheckMemoryContent:
 
             service = ChatService()
             service._database_available = True
+            service._conversation_service = MagicMock()
 
-            # Get the agent created during stream_completion
-            # Verify it has output guardrails
-            tools = service._get_tools()
-            assert len(tools) >= 1  # Has query_memory tool
+            # Verify the orchestrator agent has tools (specialist wrappers)
+            agent = service.create_agent()
+            assert len(agent.tools) >= 1  # Has specialist agent tools
 
             # The Agent created in stream_completion includes output_guardrails
             # This is verified by checking the agent configuration pattern

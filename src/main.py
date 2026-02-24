@@ -20,6 +20,8 @@ from src.api.conversations import router as conversations_router
 from src.api.entities import router as entities_router
 from src.api.memories import router as memories_router
 from src.api.notifications import router as notifications_router
+from src.api.schedules import router as schedules_router
+from src.api.proactive import router as proactive_router
 from src.api.middleware import CorrelationIdMiddleware
 from src.api.routes import router
 from src.config import get_settings
@@ -83,6 +85,20 @@ async def lifespan(app: FastAPI):
         deferred_email_task = asyncio.create_task(_process_deferred_loop())
         logger.info("deferred_email_processor_started")
 
+    # Start scheduler service (Feature 011)
+    scheduler_service = None
+    try:
+        from src.services.scheduler_service import SchedulerService
+        scheduler_service = SchedulerService()
+        scheduler_service.start()
+        logger.info("scheduler_service_started")
+    except Exception as e:
+        logger.warning(
+            "scheduler_service_start_failed",
+            error=str(e),
+            note="Continuing without scheduler - scheduled tasks will not execute",
+        )
+
     logger.info(
         "application_started",
         model=settings.openai_model,
@@ -92,6 +108,14 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    # Stop scheduler service
+    if scheduler_service is not None:
+        try:
+            await scheduler_service.stop()
+            logger.info("scheduler_service_stopped")
+        except Exception:
+            pass
+
     # Cancel deferred email processor
     if deferred_email_task is not None:
         deferred_email_task.cancel()
@@ -197,4 +221,6 @@ app.include_router(conversations_router)
 app.include_router(memories_router)
 app.include_router(entities_router)
 app.include_router(notifications_router)
+app.include_router(schedules_router)
+app.include_router(proactive_router)
 app.include_router(router)

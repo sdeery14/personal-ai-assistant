@@ -161,7 +161,7 @@ tests/
 
 **Guardrails**: SDK decorators `@input_guardrail` / `@output_guardrail` wrap validation. Uses OpenAI Moderation API with exponential backoff retry. Fail-closed on API errors.
 
-**Evaluation**: Uses MLflow 3.8.1 GenAI features with a unified two-phase pattern. All evals that invoke the production agent use: Phase 1 — manual prediction loop with `mlflow.openai.autolog(disable=True)` to prevent orphaned traces; Phase 2 — scorer-only `genai_evaluate()` with pre-computed outputs (no `predict_fn`), creating the only traces (with assessments). This two-phase split is required because `Runner.run_sync()` (asyncio) deadlocks inside `genai_evaluate()`'s worker threads. Datasets are registered via `mlflow.genai.datasets.create_dataset` + `merge_records`. Eval types:
+**Evaluation**: Uses MLflow 3.10.0 GenAI features with a unified two-phase pattern. All evals that invoke the production agent use: Phase 1 — manual prediction loop with `mlflow.openai.autolog(disable=True)` to prevent orphaned traces; Phase 2 — scorer-only `genai_evaluate()` with pre-computed outputs (no `predict_fn`), creating the only traces (with assessments). This two-phase split is required because `Runner.run_sync()` (asyncio) deadlocks inside `genai_evaluate()`'s worker threads. Datasets are registered via `mlflow.genai.datasets.create_dataset` + `merge_records`. Eval types:
 - **Quality evals**: LLM judge scores response quality against rubrics
 - **Security evals**: Use `expected_behavior: "block"|"allow"` to compute block rate and false positive rate
 - **Memory retrieval eval**: Queries memory service directly (no agent), no two-phase needed
@@ -188,7 +188,7 @@ Optional: `OPENAI_MODEL` (default: gpt-4o), `MAX_TOKENS` (default: 2000), `TIMEO
 
 ## Feature Roadmap Context
 
-See `vision.md` for the full roadmap. Completed: 001–009. Next: 010 (Agent Notifications).
+See `vision.md` for the full roadmap. Completed: 001–011. Next: 012 (Voice Interaction).
 
 When a feature, idea, or capability is deferred or declared out of scope during any phase (specify, clarify, plan, implement), add it to the **Future Capabilities** section in `vision.md` so it is not lost.
 

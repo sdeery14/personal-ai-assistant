@@ -18,7 +18,7 @@ class ChatRequest(BaseModel):
         conversation_id: Existing conversation ID to continue (optional)
     """
 
-    message: str = Field(..., min_length=1, max_length=8000)
+    message: str = Field(default="", max_length=8000)
     model: Optional[str] = None
     max_tokens: int = Field(default=2000, ge=1, le=4000)
     user_id: str = Field(default="anonymous", max_length=255)
@@ -27,11 +27,8 @@ class ChatRequest(BaseModel):
     @field_validator("message")
     @classmethod
     def message_not_empty(cls, v: str) -> str:
-        """Ensure message is not empty or whitespace only."""
-        stripped = v.strip()
-        if not stripped:
-            raise ValueError("Message cannot be empty or whitespace only")
-        return stripped
+        """Strip whitespace from message. Empty string triggers auto-greeting."""
+        return v.strip()
 
     @field_validator("model")
     @classmethod

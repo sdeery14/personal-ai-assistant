@@ -1,0 +1,78 @@
+{
+  "version": "1.0.0",
+  "description": "Contradiction handling evaluation - tests whether the agent notices and gracefully handles conflicting information",
+  "eval_type": "contradiction_handling",
+  "cases": [
+    {
+      "id": "contra-job-change",
+      "persona": "Morgan, a software engineer transitioning between companies",
+      "seed_memories": [
+        {"content": "Morgan works at TechCorp as a senior engineer", "type": "fact", "confidence": 0.95},
+        {"content": "Morgan's team at TechCorp has 8 members", "type": "fact", "confidence": 0.85},
+        {"content": "Morgan commutes 30 minutes to the TechCorp office", "type": "fact", "confidence": 0.8}
+      ],
+      "user_turns": [
+        "I just started at DataSync last week. It's been a big change!",
+        "Can you update what you know about my work situation?"
+      ],
+      "rubric": "Agent should notice the job change from TechCorp to DataSync. Should acknowledge the transition, ask if it should update stored information, and not continue referring to TechCorp as current employer.",
+      "tags": ["job-change", "major-update"]
+    },
+    {
+      "id": "contra-preference-shift",
+      "persona": "A developer who has changed their programming language preference",
+      "seed_memories": [
+        {"content": "User prefers Python for all projects", "type": "preference", "confidence": 0.9},
+        {"content": "User finds Python's ecosystem the best for productivity", "type": "preference", "confidence": 0.85}
+      ],
+      "user_turns": [
+        "I've completely switched to Rust for everything now. The performance gains are incredible.",
+        "What language should I use for my next project?"
+      ],
+      "rubric": "Agent should recognize the preference shift from Python to Rust. When asked about the next project, should recommend Rust (the new preference), not Python. Should offer to update stored preferences.",
+      "tags": ["preference-change"]
+    },
+    {
+      "id": "contra-schedule-conflict",
+      "persona": "A team lead whose meeting schedule has changed",
+      "seed_memories": [
+        {"content": "Team standup is at 9am daily", "type": "fact", "confidence": 0.9},
+        {"content": "User has a lunch meeting every Wednesday at noon", "type": "fact", "confidence": 0.85},
+        {"content": "User starts work at 8:30am", "type": "fact", "confidence": 0.8}
+      ],
+      "user_turns": [
+        "We moved standup to 10:30 starting this week.",
+        "Can you help me plan my morning schedule for tomorrow?"
+      ],
+      "rubric": "Agent should acknowledge the standup time change from 9am to 10:30am. When planning the morning schedule, should use the new 10:30am time, not the old 9am. Should suggest updating the stored schedule.",
+      "tags": ["schedule-change"]
+    },
+    {
+      "id": "contra-factual-correction",
+      "persona": "A project manager correcting a deadline",
+      "seed_memories": [
+        {"content": "Project deadline is March 15", "type": "fact", "confidence": 0.9},
+        {"content": "The project has 3 remaining milestones before launch", "type": "fact", "confidence": 0.85}
+      ],
+      "user_turns": [
+        "Actually the deadline got pushed to April 1st. The client needed more time for review."
+      ],
+      "rubric": "Agent should acknowledge the deadline change from March 15 to April 1st. Should confirm the update and note the reason (client review time). Should not continue using March 15 in any context.",
+      "tags": ["factual-correction"]
+    },
+    {
+      "id": "contra-subtle-mismatch",
+      "persona": "A manager whose team size has changed",
+      "seed_memories": [
+        {"content": "User manages a team of 5 people", "type": "fact", "confidence": 0.9},
+        {"content": "The team is working on the mobile app redesign", "type": "fact", "confidence": 0.85}
+      ],
+      "user_turns": [
+        "With the two new hires starting this week, my team is getting big. I need to think about restructuring.",
+        "How should I organize the team for the mobile redesign?"
+      ],
+      "rubric": "Agent should infer the team is now 7 (5 + 2 new hires) or at least acknowledge the team has grown. When suggesting team organization, should account for the larger team size, not the original 5.",
+      "tags": ["subtle", "inference"]
+    }
+  ]
+}

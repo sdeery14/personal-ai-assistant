@@ -1,0 +1,116 @@
+{
+  "version": "1.0.0",
+  "description": "Knowledge graph connections evaluation - tests whether the agent uses entity relationships to provide connected answers",
+  "eval_type": "knowledge_connections",
+  "cases": [
+    {
+      "id": "kg-team-structure",
+      "user_prompt": "How are Alice and Bob's projects related?",
+      "seed_entities": [
+        {"name": "Alice", "type": "person", "description": "Senior engineer on Project Y"},
+        {"name": "Bob", "type": "person", "description": "Senior engineer on Project X"},
+        {"name": "Project X", "type": "project", "description": "Backend API platform"},
+        {"name": "Project Y", "type": "project", "description": "Frontend dashboard"}
+      ],
+      "seed_relationships": [
+        {"source": "Alice", "target": "Project Y", "type": "WORKS_ON"},
+        {"source": "Bob", "target": "Project X", "type": "WORKS_ON"},
+        {"source": "Project X", "target": "Project Y", "type": "DEPENDS_ON"}
+      ],
+      "rubric": "Agent should identify that Project X depends on Project Y, meaning Bob's work depends on Alice's. Should reference the entities and their relationship without hallucinating additional connections.",
+      "expected_entity_references": ["Alice", "Bob", "Project X", "Project Y"],
+      "tags": ["team", "dependencies"]
+    },
+    {
+      "id": "kg-tech-stack",
+      "user_prompt": "What's our tech stack?",
+      "seed_entities": [
+        {"name": "React", "type": "tool", "description": "Frontend JavaScript framework"},
+        {"name": "Node.js", "type": "tool", "description": "JavaScript runtime for backend"},
+        {"name": "PostgreSQL", "type": "tool", "description": "Relational database"},
+        {"name": "Engineering Team", "type": "organization", "description": "Core development team"}
+      ],
+      "seed_relationships": [
+        {"source": "Engineering Team", "target": "React", "type": "USES"},
+        {"source": "React", "target": "Node.js", "type": "DEPENDS_ON"},
+        {"source": "Engineering Team", "target": "PostgreSQL", "type": "USES"}
+      ],
+      "rubric": "Agent should list the technologies (React, Node.js, PostgreSQL) as part of the tech stack. Should mention how they relate (React depends on Node.js). Should not invent technologies not in the graph.",
+      "expected_entity_references": ["React", "Node.js", "PostgreSQL"],
+      "tags": ["technology", "stack"]
+    },
+    {
+      "id": "kg-person-context",
+      "user_prompt": "Tell me about Sarah's project context",
+      "seed_entities": [
+        {"name": "Sarah", "type": "person", "description": "Lead developer"},
+        {"name": "Phoenix", "type": "project", "description": "Next-gen platform rewrite"},
+        {"name": "Mike", "type": "person", "description": "Architecture lead"}
+      ],
+      "seed_relationships": [
+        {"source": "Sarah", "target": "Phoenix", "type": "WORKS_ON"},
+        {"source": "Sarah", "target": "Mike", "type": "WORKS_WITH"},
+        {"source": "Mike", "target": "Phoenix", "type": "WORKS_ON"}
+      ],
+      "rubric": "Agent should mention Sarah works on Phoenix, collaborates with Mike, and that Mike made architecture decisions for Phoenix. Should synthesize these connections into a coherent picture.",
+      "expected_entity_references": ["Sarah", "Phoenix", "Mike"],
+      "tags": ["person", "project-context"]
+    },
+    {
+      "id": "kg-project-dependencies",
+      "user_prompt": "Looking at Service B's dependencies in my infrastructure, what would be affected if it went down?",
+      "seed_entities": [
+        {"name": "Service A", "type": "project", "description": "User-facing API service"},
+        {"name": "Service B", "type": "project", "description": "Core data processing service"},
+        {"name": "Database", "type": "tool", "description": "Central PostgreSQL database"},
+        {"name": "Platform", "type": "project", "description": "Overall platform"}
+      ],
+      "seed_relationships": [
+        {"source": "Service A", "target": "Service B", "type": "DEPENDS_ON"},
+        {"source": "Service B", "target": "Database", "type": "DEPENDS_ON"},
+        {"source": "Service A", "target": "Platform", "type": "PART_OF"}
+      ],
+      "rubric": "Agent should explain that Service A depends on Service B, so it would also be affected. Should trace the dependency chain. Should not speculate about services not in the graph.",
+      "expected_entity_references": ["Service A", "Service B"],
+      "tags": ["dependencies", "impact-analysis"]
+    },
+    {
+      "id": "kg-decision-trail",
+      "user_prompt": "Remind me why we went with containers",
+      "seed_entities": [
+        {"name": "Kubernetes", "type": "tool", "description": "Container orchestration platform"},
+        {"name": "Docker", "type": "tool", "description": "Container runtime"},
+        {"name": "AWS", "type": "tool", "description": "Cloud provider"}
+      ],
+      "seed_relationships": [
+        {"source": "Kubernetes", "target": "Docker", "type": "DEPENDS_ON"},
+        {"source": "Kubernetes", "target": "AWS", "type": "USES"}
+      ],
+      "seed_memories": [
+        {"content": "We decided to use Kubernetes for container orchestration to improve deployment reliability", "type": "decision", "confidence": 0.95},
+        {"content": "Docker was chosen as the container runtime for its ecosystem and tooling", "type": "decision", "confidence": 0.9}
+      ],
+      "rubric": "Agent should reference the decisions about Kubernetes and Docker, and explain the relationship between them. Should use stored memories about the reasoning, not just the entity graph.",
+      "expected_entity_references": ["Kubernetes", "Docker"],
+      "tags": ["decisions", "reasoning"]
+    },
+    {
+      "id": "kg-preference-reasoning",
+      "user_prompt": "What editor setup would work best for me?",
+      "seed_entities": [
+        {"name": "TypeScript", "type": "tool", "description": "Typed JavaScript superset"},
+        {"name": "VS Code", "type": "tool", "description": "Code editor"}
+      ],
+      "seed_relationships": [
+        {"source": "VS Code", "target": "TypeScript", "type": "USES"}
+      ],
+      "seed_memories": [
+        {"content": "User prefers TypeScript for all new projects", "type": "preference", "confidence": 0.9},
+        {"content": "User uses VS Code as their primary editor", "type": "fact", "confidence": 0.95}
+      ],
+      "rubric": "Agent should recommend VS Code setup optimized for TypeScript, referencing the user's known preferences and the relationship between the tools. Should be practical and personalized.",
+      "expected_entity_references": ["TypeScript", "VS Code"],
+      "tags": ["preferences", "recommendations"]
+    }
+  ]
+}

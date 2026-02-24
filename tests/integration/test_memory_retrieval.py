@@ -192,13 +192,12 @@ class TestAgentToolInvocation:
 
     @pytest.mark.asyncio
     async def test_query_memory_tool_registered_with_agent(self):
-        """Verify query_memory tool is returned by ChatService._get_tools().
+        """Verify memory specialist is available in the orchestrator agent.
 
-        The ChatService adds tools to the agent during stream_completion()
-        when database is available. This test verifies the tool loading works.
+        The ChatService creates specialist sub-agents as tools. The memory
+        specialist wraps query_memory, save_memory, and delete_memory tools.
         """
         from src.services.chat_service import ChatService
-        from src.tools.query_memory import query_memory_tool
 
         with patch("src.services.chat_service.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(
@@ -209,13 +208,12 @@ class TestAgentToolInvocation:
             )
 
             service = ChatService()
+            service._database_available = True
+            service._conversation_service = MagicMock()
 
-            # Verify _get_tools() includes the query_memory tool
-            # Note: Other tools (weather, etc.) may also be registered
-            tools = service._get_tools()
-            assert len(tools) >= 1, "At least one tool should be registered"
-            tool_names = [t.name for t in tools]
-            assert "query_memory_tool" in tool_names, "query_memory_tool should be registered"
+            agent = service.create_agent()
+            tool_names = [t.name for t in agent.tools]
+            assert "ask_memory_agent" in tool_names, "ask_memory_agent should be registered"
 
     @pytest.mark.asyncio
     async def test_query_memory_tool_context_includes_user_id(self):

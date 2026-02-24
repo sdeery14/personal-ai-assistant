@@ -1,0 +1,94 @@
+{
+  "version": "1.0.0",
+  "description": "Long conversation coherence evaluation - tests whether the agent maintains context and coherence over many turns",
+  "eval_type": "long_conversation",
+  "cases": [
+    {
+      "id": "long-day-planning",
+      "persona": "A busy professional planning their day",
+      "scenario": "Day planning conversation that shifts topics and circles back",
+      "seed_memories": [
+        {"content": "User usually starts work at 9am", "type": "fact", "confidence": 0.9},
+        {"content": "User has a weekly team meeting on Tuesdays at 2pm", "type": "fact", "confidence": 0.9},
+        {"content": "User prefers to exercise in the morning before work", "type": "preference", "confidence": 0.85},
+        {"content": "User lives in Seattle", "type": "fact", "confidence": 0.95},
+        {"content": "User's partner's name is Jordan", "type": "fact", "confidence": 0.9}
+      ],
+      "user_turns": [
+        "Good morning! Help me plan my day today.",
+        "What's the weather looking like in Seattle?",
+        "I need to schedule a meeting with my product team at some point today. When would work best?",
+        "Oh wait, I forgot - Jordan and I need to pick up groceries after work. Can you remind me?",
+        "Going back to the meeting - actually make it a 30-minute sync, not a full meeting.",
+        "What did we say about the weather earlier? Should I bring an umbrella?",
+        "Remind me what my full plan looks like for today now.",
+        "One more thing - I want to exercise tomorrow morning. What time should I set my alarm?"
+      ],
+      "rubric": "Agent should maintain context throughout: remember the weather from turn 2 when asked in turn 6, incorporate the meeting change from turn 5 into the summary in turn 7, use the user's exercise preference when suggesting alarm time. Should not mix up or forget earlier details.",
+      "tags": ["day-planning", "context-retention"]
+    },
+    {
+      "id": "long-project-deep-dive",
+      "persona": "An engineering manager doing a project review",
+      "scenario": "Project review that covers status, team, technical decisions, and action items",
+      "seed_memories": [
+        {"content": "Project Phoenix is the current priority project", "type": "fact", "confidence": 0.95},
+        {"content": "Phoenix deadline is end of Q1 (March 31)", "type": "fact", "confidence": 0.9},
+        {"content": "Team members on Phoenix: Sarah (lead), Jake (backend), Mia (frontend)", "type": "fact", "confidence": 0.9},
+        {"content": "Phoenix uses microservices architecture", "type": "decision", "confidence": 0.85},
+        {"content": "Monthly cloud budget for Phoenix is $5000", "type": "fact", "confidence": 0.8}
+      ],
+      "seed_entities": [
+        {"name": "Phoenix", "type": "project", "description": "Priority platform rewrite project"},
+        {"name": "Sarah", "type": "person", "description": "Phoenix team lead"},
+        {"name": "Jake", "type": "person", "description": "Backend developer on Phoenix"},
+        {"name": "Mia", "type": "person", "description": "Frontend developer on Phoenix"}
+      ],
+      "user_turns": [
+        "Let's do a project review for Phoenix. What do you know about the current status?",
+        "Sarah mentioned she needs another backend developer. What do you think about the team size?",
+        "We were debating whether to switch from microservices to a monolith for the MVP. What's your take?",
+        "Actually, let's put the architecture discussion on hold. What's our budget situation?",
+        "Going back to the architecture question - given the budget constraints you just mentioned, does that change your recommendation?",
+        "Jake said the database migrations are blocking the API work. How does that affect our timeline?",
+        "Compared to what Sarah said about needing more people, and this new blocker Jake found, where do we stand on the deadline?",
+        "Let's also think about what happens if we need to extend past March 31.",
+        "Give me a summary of everything we discussed and a list of action items.",
+        "One final thing - who should I talk to first about all of this?"
+      ],
+      "rubric": "Agent should maintain coherence across 10 turns: remember the architecture discussion when returning to it in turn 5, connect budget constraints to architecture in turn 5, synthesize Sarah's staffing need with Jake's blocker in turn 7, provide an accurate summary in turn 9 that covers all topics discussed. Should not contradict itself or forget earlier points.",
+      "tags": ["project-review", "synthesis", "long"]
+    },
+    {
+      "id": "long-mixed-capabilities",
+      "persona": "A user testing multiple assistant capabilities in one session",
+      "scenario": "Conversation that exercises weather, memory, knowledge, scheduling, and notifications",
+      "seed_memories": [
+        {"content": "User is planning a trip to Portland next week", "type": "fact", "confidence": 0.9},
+        {"content": "User prefers window seats on flights", "type": "preference", "confidence": 0.85},
+        {"content": "User is allergic to shellfish", "type": "fact", "confidence": 0.95},
+        {"content": "User's favorite cuisine is Italian", "type": "preference", "confidence": 0.9}
+      ],
+      "seed_entities": [
+        {"name": "Portland Trip", "type": "project", "description": "Upcoming trip to Portland, Oregon"},
+        {"name": "Italian Bistro", "type": "organization", "description": "Favorite restaurant in Portland"}
+      ],
+      "seed_relationships": [
+        {"source": "Portland Trip", "target": "Italian Bistro", "type": "PART_OF"}
+      ],
+      "user_turns": [
+        "What's the weather forecast for Portland this week?",
+        "Remember that I also need to pack a rain jacket for the trip.",
+        "What do you know about my Portland trip plans so far?",
+        "Can you check the weather in Seattle too? I want to compare.",
+        "Based on the weather in both cities, which one should I pack heavier layers for?",
+        "Remind me to book the Italian Bistro reservation by Wednesday.",
+        "Wait, I should also mention - I have a shellfish allergy. Make sure any restaurant suggestions account for that.",
+        "Give me a full trip prep checklist based on everything we've discussed.",
+        "What's the one thing from our conversation today I should do first?"
+      ],
+      "rubric": "Agent should exercise multiple capabilities: weather for Portland and Seattle, memory recall about trip plans and preferences, knowledge graph about the Italian Bistro connection, scheduling a reminder. In turn 5 should compare weather from turns 1 and 4. In turn 7 should connect shellfish allergy from memory. Turn 8 should synthesize everything into a coherent checklist. Turn 9 should reference earlier conversation accurately.",
+      "tags": ["mixed-capabilities", "synthesis", "long"]
+    }
+  ]
+}

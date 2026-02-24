@@ -1,0 +1,121 @@
+{
+  "version": "1.0.0",
+  "description": "Memory-Informed Responses evaluation: Tests whether Alfred applies stored memories naturally in multi-turn conversations.",
+  "eval_type": "memory_informed",
+  "cases": [
+    {
+      "id": "meminf-offsite-planning",
+      "persona": "Team lead planning a team offsite",
+      "seed_memories": [
+        {"content": "User's name is Alex Kim", "type": "fact", "confidence": 0.95},
+        {"content": "Alex leads a team of 8 engineers at CloudBase", "type": "fact", "confidence": 0.9},
+        {"content": "Alex's team had their last offsite at a mountain lodge and loved it", "type": "fact", "confidence": 0.85},
+        {"content": "Two team members are vegetarian (Raj and Lisa)", "type": "fact", "confidence": 0.85},
+        {"content": "Team budget for events is around $5,000", "type": "fact", "confidence": 0.8},
+        {"content": "Alex prefers activities that don't require athletic ability because one team member has a mobility issue", "type": "preference", "confidence": 0.8}
+      ],
+      "seed_entities": [
+        {"name": "CloudBase", "type": "organization", "description": "Alex's company"},
+        {"name": "Team Offsite", "type": "project", "description": "Recurring team building event"}
+      ],
+      "user_turns": [
+        "I need to start planning our next team offsite. Any ideas on what we should do?",
+        "Those are good ideas. What about food — any considerations I should keep in mind?",
+        "Great, and what's a reasonable budget range for something like this?"
+      ],
+      "rubric": "Agent should reference the team size (8), past offsite preference (mountain lodge), accessibility needs, vegetarian team members, and budget (~$5k) across the conversation. Information should be applied naturally — not dumped all at once. Each turn should build on previous context.",
+      "expected_memory_usage": ["8", "mountain", "vegetarian", "5000", "mobility"],
+      "tags": ["planning", "team"]
+    },
+    {
+      "id": "meminf-email-drafting",
+      "persona": "Employee drafting an email to their manager",
+      "seed_memories": [
+        {"content": "User's name is Sam Foster", "type": "fact", "confidence": 0.95},
+        {"content": "Sam's manager is Patricia Nguyen, VP of Engineering", "type": "fact", "confidence": 0.9},
+        {"content": "Sam has been working on the Atlas migration project for 3 months", "type": "fact", "confidence": 0.85},
+        {"content": "The Atlas migration is 2 weeks behind schedule due to unexpected API compatibility issues", "type": "fact", "confidence": 0.8},
+        {"content": "Patricia prefers brief, data-driven updates with clear asks", "type": "preference", "confidence": 0.8},
+        {"content": "Sam wants to request two additional engineers to get back on track", "type": "decision", "confidence": 0.75}
+      ],
+      "seed_entities": [
+        {"name": "Patricia Nguyen", "type": "person", "description": "Sam's manager, VP of Engineering"},
+        {"name": "Atlas Migration", "type": "project", "description": "Cloud migration project Sam leads"}
+      ],
+      "user_turns": [
+        "I need to write an email to my manager about the Atlas project status. Can you help me draft it?",
+        "Good start. Can you make it more concise? She's really busy and prefers getting to the point quickly."
+      ],
+      "rubric": "Agent should reference Patricia by name, the Atlas migration details, the 2-week delay, API compatibility issues, and the request for additional engineers. Should adapt the email style to match Patricia's known preferences (brief, data-driven). Must not invent details not in memories.",
+      "expected_memory_usage": ["Patricia", "Atlas", "2 weeks", "API", "engineers"],
+      "tags": ["email", "professional"]
+    },
+    {
+      "id": "meminf-gift-suggestion",
+      "persona": "User looking for a gift for their sister",
+      "seed_memories": [
+        {"content": "User's name is Chris Taylor", "type": "fact", "confidence": 0.95},
+        {"content": "Chris's sister Maya is turning 30 next month", "type": "fact", "confidence": 0.9},
+        {"content": "Maya is passionate about ceramics and pottery", "type": "fact", "confidence": 0.85},
+        {"content": "Maya recently started a small online shop selling handmade bowls", "type": "fact", "confidence": 0.8},
+        {"content": "Maya doesn't like overly practical gifts — she prefers things that are beautiful or experiential", "type": "preference", "confidence": 0.8},
+        {"content": "Chris spent about $150 on Maya's birthday gift last year", "type": "fact", "confidence": 0.7}
+      ],
+      "seed_entities": [
+        {"name": "Maya", "type": "person", "description": "Chris's sister, ceramic artist turning 30"}
+      ],
+      "user_turns": [
+        "My sister's birthday is coming up and I have no idea what to get her. Can you help?",
+        "She already has all the pottery tools she needs. What about something more experiential?"
+      ],
+      "rubric": "Agent should reference Maya by name, her age (turning 30), her passion for ceramics/pottery, her preference for beautiful/experiential gifts over practical ones, and the approximate budget from last year. Gift suggestions should be tailored to these specifics, not generic.",
+      "expected_memory_usage": ["Maya", "30", "ceramics", "experiential"],
+      "tags": ["personal", "gift"]
+    },
+    {
+      "id": "meminf-project-status",
+      "persona": "Developer checking on project status across multiple workstreams",
+      "seed_memories": [
+        {"content": "User's name is Robin Patel", "type": "fact", "confidence": 0.95},
+        {"content": "Robin is working on two main projects: Beacon (frontend rewrite) and Compass (API redesign)", "type": "fact", "confidence": 0.9},
+        {"content": "Beacon is ahead of schedule — estimated completion in 3 weeks", "type": "fact", "confidence": 0.85},
+        {"content": "Compass is blocked on the authentication service team's review, which has been pending for 5 days", "type": "fact", "confidence": 0.85},
+        {"content": "Robin's priority is to ship Beacon first, then focus entirely on Compass", "type": "decision", "confidence": 0.8},
+        {"content": "Robin has a standup with the Compass team every Wednesday at 10am", "type": "fact", "confidence": 0.75}
+      ],
+      "seed_entities": [
+        {"name": "Beacon", "type": "project", "description": "Frontend rewrite project, ahead of schedule"},
+        {"name": "Compass", "type": "project", "description": "API redesign project, blocked on auth review"}
+      ],
+      "user_turns": [
+        "Can you give me a quick status update on my projects?",
+        "What should I do about the Compass blocker? It's been a while."
+      ],
+      "rubric": "Agent should provide accurate status for both Beacon (ahead, 3 weeks) and Compass (blocked, auth review, 5 days). Should advise on the blocker based on context (escalation suggestion, Wednesday standup as an opportunity). Must not confuse the two projects or invent progress details.",
+      "expected_memory_usage": ["Beacon", "Compass", "3 weeks", "blocked", "authentication"],
+      "tags": ["project", "status"]
+    },
+    {
+      "id": "meminf-schedule-planning",
+      "persona": "Professional planning their week around commitments",
+      "seed_memories": [
+        {"content": "User's name is Taylor Brooks", "type": "fact", "confidence": 0.95},
+        {"content": "Taylor works as a product manager at NovaTech", "type": "fact", "confidence": 0.9},
+        {"content": "Taylor has a recurring 1-on-1 with their VP every Monday at 2pm", "type": "fact", "confidence": 0.85},
+        {"content": "Taylor blocks Wednesday mornings for deep work — no meetings before noon", "type": "preference", "confidence": 0.85},
+        {"content": "Taylor is training for a half marathon and runs Tuesday/Thursday/Saturday mornings", "type": "fact", "confidence": 0.8},
+        {"content": "Taylor prefers to batch all admin tasks (emails, expense reports) on Friday afternoons", "type": "preference", "confidence": 0.8}
+      ],
+      "seed_entities": [
+        {"name": "NovaTech", "type": "organization", "description": "Taylor's employer"}
+      ],
+      "user_turns": [
+        "I need to schedule a 2-hour product strategy session this week. When would be best?",
+        "Good thinking. I also need to fit in a dentist appointment — when would that be least disruptive?"
+      ],
+      "rubric": "Agent should work around known commitments: Monday 2pm 1-on-1, Wednesday morning deep work, Tuesday/Thursday/Saturday runs, Friday afternoon admin. Should suggest scheduling the strategy session in a slot that respects these constraints. Dentist appointment should also avoid conflicts. Must demonstrate knowledge of the weekly structure.",
+      "expected_memory_usage": ["Monday", "Wednesday", "deep work", "running", "Friday"],
+      "tags": ["scheduling", "personal"]
+    }
+  ]
+}

@@ -6,8 +6,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Install MLflow 3.8.1, PostgreSQL client library, and boto3 for S3/MinIO support
-RUN pip install --no-cache-dir mlflow==3.8.1 psycopg2-binary boto3
+# Install MLflow 3.10.0, PostgreSQL client library, and boto3 for S3/MinIO support
+RUN pip install --no-cache-dir mlflow==3.10.0 psycopg2-binary boto3
 
 # Expose MLflow port
 EXPOSE 5000

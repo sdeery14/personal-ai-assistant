@@ -1,7 +1,7 @@
 # MLflow GenAI Guide
 
-**Last Updated**: 2026-01-28
-**MLflow Version**: 3.8.1
+**Last Updated**: 2026-02-23
+**MLflow Version**: 3.10.0
 **Purpose**: Capture best practices and lessons learned for MLflow GenAI evaluation
 
 ---
@@ -351,6 +351,206 @@ export MLFLOW_GENAI_EVAL_ASYNC_TIMEOUT=600  # 10 minutes
 
 ---
 
+## Multi-Turn Evaluation (Conversations)
+
+MLflow supports evaluating multi-turn conversations where an AI assistant interacts with a user across multiple exchanges. This is essential for onboarding flows, customer support, and any scenario where context retention and conversation quality matter.
+
+### How It Works
+
+Multi-turn evaluation uses **session-grouped traces**. Each conversation turn creates a separate MLflow trace, and all turns in one conversation share the same session ID. Scorers then analyze the full conversation as a unit.
+
+```text
+Session "onboarding-abc123"
+  ├── Trace 1: User greeting → Assistant welcome
+  ├── Trace 2: User shares info → Assistant asks follow-up
+  └── Trace 3: User provides details → Assistant proposes help
+```
+
+### Step 1: Create Session-Tagged Traces
+
+Each conversation turn must be wrapped in `@mlflow.trace` and tagged with a shared session ID via `mlflow.update_current_trace()`:
+
+```python
+import mlflow
+from uuid import uuid4
+
+session_id = f"session-{uuid4().hex[:8]}"
+
+@mlflow.trace(name="onboarding_greeting")
+def run_greeting(user_message: str) -> str:
+    mlflow.update_current_trace(
+        metadata={"mlflow.trace.session": session_id},
+        tags={"turn": "greeting"},
+    )
+    response = agent.run(user_message)
+    return response
+
+@mlflow.trace(name="onboarding_turn_1")
+def run_turn_1(user_message: str) -> str:
+    mlflow.update_current_trace(
+        metadata={"mlflow.trace.session": session_id},
+        tags={"turn": "turn-1"},
+    )
+    response = agent.run(user_message)
+    return response
+```
+
+**Key points:**
+- `@mlflow.trace` creates a top-level trace per call (not a child span)
+- `mlflow.update_current_trace(metadata={"mlflow.trace.session": session_id})` is the critical line that groups traces into sessions
+- The same `session_id` must be used for all turns in one conversation
+- `@mlflow.trace` works independently of `mlflow.openai.autolog()` — you can disable autolog and still create manual traces
+
+### Step 2: Log Expectations on Traces
+
+For custom judges using `{{ expectations }}`, log expectations on each trace:
+
+```python
+# After creating traces, search for them and attach expectations
+traces = mlflow.search_traces(
+    locations=[experiment_id],
+    return_type="list",
+)
+
+for trace in traces:
+    session = (trace.info.request_metadata or {}).get("mlflow.trace.session", "")
+    if session.startswith("session-"):
+        # Log a single structured expectation (dot-notation sub-fields
+        # are NOT supported in trace-based eval — use {{ expectations }})
+        mlflow.log_expectation(
+            trace_id=trace.info.trace_id,
+            name="expectations",
+            value={
+                "rubric": "Agent should warmly greet and learn about the user",
+                "topics_to_explore": "daily routine, upcoming events, goals",
+            },
+        )
+```
+
+### Step 3: Evaluate with Multi-Turn Scorers
+
+Retrieve annotated traces and pass them to `genai_evaluate()`:
+
+```python
+from mlflow.genai import evaluate as genai_evaluate
+from mlflow.genai.judges import make_judge
+from typing import Literal
+
+# Create a multi-turn judge using {{ conversation }}
+quality_judge = make_judge(
+    name="conversation_quality",
+    instructions="""Analyze the following multi-turn conversation:
+
+{{ conversation }}
+
+Expectations:
+{{ expectations }}
+
+Rate as 'excellent', 'good', 'adequate', or 'poor'.""",
+    feedback_value_type=Literal["excellent", "good", "adequate", "poor"],
+    model="openai:/gpt-4.1",
+)
+
+# Fetch annotated traces
+annotated_traces = mlflow.search_traces(
+    locations=[experiment_id],
+    return_type="list",
+)
+
+# Run multi-turn evaluation
+results = genai_evaluate(
+    data=annotated_traces,
+    scorers=[quality_judge],
+)
+```
+
+### Template Variables for Multi-Turn
+
+| Variable | What It Contains | Single-Turn | Multi-Turn |
+| --- | --- | --- | --- |
+| `{{ inputs }}` | Trace input data | Yes | No |
+| `{{ outputs }}` | Trace output data | Yes | No |
+| `{{ expectations }}` | Logged expectations | Yes | Yes |
+| `{{ conversation }}` | Full session transcript | No | Yes |
+
+**Critical constraint:** `{{ conversation }}` can only combine with `{{ expectations }}`. You cannot use `{{ conversation }}` with `{{ inputs }}` or `{{ outputs }}` in the same template.
+
+### Built-in Multi-Turn Scorers
+
+MLflow provides ready-to-use multi-turn scorers:
+
+```python
+from mlflow.genai.scorers import (
+    ConversationCompleteness,
+    ConversationalRoleAdherence,
+    ConversationalSafety,
+    ConversationalToolCallEfficiency,
+    KnowledgeRetention,
+    UserFrustration,
+)
+
+results = genai_evaluate(
+    data=session_traces,
+    scorers=[
+        ConversationCompleteness(),    # All user questions addressed?
+        KnowledgeRetention(),          # Retains info from earlier turns?
+        UserFrustration(),             # Is user frustrated?
+        ConversationalSafety(),        # Responses safe throughout?
+        ConversationalRoleAdherence(), # Maintains assigned role?
+    ],
+)
+```
+
+### Two-Phase Pattern for Multi-Turn
+
+When evaluating agents that use `asyncio.run()` (like the OpenAI Agents SDK), use the two-phase pattern with session tracing:
+
+```python
+# Phase 1: Run conversations with autolog DISABLED,
+# but manual @mlflow.trace creates session traces
+mlflow.openai.autolog(disable=True)
+
+for persona in personas:
+    session_id = f"onboarding-{run_id[:8]}-{persona.id}"
+    for turn in persona.turns:
+        @mlflow.trace(name=f"turn_{turn.label}")
+        def _traced(user_message: str) -> str:
+            mlflow.update_current_trace(
+                metadata={"mlflow.trace.session": session_id},
+            )
+            result = asyncio.run(agent.run(user_message))
+            return result
+        _traced(turn.message)
+
+# Phase 2: Search traces, log expectations, evaluate
+mlflow.openai.autolog()  # Re-enable for scorer LLM calls
+
+traces = mlflow.search_traces(
+    locations=[experiment_id],
+    return_type="list",
+)
+
+# Log expectations, then re-fetch and evaluate
+# ... (see Step 2 and Step 3 above)
+```
+
+**Why this works:** `@mlflow.trace` is independent of autolog. Disabling autolog prevents noisy internal OpenAI SDK traces while `@mlflow.trace` still creates clean per-turn session traces.
+
+### Viewing Sessions in MLflow UI
+
+After evaluation, session-grouped traces appear in the MLflow Traces tab. Filter by session metadata to see all turns of a conversation grouped together:
+
+```python
+# Programmatic access to session traces
+session_traces = mlflow.search_traces(
+    locations=[experiment_id],
+    filter_string="metadata.`mlflow.trace.session` = 'session-abc123'",
+    return_type="list",
+)
+```
+
+---
+
 ## Evaluation Datasets
 
 Evaluation datasets provide centralized test management with versioning and ground truth.
@@ -400,7 +600,7 @@ import mlflow
 
 # Search for traces with specific criteria
 traces = mlflow.search_traces(
-    experiment_ids=["0"],
+    locations=["0"],
     max_results=20,
     filter_string="attributes.name = 'chat_completion'",
     return_type="list",
@@ -416,7 +616,7 @@ for trace in traces:
 
 # Retrieve annotated traces and add to dataset
 annotated_traces = mlflow.search_traces(
-    experiment_ids=["0"],
+    locations=["0"],
     max_results=20,
     return_type="list",
 )
@@ -504,7 +704,7 @@ results = mlflow.genai.evaluate(
 | `KnowledgeRetention`               | Retains info from earlier turns?          |
 | `UserFrustration`                  | Is user frustrated? Resolved?             |
 
-> Multi-turn scorers require traces with `mlflow.trace.session` metadata.
+> Multi-turn scorers require traces with `mlflow.trace.session` metadata. See [Multi-Turn Evaluation](#multi-turn-evaluation-conversations) for the full workflow.
 
 ### Selecting Judge Models
 
@@ -1085,6 +1285,8 @@ The data format uses specific keys that map to template variables:
 - `outputs` → `{{ outputs.* }}`
 - `expectations` → `{{ expectations.* }}`
 
+**Important:** `make_judge` template variables are validated against a strict whitelist: `inputs`, `outputs`, `trace`, `expectations`, `conversation`. Dot-notation sub-fields (e.g., `{{ inputs.question }}`, `{{ expectations.rubric }}`) work when data is a DataFrame/dict with nested keys. However, using `{{ conversation }}` (multi-turn) restricts you to only top-level variables — **no dot-notation allowed** in templates that use `{{ conversation }}`. When this occurs, use `{{ inputs }}` and `{{ expectations }}` (the full dict is rendered).
+
 ### 4. S3 Endpoint for MinIO
 
 When using MinIO locally, set the endpoint:
@@ -1167,14 +1369,22 @@ mlflow.genai.evaluate(
 
 ### 8. Multi-Turn Scorers Need Session IDs
 
-Multi-turn scorers require traces with session metadata:
+Multi-turn scorers require traces with session metadata. See [Multi-Turn Evaluation](#multi-turn-evaluation-conversations) for the complete workflow.
 
 ```python
-# Set session ID when tracing
-with mlflow.start_span("chat") as span:
-    span.set_attribute("mlflow.trace.session", "session-123")
-    # ... conversation logic
+# Tag each conversation turn's trace with the session ID
+@mlflow.trace(name="chat_turn")
+def chat(user_message: str) -> str:
+    mlflow.update_current_trace(
+        metadata={"mlflow.trace.session": "session-123"},
+    )
+    response = agent.run(user_message)
+    return response
 ```
+
+**Key constraints:**
+- `{{ conversation }}` can only combine with `{{ expectations }}`, NOT with `{{ inputs }}` or `{{ outputs }}`
+- `{{ expectations }}` renders the full logged value — dot-notation (e.g., `{{ expectations.rubric }}`) is NOT supported in trace-based eval; log a single structured dict instead
 
 ### 9. Runner.run_sync() Deadlocks Inside genai_evaluate() Worker Threads
 
@@ -1228,7 +1438,7 @@ results = mlflow.genai.evaluate(
 )
 ```
 
-This pattern is used by all agent-invoking evals in `eval/runner.py`: `run_evaluation()`, `run_weather_evaluation()`, and `run_memory_write_evaluation()`.
+This pattern is used by all agent-invoking evals in `eval/runner.py`: `run_evaluation()`, `run_weather_evaluation()`, `run_memory_write_evaluation()`, and `run_onboarding_evaluation()`. The onboarding eval extends this with `@mlflow.trace` session tagging for multi-turn evaluation — see [Multi-Turn Evaluation](#multi-turn-evaluation-conversations).
 
 ---
 
@@ -1240,6 +1450,7 @@ This pattern is used by all agent-invoking evals in `eval/runner.py`: `run_evalu
 - [Evaluation Datasets](https://mlflow.org/docs/3.8.1/genai/datasets/)
 - [Predefined Scorers](https://mlflow.org/docs/3.8.1/genai/eval-monitor/scorers/llm-judge/predefined/)
 - [LLM-as-a-Judge](https://mlflow.org/docs/3.8.1/genai/eval-monitor/scorers/llm-judge/)
+- [Multi-Turn Evaluation](https://mlflow.org/docs/3.8.1/genai/eval-monitor/running-evaluation/multi-turn/)
 - [MLflow Tracing](https://mlflow.org/docs/3.8.1/genai/tracing/)
 - [MLflow MCP Server](https://mlflow.org/docs/3.8.1/genai/mcp/)
 - [Model Serving](https://mlflow.org/docs/3.8.1/genai/serving/)
@@ -1251,6 +1462,7 @@ This pattern is used by all agent-invoking evals in `eval/runner.py`: `run_evalu
 
 | Date       | Change                                                         |
 | ---------- | -------------------------------------------------------------- |
+| 2026-02-23 | Add Multi-Turn Evaluation section, update gotcha #8 with full pattern |
 | 2026-02-04 | Add gotcha #9: Runner.run_sync() deadlock + two-phase solution |
 | 2026-01-28 | Add Agent Evaluation, Datasets, Scorers, Tracing, MCP, Serving |
 | 2026-01-28 | Initial guide created for Feature 002 planning                 |

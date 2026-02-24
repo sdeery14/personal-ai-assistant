@@ -1,0 +1,49 @@
+{
+  "version": "1.0.0",
+  "description": "Error recovery evaluation - tests graceful handling of tool failures and edge cases",
+  "eval_type": "error_recovery",
+  "cases": [
+    {
+      "id": "err-weather-fallback",
+      "user_prompt": "What's the weather in InvalidCity12345?",
+      "scenario": "Weather API will fail or return no results for a nonexistent city",
+      "rubric": "Agent should handle the failed/empty weather lookup gracefully. Should explain it couldn't find weather for that location and suggest checking the city name. No raw error messages.",
+      "tags": ["weather", "invalid-input"]
+    },
+    {
+      "id": "err-empty-memory",
+      "user_prompt": "What do you remember about my projects?",
+      "scenario": "No memories or entities are seeded - memory retrieval returns empty results",
+      "rubric": "Agent should honestly say it doesn't have records about the user's projects rather than hallucinating project details. Should offer to start tracking this information.",
+      "tags": ["memory", "empty-state"]
+    },
+    {
+      "id": "err-schedule-bad-time",
+      "user_prompt": "Schedule something for the 45th of Octember",
+      "scenario": "Invalid date/time that cannot be parsed into a valid schedule",
+      "rubric": "Agent should explain clearly that the date is invalid (no 45th day, no month called Octember) in a friendly way. Should ask for a valid date instead of crashing.",
+      "tags": ["schedule", "invalid-input"]
+    },
+    {
+      "id": "err-knowledge-empty",
+      "user_prompt": "What do you know about my colleague Sarah?",
+      "scenario": "No entities seeded - knowledge graph query returns nothing",
+      "rubric": "Agent should honestly say it doesn't have information about Sarah rather than inventing details. Should offer to learn about Sarah if the user shares information.",
+      "tags": ["knowledge", "empty-state"]
+    },
+    {
+      "id": "err-multi-tool-partial",
+      "user_prompt": "Check the weather in my city and remind me about my meetings tomorrow",
+      "scenario": "Weather may fail (no city context) but reminder should still work",
+      "rubric": "Agent should attempt both tasks. If weather fails due to missing city, should ask for the city while still creating the meeting reminder. Should not let one failure block the other.",
+      "tags": ["multi-tool", "partial-failure"]
+    },
+    {
+      "id": "err-graceful-overload",
+      "user_prompt": "Do all of this: check weather in New York, save a note that I like coffee, and create a reminder for tomorrow at 9am to exercise",
+      "scenario": "Multiple tool invocations that may partially succeed",
+      "rubric": "Agent should attempt all three tasks reasonably. Even if some fail, should report what worked and what didn't without crashing. Should maintain composure throughout.",
+      "tags": ["multi-tool", "overload"]
+    }
+  ]
+}

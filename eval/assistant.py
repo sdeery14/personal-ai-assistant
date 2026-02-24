@@ -7,10 +7,12 @@ configuration (tools, guardrails, instructions) comes from
 ChatService.create_agent(), ensuring the eval tests the exact same agent
 as production.
 
-Database initialization and teardown is handled per invocation because
-asyncpg.Pool is bound to the event loop that created it — and each
-asyncio.run() creates a fresh loop. The ~50ms overhead per case is
-negligible vs. LLM API latency.
+Single-turn invocations (invoke_production_agent) use one asyncio.run()
+per call with DB init/close bracketing the agent run. Multi-turn
+conversations (invoke_onboarding_conversation) use a single asyncio.run()
+for all turns, sharing one event loop and one DB connection pool. This
+avoids the Windows ProactorEventLoop issue where closing the loop between
+turns causes httpx connection cleanup failures (APIConnectionError).
 
 MLflow tracing is enabled via mlflow.openai.autolog() to capture
 detailed execution traces during evaluation.
@@ -19,6 +21,7 @@ detailed execution traces during evaluation.
 import asyncio
 import json
 import os
+import uuid
 from uuid import uuid4
 
 import mlflow
@@ -38,6 +41,71 @@ mlflow.openai.autolog()
 
 # Track whether migrations have been run (idempotent, only need to run once per process)
 _db_migrated = False
+
+# Namespace UUID for deterministic eval user UUID generation
+EVAL_UUID_NAMESPACE = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+
+
+def get_eval_user_uuid(eval_id: str) -> str:
+    """Generate a deterministic UUID string from an eval user ID.
+
+    Notifications and scheduled_tasks tables require UUID user_ids
+    (FK to users table). This converts eval IDs like 'eval-notif-case1'
+    into valid UUID strings that remain deterministic for cleanup.
+
+    Args:
+        eval_id: The human-readable eval user ID string.
+
+    Returns:
+        A valid UUID string derived from the input.
+    """
+    return str(uuid.uuid5(EVAL_UUID_NAMESPACE, eval_id))
+
+
+def ensure_eval_user(user_id: str) -> None:
+    """Create a user record for the eval user if it doesn't exist.
+
+    Required because notifications and scheduled_tasks tables have
+    FK constraints to users(id). The user record is created with
+    a dummy password hash and is_active=True.
+
+    Args:
+        user_id: A valid UUID string for the eval user.
+    """
+    async def _ensure():
+        global _db_migrated
+        from src.database import init_database, run_migrations, close_database
+
+        try:
+            pool = await init_database()
+            if not _db_migrated:
+                await run_migrations()
+                _db_migrated = True
+        except Exception:
+            return
+
+        try:
+            uid = uuid.UUID(user_id)
+            existing = await pool.fetchrow(
+                "SELECT id FROM users WHERE id = $1", uid,
+            )
+            if not existing:
+                await pool.execute(
+                    """INSERT INTO users (id, username, password_hash, display_name, is_admin)
+                       VALUES ($1, $2, $3, $4, $5)
+                       ON CONFLICT (id) DO NOTHING""",
+                    uid,
+                    f"eval-{user_id[:8]}",
+                    "$2b$12$evalDummyHashNotForRealAuth000000000000000000000",
+                    "Eval User",
+                    False,
+                )
+        except Exception:
+            pass
+        finally:
+            await close_database()
+
+    asyncio.run(_ensure())
 
 
 def invoke_production_agent(
@@ -110,6 +178,668 @@ def invoke_production_agent(
                 pass
 
     return asyncio.run(_run())
+
+
+def invoke_onboarding_conversation(
+    user_turns: list[str],
+    model: str | None = None,
+    api_key: str | None = None,
+    user_id: str = "eval-onboarding-user",
+    max_turns: int = 10,
+    session_id: str | None = None,
+) -> tuple[list[tuple[str, RunResult]], list[dict], str]:
+    """
+    Run a multi-turn onboarding conversation against the production agent.
+
+    Creates the agent with is_onboarded=False, sends a greeting trigger,
+    then sends each user turn with accumulated conversation history.
+    All turns run within a single asyncio.run() call, sharing one event
+    loop and one database connection pool. This avoids the Windows
+    ProactorEventLoop issue where closing the loop between turns causes
+    httpx connection cleanup failures.
+
+    Each turn is recorded as an MLflow trace tagged with a shared session ID,
+    enabling MLflow's multi-turn evaluation and session-grouped trace viewing.
+
+    Args:
+        user_turns: Pre-scripted user messages for the conversation.
+        model: Optional model override (defaults to OPENAI_MODEL env var).
+        api_key: Optional OpenAI API key (defaults to OPENAI_API_KEY env var).
+        user_id: User ID for memory scoping in tool calls.
+        max_turns: Maximum agent turns per message (default 10).
+        session_id: Optional session ID for MLflow trace grouping. If None,
+            a unique ID is auto-generated.
+
+    Returns:
+        Tuple of:
+        - List of (turn_label, RunResult) tuples for each turn
+        - Aggregated list of all tool call dicts across the conversation
+        - The session ID used for MLflow trace grouping
+    """
+    settings = get_eval_settings()
+    actual_api_key = api_key or settings.openai_api_key
+
+    # Ensure OPENAI_API_KEY is in environment (required by OpenAI SDK)
+    os.environ["OPENAI_API_KEY"] = actual_api_key
+
+    from src.services.chat_service import ChatService
+
+    service = ChatService()
+    agent = service.create_agent(model=model, is_onboarded=False)
+
+    context = {
+        "user_id": user_id,
+        "correlation_id": str(uuid4()),
+        "conversation_id": None,
+    }
+
+    # Generate session ID if not provided (for MLflow multi-turn trace grouping)
+    if session_id is None:
+        session_id = f"onboarding-{str(uuid4())[:8]}"
+
+    turn_results: list[tuple[str, RunResult]] = []
+    all_tool_calls: list[dict] = []
+    conversation_history: list[dict] = []
+
+    # Turn 0: System greeting trigger
+    greeting_input = "[System: New user session started. Greet the user warmly and begin onboarding.]"
+
+    async def _run_conversation():
+        """Run all turns in a single event loop.
+
+        Uses one asyncio.run() for the entire conversation so that httpx
+        connections, asyncpg pools, and other loop-bound resources stay
+        valid across turns.  Each turn gets its own MLflow trace via
+        mlflow.start_span() at the root level.
+        """
+        global _db_migrated
+        from src.database import init_database, run_migrations, close_database
+
+        try:
+            await init_database()
+            if not _db_migrated:
+                await run_migrations()
+                _db_migrated = True
+        except Exception:
+            pass
+
+        try:
+            await _run_turn(greeting_input, [], "greeting", greeting_input)
+            for idx, user_message in enumerate(user_turns):
+                await _run_turn(
+                    user_message, conversation_history,
+                    f"turn-{idx + 1}", user_message,
+                )
+        finally:
+            try:
+                await close_database()
+            except Exception:
+                pass
+
+    async def _run_turn(input_data, history, turn_label, user_message):
+        """Run a single turn with MLflow session trace.
+
+        Each turn creates an MLflow trace (root span) tagged with the
+        shared session_id, enabling session-grouped viewing in the UI.
+        """
+        try:
+            with mlflow.start_span(name=f"onboarding_{turn_label}") as span:
+                span.set_inputs({"user_message": user_message})
+                mlflow.update_current_trace(
+                    metadata={"mlflow.trace.session": session_id},
+                    tags={"turn_label": turn_label, "user_id": user_id},
+                )
+
+                # Build input as conversation history + new message
+                if history:
+                    messages = list(history)
+                    if isinstance(input_data, str):
+                        messages.append({"role": "user", "content": input_data})
+                    result = await Runner.run(
+                        agent, input=messages, context=context, max_turns=max_turns
+                    )
+                else:
+                    result = await Runner.run(
+                        agent, input=input_data, context=context, max_turns=max_turns
+                    )
+
+                span.set_outputs(result.final_output)
+
+            turn_results.append((turn_label, result))
+            tool_calls = extract_tool_calls(result)
+            all_tool_calls.extend(tool_calls)
+            conversation_history.append({"role": "user", "content": user_message})
+            conversation_history.append({"role": "assistant", "content": result.final_output})
+        except Exception as e:
+            conversation_history.append({"role": "user", "content": user_message})
+            conversation_history.append({"role": "assistant", "content": f"[ERROR: {str(e)}]"})
+
+    asyncio.run(_run_conversation())
+    return turn_results, all_tool_calls, session_id
+
+
+def cleanup_onboarding_eval_data(user_id: str) -> None:
+    """
+    Delete all memories and entities for an eval user before running a case.
+
+    Prevents cross-contamination from previous eval runs.
+
+    Args:
+        user_id: The eval user ID to clean up.
+    """
+    async def _cleanup():
+        from src.database import init_database, run_migrations, close_database
+
+        global _db_migrated
+
+        try:
+            pool = await init_database()
+            if not _db_migrated:
+                await run_migrations()
+                _db_migrated = True
+        except Exception:
+            return
+
+        try:
+            for table in ("memory_items", "entities", "relationships"):
+                try:
+                    await pool.execute(
+                        f"UPDATE {table} SET deleted_at = NOW() "
+                        f"WHERE user_id = $1 AND deleted_at IS NULL",
+                        user_id,
+                    )
+                except Exception:
+                    pass  # Table may not exist yet
+        finally:
+            await close_database()
+
+    asyncio.run(_cleanup())
+
+
+def query_saved_onboarding_data(user_id: str) -> tuple[list[str], list[str]]:
+    """
+    Query the database for memories and entities saved during an onboarding conversation.
+
+    Because the orchestrator delegates to specialist sub-agents, tool calls for
+    save_memory/save_entity don't appear in the top-level RunResult.new_items.
+    Instead, we query the database directly for what was actually persisted.
+
+    Args:
+        user_id: The user ID used during the onboarding conversation.
+
+    Returns:
+        Tuple of (memory_contents, entity_names) actually saved to the database.
+    """
+    async def _query():
+        from src.database import init_database, close_database
+
+        try:
+            pool = await init_database()
+        except Exception:
+            return [], []
+
+        try:
+            # Query memory_items for this user
+            memory_rows = await pool.fetch(
+                """
+                SELECT content FROM memory_items
+                WHERE user_id = $1 AND deleted_at IS NULL
+                ORDER BY created_at DESC
+                """,
+                user_id,
+            )
+            memory_contents = [row["content"] for row in memory_rows]
+
+            # Query entities for this user
+            entity_rows = await pool.fetch(
+                """
+                SELECT name FROM entities
+                WHERE user_id = $1 AND deleted_at IS NULL
+                ORDER BY created_at DESC
+                """,
+                user_id,
+            )
+            entity_names = [row["name"] for row in entity_rows]
+
+            return memory_contents, entity_names
+        finally:
+            await close_database()
+
+    return asyncio.run(_query())
+
+
+def seed_eval_data(
+    user_id: str,
+    memories: list[dict],
+    entities: list[dict],
+    relationships: list[dict] | None = None,
+) -> None:
+    """Pre-seed memories and entities into the database for eval cases.
+
+    Generates embeddings via OpenAI text-embedding-3-small and inserts
+    directly into the database tables. This allows eval cases to test
+    agent behavior with pre-existing user context.
+
+    Args:
+        user_id: User ID to seed data for.
+        memories: List of dicts with 'content', 'type', 'confidence' keys.
+        entities: List of dicts with 'name', 'type', 'description' keys.
+        relationships: Optional list of dicts with 'source', 'target', 'type' keys.
+    """
+    import openai
+
+    settings = get_eval_settings()
+    client = openai.OpenAI(api_key=settings.openai_api_key)
+
+    def _get_embedding(text: str) -> list[float]:
+        """Generate embedding using OpenAI text-embedding-3-small."""
+        response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=text,
+        )
+        return response.data[0].embedding
+
+    async def _seed():
+        global _db_migrated
+        from src.database import init_database, run_migrations, close_database
+
+        try:
+            pool = await init_database()
+            if not _db_migrated:
+                await run_migrations()
+                _db_migrated = True
+        except Exception:
+            return
+
+        try:
+            # Use a single connection for all seeding to guarantee
+            # read-after-write visibility (entity lookups for relationships)
+            async with pool.acquire() as conn:
+                # Seed memories
+                for mem in memories:
+                    embedding = _get_embedding(mem["content"])
+                    await conn.execute(
+                        """
+                        INSERT INTO memory_items (user_id, content, type, embedding, importance, confidence)
+                        VALUES ($1, $2, $3, $4::vector, $5, $6)
+                        """,
+                        user_id,
+                        mem["content"],
+                        mem.get("type", "fact"),
+                        str(embedding),
+                        0.5,
+                        mem.get("confidence", 0.9),
+                    )
+
+                # Seed entities
+                entity_name_map: dict[str, str] = {}  # name -> canonical_name
+                for ent in entities:
+                    embedding = _get_embedding(ent["name"] + " " + ent.get("description", ""))
+                    from src.services.graph_service import normalize_entity_name
+                    canonical = normalize_entity_name(ent["name"])
+                    entity_name_map[ent["name"]] = canonical
+                    await conn.execute(
+                        """
+                        INSERT INTO entities (user_id, name, canonical_name, type, description, embedding)
+                        VALUES ($1, $2, $3, $4, $5, $6::vector)
+                        """,
+                        user_id,
+                        ent["name"],
+                        canonical,
+                        ent.get("type", "concept"),
+                        ent.get("description", ""),
+                        str(embedding),
+                    )
+
+                # Seed relationships
+                if relationships:
+                    for rel in relationships:
+                        # Look up entity IDs (same connection guarantees visibility)
+                        source_row = await conn.fetchrow(
+                            "SELECT id FROM entities WHERE user_id = $1 AND name = $2 AND deleted_at IS NULL",
+                            user_id, rel["source"],
+                        )
+                        target_row = await conn.fetchrow(
+                            "SELECT id FROM entities WHERE user_id = $1 AND name = $2 AND deleted_at IS NULL",
+                            user_id, rel["target"],
+                        )
+                        if source_row and target_row:
+                            await conn.execute(
+                                """
+                                INSERT INTO entity_relationships (user_id, source_entity_id, target_entity_id, relationship_type)
+                                VALUES ($1, $2, $3, $4)
+                                """,
+                                user_id,
+                                source_row["id"],
+                                target_row["id"],
+                                rel["type"],
+                            )
+
+                    # Verify relationships were seeded
+                    rel_count = await conn.fetchval(
+                        "SELECT COUNT(*) FROM entity_relationships WHERE user_id = $1 AND deleted_at IS NULL",
+                        user_id,
+                    )
+        finally:
+            await close_database()
+
+    asyncio.run(_seed())
+
+
+def cleanup_eval_data(user_id: str) -> None:
+    """Soft-delete all eval data for a user to prevent cross-contamination.
+
+    Generalizes cleanup_onboarding_eval_data to cover all eval-related tables.
+
+    Args:
+        user_id: The eval user ID to clean up.
+    """
+    async def _cleanup():
+        from src.database import init_database, run_migrations, close_database
+
+        global _db_migrated
+
+        try:
+            pool = await init_database()
+            if not _db_migrated:
+                await run_migrations()
+                _db_migrated = True
+        except Exception:
+            return
+
+        try:
+            # Soft-delete tables with deleted_at column
+            for table in (
+                "memory_items", "entities", "entity_relationships",
+                "observed_patterns", "proactiveness_settings",
+            ):
+                try:
+                    await pool.execute(
+                        f"UPDATE {table} SET deleted_at = NOW() "
+                        f"WHERE user_id = $1 AND deleted_at IS NULL",
+                        user_id,
+                    )
+                except Exception:
+                    pass  # Table may not exist yet
+
+            # Cancel active scheduled tasks (no deleted_at column)
+            try:
+                await pool.execute(
+                    "UPDATE scheduled_tasks SET status = 'cancelled' "
+                    "WHERE user_id = $1 AND status = 'active'",
+                    user_id,
+                )
+            except Exception:
+                pass
+
+            # Dismiss undismissed notifications
+            try:
+                await pool.execute(
+                    "UPDATE notifications SET dismissed_at = NOW() "
+                    "WHERE user_id = $1 AND dismissed_at IS NULL",
+                    user_id,
+                )
+            except Exception:
+                pass
+        finally:
+            await close_database()
+
+    asyncio.run(_cleanup())
+
+
+def invoke_returning_user_agent(
+    prompt: str,
+    user_id: str = "eval-returning-user",
+    model: str | None = None,
+    api_key: str | None = None,
+    max_turns: int = 5,
+) -> RunResult:
+    """Invoke the production agent as a returning (onboarded) user.
+
+    Like invoke_production_agent() but creates the agent with is_onboarded=True.
+    Used for evals that test behavior with pre-seeded user data.
+
+    Args:
+        prompt: The user prompt (or system greeting trigger).
+        user_id: User ID for memory scoping.
+        model: Optional model override.
+        api_key: Optional OpenAI API key.
+        max_turns: Maximum agent turns.
+
+    Returns:
+        RunResult with final_output and new_items.
+    """
+    settings = get_eval_settings()
+    actual_api_key = api_key or settings.openai_api_key
+    os.environ["OPENAI_API_KEY"] = actual_api_key
+
+    from src.services.chat_service import ChatService
+
+    service = ChatService()
+    agent = service.create_agent(model=model, is_onboarded=True)
+
+    context = {
+        "user_id": user_id,
+        "correlation_id": str(uuid4()),
+        "conversation_id": None,
+    }
+
+    async def _run():
+        global _db_migrated
+        from src.database import init_database, run_migrations, close_database
+
+        try:
+            await init_database()
+            if not _db_migrated:
+                await run_migrations()
+                _db_migrated = True
+        except Exception:
+            pass
+
+        try:
+            return await Runner.run(
+                agent, input=prompt, context=context, max_turns=max_turns
+            )
+        finally:
+            try:
+                await close_database()
+            except Exception:
+                pass
+
+    return asyncio.run(_run())
+
+
+def invoke_returning_user_conversation(
+    user_turns: list[str],
+    user_id: str = "eval-returning-user",
+    model: str | None = None,
+    api_key: str | None = None,
+    max_turns: int = 10,
+    session_id: str | None = None,
+    include_greeting: bool = False,
+) -> tuple[list[tuple[str, RunResult]], list[dict], str]:
+    """Run a multi-turn conversation as a returning (onboarded) user.
+
+    Like invoke_onboarding_conversation() but with is_onboarded=True.
+    Uses a single asyncio.run() for all turns.
+
+    Args:
+        user_turns: Pre-scripted user messages.
+        user_id: User ID for memory scoping.
+        model: Optional model override.
+        api_key: Optional OpenAI API key.
+        max_turns: Maximum agent turns per message.
+        session_id: Optional session ID for MLflow trace grouping.
+        include_greeting: If True, send a greeting trigger as turn 0.
+
+    Returns:
+        Tuple of (turn_results, all_tool_calls, session_id).
+    """
+    settings = get_eval_settings()
+    actual_api_key = api_key or settings.openai_api_key
+    os.environ["OPENAI_API_KEY"] = actual_api_key
+
+    from src.services.chat_service import ChatService
+
+    service = ChatService()
+    agent = service.create_agent(model=model, is_onboarded=True)
+
+    context = {
+        "user_id": user_id,
+        "correlation_id": str(uuid4()),
+        "conversation_id": None,
+    }
+
+    if session_id is None:
+        session_id = f"returning-{str(uuid4())[:8]}"
+
+    turn_results: list[tuple[str, RunResult]] = []
+    all_tool_calls: list[dict] = []
+    conversation_history: list[dict] = []
+
+    greeting_input = (
+        "[System: Returning user opened a new conversation. "
+        "Greet them proactively.]"
+    )
+
+    async def _run_conversation():
+        global _db_migrated
+        from src.database import init_database, run_migrations, close_database
+
+        try:
+            await init_database()
+            if not _db_migrated:
+                await run_migrations()
+                _db_migrated = True
+        except Exception:
+            pass
+
+        try:
+            if include_greeting:
+                await _run_turn(greeting_input, [], "greeting", greeting_input)
+
+            for idx, user_message in enumerate(user_turns):
+                await _run_turn(
+                    user_message, conversation_history,
+                    f"turn-{idx + 1}", user_message,
+                )
+        finally:
+            try:
+                await close_database()
+            except Exception:
+                pass
+
+    async def _run_turn(input_data, history, turn_label, user_message):
+        try:
+            with mlflow.start_span(name=f"returning_{turn_label}") as span:
+                span.set_inputs({"user_message": user_message})
+                mlflow.update_current_trace(
+                    metadata={"mlflow.trace.session": session_id},
+                    tags={"turn_label": turn_label, "user_id": user_id},
+                )
+
+                if history:
+                    messages = list(history)
+                    if isinstance(input_data, str):
+                        messages.append({"role": "user", "content": input_data})
+                    result = await Runner.run(
+                        agent, input=messages, context=context, max_turns=max_turns
+                    )
+                else:
+                    result = await Runner.run(
+                        agent, input=input_data, context=context, max_turns=max_turns
+                    )
+
+                span.set_outputs(result.final_output)
+
+            turn_results.append((turn_label, result))
+            tool_calls = extract_tool_calls(result)
+            all_tool_calls.extend(tool_calls)
+            conversation_history.append({"role": "user", "content": user_message})
+            conversation_history.append(
+                {"role": "assistant", "content": result.final_output}
+            )
+        except Exception as e:
+            conversation_history.append({"role": "user", "content": user_message})
+            conversation_history.append(
+                {"role": "assistant", "content": f"[ERROR: {str(e)}]"}
+            )
+
+    asyncio.run(_run_conversation())
+    return turn_results, all_tool_calls, session_id
+
+
+def query_scheduled_tasks(user_id: str) -> list[dict]:
+    """Query scheduled_tasks table for tasks created during eval.
+
+    Args:
+        user_id: The eval user ID to query.
+
+    Returns:
+        List of dicts with task details (name, task_type, schedule_cron, etc.).
+    """
+    async def _query():
+        from src.database import init_database, close_database
+
+        try:
+            pool = await init_database()
+        except Exception:
+            return []
+
+        try:
+            rows = await pool.fetch(
+                """
+                SELECT name, task_type, schedule_cron, scheduled_at,
+                       tool_name, status, description
+                FROM scheduled_tasks
+                WHERE user_id = $1 AND status = 'active'
+                ORDER BY created_at DESC
+                """,
+                user_id,
+            )
+            return [dict(row) for row in rows]
+        except Exception:
+            return []
+        finally:
+            await close_database()
+
+    return asyncio.run(_query())
+
+
+def query_notifications(user_id: str) -> list[dict]:
+    """Query notifications table for notifications created during eval.
+
+    Args:
+        user_id: The eval user ID to query.
+
+    Returns:
+        List of dicts with notification details (message, type, created_at).
+    """
+    async def _query():
+        from src.database import init_database, close_database
+
+        try:
+            pool = await init_database()
+        except Exception:
+            return []
+
+        try:
+            rows = await pool.fetch(
+                """
+                SELECT message, type, created_at
+                FROM notifications
+                WHERE user_id = $1 AND dismissed_at IS NULL
+                ORDER BY created_at DESC
+                """,
+                user_id,
+            )
+            return [dict(row) for row in rows]
+        except Exception:
+            return []
+        finally:
+            await close_database()
+
+    return asyncio.run(_query())
 
 
 def extract_tool_calls(result: RunResult) -> list[dict]:

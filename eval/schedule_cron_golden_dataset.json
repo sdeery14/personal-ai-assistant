@@ -1,0 +1,71 @@
+{
+  "version": "1.0.0",
+  "description": "Schedule cron accuracy evaluation - tests whether the agent creates correct cron expressions for scheduling requests",
+  "eval_type": "schedule_cron",
+  "cases": [
+    {
+      "id": "cron-daily-morning",
+      "user_prompt": "Check the weather every morning at 8am",
+      "expected_task_type": "recurring",
+      "expected_cron": "0 8 * * *",
+      "rubric": "Agent should create a recurring scheduled task for daily at 8:00 AM. A brief confirmation that the schedule was created is sufficient. Response should mention the schedule or weather check.",
+      "tags": ["daily", "simple"]
+    },
+    {
+      "id": "cron-weekly-monday",
+      "user_prompt": "Remind me about team standup every Monday at 9:30am",
+      "expected_task_type": "recurring",
+      "expected_cron": "30 9 * * 1",
+      "rubric": "Agent should create a recurring task for every Monday at 9:30 AM. Response should confirm the day and time.",
+      "tags": ["weekly", "specific-day"]
+    },
+    {
+      "id": "cron-weekdays",
+      "user_prompt": "Send me a daily summary on weekdays at 6pm",
+      "expected_task_type": "recurring",
+      "expected_cron": "0 18 * * 1-5",
+      "rubric": "Agent should create a recurring task for weekdays (Monday-Friday) at 6:00 PM. Should correctly exclude weekends.",
+      "tags": ["weekdays", "complex"]
+    },
+    {
+      "id": "cron-monthly",
+      "user_prompt": "Remind me to pay rent on the 1st of every month",
+      "expected_task_type": "recurring",
+      "expected_cron": "0 9 1 * *",
+      "rubric": "Agent should create a monthly recurring task for the 1st of each month. Time can be morning (any reasonable hour). Response should confirm monthly schedule.",
+      "tags": ["monthly"]
+    },
+    {
+      "id": "cron-one-time",
+      "user_prompt": "Remind me tomorrow at 3pm to call the dentist",
+      "expected_task_type": "one_time",
+      "expected_cron": null,
+      "rubric": "Agent should create a one-time scheduled task (not recurring) for tomorrow at 3pm. Should NOT use a cron expression. Response should confirm the one-time reminder.",
+      "tags": ["one-time"]
+    },
+    {
+      "id": "cron-complex-weekday-morning",
+      "user_prompt": "Every weekday morning at 7:15, remind me to review my task list",
+      "expected_task_type": "recurring",
+      "expected_cron": "15 7 * * 1-5",
+      "rubric": "Agent should create a recurring task for weekdays at 7:15 AM. Should correctly handle the non-standard minute value.",
+      "tags": ["weekdays", "complex"]
+    },
+    {
+      "id": "cron-natural-ambiguous",
+      "user_prompt": "Remind me about this every evening",
+      "expected_task_type": "recurring",
+      "expected_cron": null,
+      "rubric": "Agent should create a recurring daily task for the evening. A brief confirmation that the schedule was created is sufficient. The exact time can be any reasonable evening hour (5-8 PM).",
+      "tags": ["ambiguous", "daily"]
+    },
+    {
+      "id": "cron-every-other-week",
+      "user_prompt": "Every other Friday, remind me to submit timesheets",
+      "expected_task_type": "recurring",
+      "expected_cron": null,
+      "rubric": "Agent should create a recurring task for Fridays. Since standard cron cannot express bi-weekly, a weekly Friday schedule or any reasonable approximation is acceptable. Must actually create the schedule.",
+      "tags": ["biweekly", "approximation"]
+    }
+  ]
+}

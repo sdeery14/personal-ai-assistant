@@ -12,6 +12,19 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from eval.alfred_models import (
+    ContradictionHandlingGoldenDataset,
+    ErrorRecoveryGoldenDataset,
+    KnowledgeConnectionsGoldenDataset,
+    LongConversationGoldenDataset,
+    MemoryInformedGoldenDataset,
+    MultiCapGoldenDataset,
+    NotificationJudgmentGoldenDataset,
+    ReturningGreetingGoldenDataset,
+    RoutingGoldenDataset,
+    ScheduleCronGoldenDataset,
+    ToneGoldenDataset,
+)
 from eval.models import (
     GoldenDataset,
     GraphExtractionGoldenDataset,
@@ -24,6 +37,7 @@ from eval.models import (
     WeatherGoldenDataset,
     WeatherTestCase,
 )
+from eval.onboarding_models import OnboardingGoldenDataset
 
 
 class DatasetError(Exception):
@@ -595,3 +609,262 @@ def get_graph_extraction_case_by_id(
         if case.id == case_id:
             return case
     return None
+
+
+# Onboarding dataset loading functions (Feature 011)
+
+
+def is_onboarding_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is an onboarding evaluation dataset.
+
+    Args:
+        path: Path to the dataset file.
+
+    Returns:
+        True if the file appears to be an onboarding dataset.
+    """
+    path = Path(path)
+
+    # Check filename
+    if "onboarding" in path.name.lower():
+        return True
+
+    # Check content for onboarding-specific fields
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        cases = data.get("cases", [])
+        if cases and "user_turns" in cases[0] and "persona" in cases[0]:
+            return True
+    except (json.JSONDecodeError, OSError, KeyError):
+        pass
+
+    return False
+
+
+def load_onboarding_dataset(path: str | Path) -> OnboardingGoldenDataset:
+    """Load and validate an onboarding evaluation dataset from a JSON file.
+
+    Args:
+        path: Path to the onboarding golden dataset JSON file.
+
+    Returns:
+        Validated OnboardingGoldenDataset instance.
+
+    Raises:
+        DatasetError: If the file cannot be read or validation fails.
+    """
+    path = Path(path)
+
+    if not path.exists():
+        raise DatasetError(f"Onboarding dataset file not found: {path}")
+
+    if not path.is_file():
+        raise DatasetError(f"Onboarding dataset path is not a file: {path}")
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise DatasetError(f"Invalid JSON in onboarding dataset file: {e}")
+    except OSError as e:
+        raise DatasetError(f"Failed to read onboarding dataset file: {e}")
+
+    if "cases" not in data:
+        raise DatasetError("Onboarding dataset missing required field: 'cases'")
+
+    for idx, case in enumerate(data.get("cases", [])):
+        required_fields = ["id", "persona", "user_turns", "expectations", "rubric"]
+        missing = [f for f in required_fields if f not in case]
+        if missing:
+            raise DatasetError(
+                f"Onboarding dataset case {idx} missing required fields: {missing}"
+            )
+
+    try:
+        dataset = OnboardingGoldenDataset.model_validate(data)
+    except ValidationError as e:
+        errors = _format_validation_errors(e)
+        raise DatasetError(f"Onboarding dataset validation failed:\n{errors}")
+
+    return dataset
+
+
+# ============================================================
+# Alfred Eval Suite — Dataset Detection & Loading
+# ============================================================
+
+
+def _detect_eval_type(path: str | Path) -> str | None:
+    """Detect Alfred eval type from JSON eval_type field or filename.
+
+    Returns the eval_type string or None if not an Alfred eval.
+    """
+    path = Path(path)
+
+    _KNOWN_EVAL_TYPES = (
+        "tone", "returning_greeting", "routing",
+        "memory_informed", "multi_cap",
+        "notification_judgment", "error_recovery", "schedule_cron",
+        "knowledge_connections", "contradiction_handling", "long_conversation",
+    )
+
+    # Check content for eval_type field (definitive)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        eval_type = data.get("eval_type")
+        if eval_type in _KNOWN_EVAL_TYPES:
+            return eval_type
+    except (json.JSONDecodeError, OSError):
+        pass
+
+    # Filename heuristics
+    name = path.name.lower()
+    for et in _KNOWN_EVAL_TYPES:
+        if et in name:
+            return et
+
+    return None
+
+
+def is_tone_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a tone/personality evaluation dataset."""
+    return _detect_eval_type(path) == "tone"
+
+
+def is_returning_greeting_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a returning user greeting evaluation dataset."""
+    return _detect_eval_type(path) == "returning_greeting"
+
+
+def is_routing_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a routing evaluation dataset."""
+    return _detect_eval_type(path) == "routing"
+
+
+def is_memory_informed_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a memory-informed evaluation dataset."""
+    return _detect_eval_type(path) == "memory_informed"
+
+
+def is_multi_cap_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a multi-capability evaluation dataset."""
+    return _detect_eval_type(path) == "multi_cap"
+
+
+def _load_alfred_dataset(path: str | Path, model_class: type, label: str):
+    """Generic loader for Alfred eval datasets."""
+    path = Path(path)
+
+    if not path.exists():
+        raise DatasetError(f"{label} dataset file not found: {path}")
+    if not path.is_file():
+        raise DatasetError(f"{label} dataset path is not a file: {path}")
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise DatasetError(f"Invalid JSON in {label} dataset file: {e}")
+    except OSError as e:
+        raise DatasetError(f"Failed to read {label} dataset file: {e}")
+
+    if "cases" not in data:
+        raise DatasetError(f"{label} dataset missing required field: 'cases'")
+
+    try:
+        return model_class.model_validate(data)
+    except ValidationError as e:
+        errors = _format_validation_errors(e)
+        raise DatasetError(f"{label} dataset validation failed:\n{errors}")
+
+
+def load_tone_dataset(path: str | Path) -> ToneGoldenDataset:
+    """Load and validate a tone/personality evaluation dataset."""
+    return _load_alfred_dataset(path, ToneGoldenDataset, "Tone")
+
+
+def load_returning_greeting_dataset(path: str | Path) -> ReturningGreetingGoldenDataset:
+    """Load and validate a returning user greeting evaluation dataset."""
+    return _load_alfred_dataset(path, ReturningGreetingGoldenDataset, "Returning greeting")
+
+
+def load_routing_dataset(path: str | Path) -> RoutingGoldenDataset:
+    """Load and validate a routing evaluation dataset."""
+    return _load_alfred_dataset(path, RoutingGoldenDataset, "Routing")
+
+
+def load_memory_informed_dataset(path: str | Path) -> MemoryInformedGoldenDataset:
+    """Load and validate a memory-informed evaluation dataset."""
+    return _load_alfred_dataset(path, MemoryInformedGoldenDataset, "Memory-informed")
+
+
+def load_multi_cap_dataset(path: str | Path) -> MultiCapGoldenDataset:
+    """Load and validate a multi-capability evaluation dataset."""
+    return _load_alfred_dataset(path, MultiCapGoldenDataset, "Multi-capability")
+
+
+# ============================================================
+# Tier 2 Alfred Eval Suite — Dataset Detection & Loading
+# ============================================================
+
+
+def is_notification_judgment_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a notification judgment evaluation dataset."""
+    return _detect_eval_type(path) == "notification_judgment"
+
+
+def is_error_recovery_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is an error recovery evaluation dataset."""
+    return _detect_eval_type(path) == "error_recovery"
+
+
+def is_schedule_cron_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a schedule cron evaluation dataset."""
+    return _detect_eval_type(path) == "schedule_cron"
+
+
+def is_knowledge_connections_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a knowledge connections evaluation dataset."""
+    return _detect_eval_type(path) == "knowledge_connections"
+
+
+def is_contradiction_handling_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a contradiction handling evaluation dataset."""
+    return _detect_eval_type(path) == "contradiction_handling"
+
+
+def is_long_conversation_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a long conversation evaluation dataset."""
+    return _detect_eval_type(path) == "long_conversation"
+
+
+def load_notification_judgment_dataset(path: str | Path) -> NotificationJudgmentGoldenDataset:
+    """Load and validate a notification judgment evaluation dataset."""
+    return _load_alfred_dataset(path, NotificationJudgmentGoldenDataset, "Notification judgment")
+
+
+def load_error_recovery_dataset(path: str | Path) -> ErrorRecoveryGoldenDataset:
+    """Load and validate an error recovery evaluation dataset."""
+    return _load_alfred_dataset(path, ErrorRecoveryGoldenDataset, "Error recovery")
+
+
+def load_schedule_cron_dataset(path: str | Path) -> ScheduleCronGoldenDataset:
+    """Load and validate a schedule cron evaluation dataset."""
+    return _load_alfred_dataset(path, ScheduleCronGoldenDataset, "Schedule cron")
+
+
+def load_knowledge_connections_dataset(path: str | Path) -> KnowledgeConnectionsGoldenDataset:
+    """Load and validate a knowledge connections evaluation dataset."""
+    return _load_alfred_dataset(path, KnowledgeConnectionsGoldenDataset, "Knowledge connections")
+
+
+def load_contradiction_handling_dataset(path: str | Path) -> ContradictionHandlingGoldenDataset:
+    """Load and validate a contradiction handling evaluation dataset."""
+    return _load_alfred_dataset(path, ContradictionHandlingGoldenDataset, "Contradiction handling")
+
+
+def load_long_conversation_dataset(path: str | Path) -> LongConversationGoldenDataset:
+    """Load and validate a long conversation evaluation dataset."""
+    return _load_alfred_dataset(path, LongConversationGoldenDataset, "Long conversation")
