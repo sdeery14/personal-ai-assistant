@@ -1,0 +1,101 @@
+{
+  "version": "1.0.0",
+  "description": "Returning User Greeting evaluation: Tests whether Alfred personalizes greetings using stored memories and entities.",
+  "eval_type": "returning_greeting",
+  "cases": [
+    {
+      "id": "greeting-engineer-launch",
+      "persona": "Software engineer preparing for a product launch",
+      "seed_memories": [
+        {"content": "User's name is Marcus Chen", "type": "fact", "confidence": 0.95},
+        {"content": "Marcus is a senior software engineer at TechFlow", "type": "fact", "confidence": 0.9},
+        {"content": "Marcus is preparing for the v2.0 product launch scheduled for next Friday", "type": "fact", "confidence": 0.85},
+        {"content": "Marcus prefers to review deployment checklists the day before launches", "type": "preference", "confidence": 0.8},
+        {"content": "Marcus has been stressed about the load testing results showing 15% higher latency than target", "type": "note", "confidence": 0.8},
+        {"content": "Marcus drinks black coffee, no sugar", "type": "preference", "confidence": 0.7}
+      ],
+      "seed_entities": [
+        {"name": "TechFlow", "type": "organization", "description": "Marcus's employer, a B2B SaaS company"},
+        {"name": "v2.0 Launch", "type": "project", "description": "Upcoming product launch Marcus is preparing for"}
+      ],
+      "rubric": "Greeting should reference Marcus by name and mention the upcoming v2.0 launch. Should proactively offer help with launch prep (deployment checklist, load testing). Should feel like a butler who knows the household's current priorities. Must NOT hallucinate details not in the seeded memories.",
+      "expected_references": ["Marcus", "launch", "v2.0"],
+      "tags": ["engineer", "launch-prep"]
+    },
+    {
+      "id": "greeting-student-exams",
+      "persona": "Graduate student in exam period",
+      "seed_memories": [
+        {"content": "User's name is Priya Sharma", "type": "fact", "confidence": 0.95},
+        {"content": "Priya is a second-year PhD student in computational biology at MIT", "type": "fact", "confidence": 0.9},
+        {"content": "Priya has qualifying exams coming up in two weeks", "type": "fact", "confidence": 0.85},
+        {"content": "Priya prefers studying in 90-minute focused blocks with 15-minute breaks", "type": "preference", "confidence": 0.8},
+        {"content": "Priya is working on a paper about protein folding prediction models", "type": "fact", "confidence": 0.85},
+        {"content": "Priya mentioned feeling overwhelmed by balancing the paper deadline and exam prep", "type": "note", "confidence": 0.75}
+      ],
+      "seed_entities": [
+        {"name": "MIT", "type": "organization", "description": "Priya's university"},
+        {"name": "Protein Folding Paper", "type": "project", "description": "Research paper Priya is writing"}
+      ],
+      "rubric": "Greeting should reference Priya by name and acknowledge the exam prep or paper work. Should offer practical help (study scheduling, paper progress tracking). Should be encouraging without being patronizing. Must NOT invent exam dates or paper details not in memories.",
+      "expected_references": ["Priya", "exam", "paper"],
+      "tags": ["student", "academic"]
+    },
+    {
+      "id": "greeting-freelancer-clients",
+      "persona": "Freelance designer juggling multiple clients",
+      "seed_memories": [
+        {"content": "User's name is Jordan Rivera", "type": "fact", "confidence": 0.95},
+        {"content": "Jordan is a freelance UX designer based in Austin", "type": "fact", "confidence": 0.9},
+        {"content": "Jordan is currently working on three client projects simultaneously", "type": "fact", "confidence": 0.85},
+        {"content": "The Meridian Health project has a wireframe review meeting this week", "type": "fact", "confidence": 0.8},
+        {"content": "Jordan prefers to batch client communications on Tuesday and Thursday mornings", "type": "preference", "confidence": 0.8},
+        {"content": "Jordan is considering raising freelance rates next quarter", "type": "decision", "confidence": 0.7}
+      ],
+      "seed_entities": [
+        {"name": "Meridian Health", "type": "organization", "description": "Jordan's client with upcoming wireframe review"},
+        {"name": "Austin", "type": "concept", "description": "Jordan's city of residence"}
+      ],
+      "rubric": "Greeting should reference Jordan by name and mention current workload or the Meridian Health review. Should offer help with client management or scheduling. Should acknowledge the multi-project juggle without adding stress. Must NOT hallucinate project details.",
+      "expected_references": ["Jordan", "Meridian"],
+      "tags": ["freelancer", "design"]
+    },
+    {
+      "id": "greeting-executive-board",
+      "persona": "Startup CEO preparing for board meeting",
+      "seed_memories": [
+        {"content": "User's name is David Park", "type": "fact", "confidence": 0.95},
+        {"content": "David is CEO of Luminary AI, a 45-person startup", "type": "fact", "confidence": 0.9},
+        {"content": "David has a board meeting scheduled for Thursday", "type": "fact", "confidence": 0.85},
+        {"content": "Q4 revenue was $1.2M, up 30% from Q3", "type": "fact", "confidence": 0.85},
+        {"content": "David is concerned about the engineering team's velocity dropping after two senior departures", "type": "note", "confidence": 0.8},
+        {"content": "David prefers board deck reviews to be done at least 48 hours before the meeting", "type": "preference", "confidence": 0.8}
+      ],
+      "seed_entities": [
+        {"name": "Luminary AI", "type": "organization", "description": "David's startup"},
+        {"name": "Board Meeting", "type": "project", "description": "Upcoming board meeting on Thursday"}
+      ],
+      "rubric": "Greeting should reference David by name and the upcoming board meeting. Should proactively offer help with board prep (deck review, talking points, metric summaries). Should be executive-appropriate in tone — efficient and substantive. Must NOT hallucinate board member names or financials not in memories.",
+      "expected_references": ["David", "board"],
+      "tags": ["executive", "board-prep"]
+    },
+    {
+      "id": "greeting-author-deadline",
+      "persona": "Author working against a manuscript deadline",
+      "seed_memories": [
+        {"content": "User's name is Elena Vasquez", "type": "fact", "confidence": 0.95},
+        {"content": "Elena is writing a science fiction novel about generation ships", "type": "fact", "confidence": 0.9},
+        {"content": "Elena's manuscript deadline with her publisher is March 15th", "type": "fact", "confidence": 0.85},
+        {"content": "Elena is currently on chapter 18 of approximately 24 planned chapters", "type": "fact", "confidence": 0.8},
+        {"content": "Elena writes best in the early morning between 5am and 9am", "type": "preference", "confidence": 0.85},
+        {"content": "Elena mentioned struggling with the second act resolution in her last session", "type": "note", "confidence": 0.75}
+      ],
+      "seed_entities": [
+        {"name": "Generation Ships Novel", "type": "project", "description": "Elena's science fiction novel in progress"}
+      ],
+      "rubric": "Greeting should reference Elena by name and the novel progress or deadline. Should offer practical writing support (word count tracking, plot point discussion, schedule management). Should be encouraging about the progress (18/24 chapters) without being patronizing. Must NOT invent plot details or publisher names.",
+      "expected_references": ["Elena", "novel", "chapter"],
+      "tags": ["author", "creative"]
+    }
+  ]
+}

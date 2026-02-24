@@ -12,6 +12,13 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from eval.alfred_models import (
+    MemoryInformedGoldenDataset,
+    MultiCapGoldenDataset,
+    ReturningGreetingGoldenDataset,
+    RoutingGoldenDataset,
+    ToneGoldenDataset,
+)
 from eval.models import (
     GoldenDataset,
     GraphExtractionGoldenDataset,
@@ -675,3 +682,121 @@ def load_onboarding_dataset(path: str | Path) -> OnboardingGoldenDataset:
         raise DatasetError(f"Onboarding dataset validation failed:\n{errors}")
 
     return dataset
+
+
+# ============================================================
+# Alfred Eval Suite — Dataset Detection & Loading
+# ============================================================
+
+
+def _detect_eval_type(path: str | Path) -> str | None:
+    """Detect Alfred eval type from JSON eval_type field or filename.
+
+    Returns the eval_type string or None if not an Alfred eval.
+    """
+    path = Path(path)
+
+    # Check content for eval_type field (definitive)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        eval_type = data.get("eval_type")
+        if eval_type in (
+            "tone", "returning_greeting", "routing",
+            "memory_informed", "multi_cap",
+        ):
+            return eval_type
+    except (json.JSONDecodeError, OSError):
+        pass
+
+    # Filename heuristics
+    name = path.name.lower()
+    if "tone" in name:
+        return "tone"
+    if "returning_greeting" in name:
+        return "returning_greeting"
+    if "routing" in name:
+        return "routing"
+    if "memory_informed" in name:
+        return "memory_informed"
+    if "multi_cap" in name:
+        return "multi_cap"
+
+    return None
+
+
+def is_tone_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a tone/personality evaluation dataset."""
+    return _detect_eval_type(path) == "tone"
+
+
+def is_returning_greeting_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a returning user greeting evaluation dataset."""
+    return _detect_eval_type(path) == "returning_greeting"
+
+
+def is_routing_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a routing evaluation dataset."""
+    return _detect_eval_type(path) == "routing"
+
+
+def is_memory_informed_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a memory-informed evaluation dataset."""
+    return _detect_eval_type(path) == "memory_informed"
+
+
+def is_multi_cap_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a multi-capability evaluation dataset."""
+    return _detect_eval_type(path) == "multi_cap"
+
+
+def _load_alfred_dataset(path: str | Path, model_class: type, label: str):
+    """Generic loader for Alfred eval datasets."""
+    path = Path(path)
+
+    if not path.exists():
+        raise DatasetError(f"{label} dataset file not found: {path}")
+    if not path.is_file():
+        raise DatasetError(f"{label} dataset path is not a file: {path}")
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise DatasetError(f"Invalid JSON in {label} dataset file: {e}")
+    except OSError as e:
+        raise DatasetError(f"Failed to read {label} dataset file: {e}")
+
+    if "cases" not in data:
+        raise DatasetError(f"{label} dataset missing required field: 'cases'")
+
+    try:
+        return model_class.model_validate(data)
+    except ValidationError as e:
+        errors = _format_validation_errors(e)
+        raise DatasetError(f"{label} dataset validation failed:\n{errors}")
+
+
+def load_tone_dataset(path: str | Path) -> ToneGoldenDataset:
+    """Load and validate a tone/personality evaluation dataset."""
+    return _load_alfred_dataset(path, ToneGoldenDataset, "Tone")
+
+
+def load_returning_greeting_dataset(path: str | Path) -> ReturningGreetingGoldenDataset:
+    """Load and validate a returning user greeting evaluation dataset."""
+    return _load_alfred_dataset(path, ReturningGreetingGoldenDataset, "Returning greeting")
+
+
+def load_routing_dataset(path: str | Path) -> RoutingGoldenDataset:
+    """Load and validate a routing evaluation dataset."""
+    return _load_alfred_dataset(path, RoutingGoldenDataset, "Routing")
+
+
+def load_memory_informed_dataset(path: str | Path) -> MemoryInformedGoldenDataset:
+    """Load and validate a memory-informed evaluation dataset."""
+    return _load_alfred_dataset(path, MemoryInformedGoldenDataset, "Memory-informed")
+
+
+def load_multi_cap_dataset(path: str | Path) -> MultiCapGoldenDataset:
+    """Load and validate a multi-capability evaluation dataset."""
+    return _load_alfred_dataset(path, MultiCapGoldenDataset, "Multi-capability")

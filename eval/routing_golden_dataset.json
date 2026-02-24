@@ -1,0 +1,67 @@
+{
+  "version": "1.0.0",
+  "description": "Orchestrator Routing evaluation: Tests whether the orchestrator correctly delegates to specialist agents or handles directly.",
+  "eval_type": "routing",
+  "cases": [
+    {
+      "id": "route-direct-answer",
+      "user_prompt": "What's the capital of France?",
+      "expected_delegations": [],
+      "rubric": "Response should be concise, correct, and directly answer the factual question without unnecessary elaboration.",
+      "tags": ["direct", "factual"]
+    },
+    {
+      "id": "route-weather",
+      "user_prompt": "What's the weather going to be like in San Francisco tomorrow?",
+      "expected_delegations": ["ask_weather_agent"],
+      "rubric": "Response should include specific weather information for San Francisco (temperature, conditions). Should be concise and actionable.",
+      "tags": ["weather", "delegation"]
+    },
+    {
+      "id": "route-memory-save",
+      "user_prompt": "Remember that my favorite programming language is Rust and I prefer dark mode in all my editors.",
+      "expected_delegations": ["ask_memory_agent"],
+      "rubric": "Response should confirm that both preferences (Rust and dark mode) were noted. Should be concise and natural, not robotic.",
+      "tags": ["memory", "save", "delegation"]
+    },
+    {
+      "id": "route-knowledge-extraction",
+      "user_prompt": "I just started working with Sarah Chen on the Phoenix project. She's the lead designer and reports to VP of Product Mike Torres.",
+      "expected_delegations": ["ask_knowledge_agent"],
+      "rubric": "Response should acknowledge the information about Sarah Chen, Phoenix project, and Mike Torres naturally. Should confirm the details were noted without being overly verbose.",
+      "tags": ["knowledge", "extraction", "delegation"]
+    },
+    {
+      "id": "route-conversational",
+      "user_prompt": "How are you doing today?",
+      "expected_delegations": [],
+      "rubric": "Response should be warm, conversational, and brief. Should feel natural and not robotic.",
+      "tags": ["direct", "conversational"]
+    },
+    {
+      "id": "route-memory-recall",
+      "user_prompt": "What do you remember about my work projects?",
+      "expected_delegations": ["ask_memory_agent"],
+      "seed_memories": [
+        {"content": "User works on the Horizon project, a cloud migration initiative", "type": "fact", "confidence": 0.9},
+        {"content": "User is also involved in the DataStream analytics platform", "type": "fact", "confidence": 0.85}
+      ],
+      "rubric": "Response should present any recalled project information naturally. Must not fabricate project details. If no memories found, should say so honestly.",
+      "tags": ["memory", "recall", "delegation"]
+    },
+    {
+      "id": "route-complex-question",
+      "user_prompt": "Can you explain the trade-offs between microservices and monolithic architecture?",
+      "expected_delegations": [],
+      "rubric": "Response should be substantive, well-structured, and cover key trade-offs between the two architectures.",
+      "tags": ["direct", "technical"]
+    },
+    {
+      "id": "route-weather-with-context",
+      "user_prompt": "I'm planning an outdoor barbecue this weekend in Denver. Should I be worried about rain?",
+      "expected_delegations": ["ask_weather_agent"],
+      "rubric": "Response should include Denver weather data relevant to the weekend barbecue and provide practical advice about rain risk.",
+      "tags": ["weather", "indirect", "delegation"]
+    }
+  ]
+}

@@ -23,25 +23,45 @@ from eval.runner import (
     EvaluationResult,
     GraphExtractionEvaluationResult,
     MemoryEvaluationResult,
+    MemoryInformedEvaluationResult,
     MemoryWriteEvaluationResult,
+    MultiCapEvaluationResult,
     OnboardingEvaluationResult,
+    ReturningGreetingEvaluationResult,
+    RoutingEvaluationResult,
+    ToneEvaluationResult,
     WeatherEvaluationResult,
     format_graph_extraction_summary,
+    format_memory_informed_summary,
     format_memory_summary,
     format_memory_write_summary,
+    format_multi_cap_summary,
     format_onboarding_summary,
+    format_returning_greeting_summary,
+    format_routing_summary,
     format_summary,
+    format_tone_summary,
     format_weather_summary,
     is_graph_extraction_dataset,
     is_memory_dataset,
+    is_memory_informed_dataset,
     is_memory_write_dataset,
+    is_multi_cap_dataset,
     is_onboarding_dataset,
+    is_returning_greeting_dataset,
+    is_routing_dataset,
+    is_tone_dataset,
     is_weather_dataset,
     run_evaluation,
     run_graph_evaluation,
     run_memory_evaluation,
+    run_memory_informed_evaluation,
     run_memory_write_evaluation,
+    run_multi_cap_evaluation,
     run_onboarding_evaluation,
+    run_returning_greeting_evaluation,
+    run_routing_evaluation,
+    run_tone_evaluation,
     run_weather_evaluation,
 )
 
@@ -196,11 +216,18 @@ def main() -> int:
         return 2
 
     try:
-        # Check dataset type
+        # Check dataset type (order matters — more specific checks first)
+        # Alfred evals use eval_type field for definitive detection, so check them
+        # before onboarding which uses heuristic field matching (user_turns + persona).
         is_graph_ext = is_graph_extraction_dataset(args.dataset)
         is_memory_write = is_memory_write_dataset(args.dataset)
-        is_onboarding = is_onboarding_dataset(args.dataset)
-        is_memory = is_memory_dataset(args.dataset) and not is_memory_write
+        is_ret_greeting = is_returning_greeting_dataset(args.dataset)
+        is_mem_informed = is_memory_informed_dataset(args.dataset)
+        is_tone = is_tone_dataset(args.dataset)
+        is_routing = is_routing_dataset(args.dataset)
+        is_mcap = is_multi_cap_dataset(args.dataset)
+        is_onboarding = is_onboarding_dataset(args.dataset) and not is_ret_greeting and not is_mem_informed and not is_mcap
+        is_memory = is_memory_dataset(args.dataset) and not is_memory_write and not is_mem_informed
         is_weather = is_weather_dataset(args.dataset)
 
         if is_graph_ext:
@@ -295,6 +322,76 @@ def main() -> int:
                 return 0
             else:
                 return 1
+
+        elif is_ret_greeting:
+            if args.dry_run:
+                print("Validating returning greeting dataset (dry run)...")
+                result = run_returning_greeting_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=True)
+                print(f"Returning greeting dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+            print("Running returning greeting evaluation...")
+            if args.verbose:
+                print()
+            result = run_returning_greeting_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=False)
+            print(format_returning_greeting_summary(result))
+            return 0 if result.metrics.overall_passed else 1
+
+        elif is_mem_informed:
+            if args.dry_run:
+                print("Validating memory-informed dataset (dry run)...")
+                result = run_memory_informed_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=True)
+                print(f"Memory-informed dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+            print("Running memory-informed evaluation...")
+            if args.verbose:
+                print()
+            result = run_memory_informed_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=False)
+            print(format_memory_informed_summary(result))
+            return 0 if result.metrics.overall_passed else 1
+
+        elif is_tone:
+            if args.dry_run:
+                print("Validating tone dataset (dry run)...")
+                result = run_tone_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=True)
+                print(f"Tone dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+            print("Running tone & personality evaluation...")
+            if args.verbose:
+                print()
+            result = run_tone_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=False)
+            print(format_tone_summary(result))
+            return 0 if result.metrics.overall_passed else 1
+
+        elif is_routing:
+            if args.dry_run:
+                print("Validating routing dataset (dry run)...")
+                result = run_routing_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=True)
+                print(f"Routing dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+            print("Running orchestrator routing evaluation...")
+            if args.verbose:
+                print()
+            result = run_routing_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=False)
+            print(format_routing_summary(result))
+            return 0 if result.metrics.overall_passed else 1
+
+        elif is_mcap:
+            if args.dry_run:
+                print("Validating multi-capability dataset (dry run)...")
+                result = run_multi_cap_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=True)
+                print(f"Multi-capability dataset valid: {result.metrics.total_cases} cases")
+                print("   Run without --dry-run to execute evaluation.")
+                return 0
+            print("Running multi-capability evaluation...")
+            if args.verbose:
+                print()
+            result = run_multi_cap_evaluation(dataset_path=args.dataset, verbose=args.verbose, dry_run=False)
+            print(format_multi_cap_summary(result))
+            return 0 if result.metrics.overall_passed else 1
 
         elif is_weather:
             # Weather evaluation flow
