@@ -289,23 +289,39 @@ Migrate system prompts from hardcoded string constants to MLflow's Prompt Regist
 
 ---
 
-### Feature 013 – Eval Dashboard & Regression Pipeline
+### Feature 013 – Eval Dashboard & Regression Pipeline ✅
 
 > "I can see at a glance whether the agent is getting better or worse, and prompt changes are validated before going live."
 
-Aggregate eval results across runs, surface quality trends, detect regressions linked to prompt version changes, and gate prompt promotion on eval pass rates.
+CLI tools for eval trend tracking, regression detection, prompt promotion gating, eval suite execution, and alias rollback with MLflow audit logging.
 
-- **Trend tracking**: Quality pass rates per eval over time, with prompt version annotations on the timeline
-- **Regression detection**: Alert when eval metrics drop after a prompt version change; link quality changes to specific prompt version transitions
-- **Automated eval runs**: New prompt version registered → run the full eval suite automatically
-- **Promotion gate**: All 11 Alfred evals must pass >=80% before alias promotion from `@experiment` to `@production`
-- **Rollback**: One-command alias revert to previous prompt version on regression
-- **Dashboard**: MLflow UI experiment views + custom summary reports aggregating all eval types
+- **Trend tracking**: `pipeline trend` — pass rates per eval over time, with prompt version annotations on the timeline
+- **Regression detection**: `pipeline check` — compare latest run against baseline, flag REGRESSION/WARNING/IMPROVED/PASS verdicts per eval type
+- **Eval suite runner**: `pipeline run-evals` — configurable subsets (core: 5, full: 19) with progress tracking and automatic regression check
+- **Promotion gate**: `pipeline promote` — all eval types must pass >=80% before alias promotion; audit tags logged on justifying MLflow runs
+- **Rollback**: `pipeline rollback` — single-command alias revert to previous prompt version with audit logging
 - **Dependencies**: Feature 012 (prompt versioning provides the lineage data)
 
 ---
 
-### Feature 014 – Voice Interaction
+### Feature 014 – Eval Dashboard UI
+
+> "I can manage eval trends, regressions, and prompt promotions from the admin panel instead of the command line."
+
+Web frontend for the eval pipeline (Feature 013), giving admin users a visual dashboard for monitoring agent quality and managing prompt lifecycle — replacing the need to use MLflow UI or CLI directly.
+
+- **Trend dashboard**: Charts showing pass rate trends per eval type over time, annotated with prompt version changes
+- **Regression reports**: Table view of regression check results with verdict badges, delta values, and changed prompts
+- **Promotion gate UI**: Visual gate check showing per-eval-type pass/fail status, promote button with confirmation, force-promote with warning
+- **Rollback UI**: Current version display, one-click rollback with reason input, audit history
+- **Eval runner**: Trigger core or full eval suites from the browser with live progress updates
+- **API endpoints**: New FastAPI routes exposing pipeline functions (trend data, regression reports, promotion/rollback actions)
+- **Access control**: Admin-only pages using existing `require_admin` dependency
+- **Dependencies**: Feature 013 (pipeline CLI provides all business logic), Feature 008 (frontend infrastructure)
+
+---
+
+### Feature 015 – Voice Interaction
 
 > "I can talk to the assistant and hear it respond."
 
@@ -320,7 +336,7 @@ Phased: TTS-only output first, then two-way voice with speech-to-text input and 
 
 ---
 
-### Feature 015 – Edge Client (Raspberry Pi)
+### Feature 016 – Edge Client (Raspberry Pi)
 
 > "I can interact with the assistant from a Raspberry Pi."
 
@@ -332,11 +348,11 @@ Text-based interface (CLI / button / simple display), connection to existing bac
 - **Local state**: Minimal — last N messages cached for display continuity, no local database
 - **Hardware targets**: Raspberry Pi 4/5 with network access
 - **Deployment**: Docker container or systemd service
-- **Open questions**: Display hardware (e-ink, HDMI, none), audio integration with Feature 014
+- **Open questions**: Display hardware (e-ink, HDMI, none), audio integration with Feature 015
 
 ---
 
-### Feature 016 – Google Integrations (Read-Only)
+### Feature 017 – Google Integrations (Read-Only)
 
 > "The assistant can tell me about my emails and calendar events."
 
