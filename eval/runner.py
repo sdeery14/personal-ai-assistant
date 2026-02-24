@@ -106,6 +106,19 @@ from eval.onboarding_models import (
 )
 
 
+def _log_prompt_versions():
+    """Log currently active prompt versions as MLflow run params (best-effort)."""
+    try:
+        from src.services.prompt_service import get_active_prompt_versions
+        versions = get_active_prompt_versions()
+        if versions:
+            mlflow.log_params(
+                {f"prompt.{name}": f"v{version}" for name, version in versions.items()}
+            )
+    except Exception:
+        pass
+
+
 @dataclass
 class EvaluationResult:
     """Complete results from an evaluation run."""
@@ -287,6 +300,7 @@ def run_evaluation(
                 "mlflow_dataset_id": mlflow_dataset.dataset_id,
             }
         )
+        _log_prompt_versions()
 
         # ============================================================
         # PHASE 1: Manual prediction loop (autolog disabled)
@@ -817,6 +831,7 @@ def run_memory_evaluation(
                 "mlflow_dataset_id": mlflow_dataset.dataset_id,
             }
         )
+        _log_prompt_versions()
 
         for case in dataset.cases:
             try:
@@ -1168,6 +1183,7 @@ def run_memory_write_evaluation(
             "recall_threshold": 0.70,
             "mlflow_dataset_id": mlflow_dataset.dataset_id,
         })
+        _log_prompt_versions()
 
         # ============================================================
         # PHASE 1: Manual prediction loop (autolog disabled)
@@ -1641,6 +1657,7 @@ def run_weather_evaluation(
                 "mlflow_dataset_id": mlflow_dataset.dataset_id,
             }
         )
+        _log_prompt_versions()
 
         # ============================================================
         # PHASE 1: Manual prediction loop (autolog disabled)
@@ -2067,6 +2084,7 @@ def run_graph_evaluation(
             "entity_recall_threshold": 0.60,
             "mlflow_dataset_id": mlflow_dataset.dataset_id,
         })
+        _log_prompt_versions()
 
         # ============================================================
         # PHASE 1: Manual prediction loop (autolog disabled)
@@ -2501,6 +2519,7 @@ def run_onboarding_evaluation(
             "entity_recall_threshold": 0.50,
             "mlflow_dataset_id": mlflow_dataset.dataset_id,
         })
+        _log_prompt_versions()
 
         # ============================================================
         # PHASE 1: Multi-turn conversation loop (autolog disabled)
@@ -3044,6 +3063,7 @@ def run_tone_evaluation(
     with mlflow.start_run() as run:
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "tone", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
+        _log_prompt_versions()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3161,6 +3181,7 @@ def run_returning_greeting_evaluation(
     with mlflow.start_run() as run:
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "returning_greeting", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
+        _log_prompt_versions()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3282,6 +3303,7 @@ def run_routing_evaluation(
     with mlflow.start_run() as run:
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "routing", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "routing_accuracy_threshold": 0.80, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
+        _log_prompt_versions()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3416,6 +3438,7 @@ def run_memory_informed_evaluation(
         run_id = run.info.run_id
         run_prefix = run_id[:8]
         mlflow.log_params({"dataset_type": "memory_informed", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
+        _log_prompt_versions()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3585,6 +3608,7 @@ def run_multi_cap_evaluation(
         run_id = run.info.run_id
         run_prefix = run_id[:8]
         mlflow.log_params({"dataset_type": "multi_cap", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
+        _log_prompt_versions()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3842,6 +3866,7 @@ def run_notification_judgment_evaluation(
     with mlflow.start_run() as run:
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "notification_judgment", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "notification_accuracy_threshold": 0.80, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
+        _log_prompt_versions()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3988,6 +4013,7 @@ def run_error_recovery_evaluation(
     with mlflow.start_run() as run:
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "error_recovery", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
+        _log_prompt_versions()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -4108,6 +4134,7 @@ def run_schedule_cron_evaluation(
     with mlflow.start_run() as run:
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "schedule_cron", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "cron_accuracy_threshold": 0.80, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
+        _log_prompt_versions()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -4255,6 +4282,7 @@ def run_knowledge_connections_evaluation(
     with mlflow.start_run() as run:
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "knowledge_connections", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
+        _log_prompt_versions()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -4382,6 +4410,7 @@ def run_contradiction_handling_evaluation(
         run_id = run.info.run_id
         run_prefix = run_id[:8]
         mlflow.log_params({"dataset_type": "contradiction_handling", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
+        _log_prompt_versions()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -4547,6 +4576,7 @@ def run_long_conversation_evaluation(
         run_id = run.info.run_id
         run_prefix = run_id[:8]
         mlflow.log_params({"dataset_type": "long_conversation", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
+        _log_prompt_versions()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)

@@ -166,6 +166,13 @@ MLflow UI:
     )
 
     parser.add_argument(
+        "--prompt-alias",
+        type=str,
+        default=None,
+        help="Prompt registry alias to load prompts from (default: PROMPT_ALIAS env var or 'production')",
+    )
+
+    parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -200,6 +207,11 @@ def main() -> int:
         )
 
     args = parse_args()
+
+    # Apply --prompt-alias to environment before loading settings
+    if args.prompt_alias:
+        import os
+        os.environ["PROMPT_ALIAS"] = args.prompt_alias
 
     # Reset settings to pick up latest env vars
     reset_settings()

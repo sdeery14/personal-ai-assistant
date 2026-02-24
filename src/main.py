@@ -99,6 +99,18 @@ async def lifespan(app: FastAPI):
             note="Continuing without scheduler - scheduled tasks will not execute",
         )
 
+    # Seed prompt registry (Feature 012)
+    try:
+        from src.services.prompt_service import seed_prompts
+        seed_results = seed_prompts()
+        logger.info("prompt_registry_initialized", seeded=len(seed_results))
+    except Exception as e:
+        logger.warning(
+            "prompt_registry_initialization_failed",
+            error=str(e),
+            note="Continuing without prompt registry - bundled defaults will be used",
+        )
+
     logger.info(
         "application_started",
         model=settings.openai_model,

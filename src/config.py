@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     notification_smtp_password: str = ""
     notification_smtp_use_tls: bool = True
 
+    # Prompt Registry Configuration (Feature 012)
+    prompt_cache_ttl_seconds: int = 300  # Cache TTL for prompt registry lookups
+    prompt_alias: str = "production"  # Default alias to load prompts from
+
     # Proactive Assistant Configuration (Feature 011)
     scheduler_poll_interval_seconds: int = 30  # How often the scheduler checks for due tasks
     scheduler_max_concurrent_tasks: int = 5  # Max tasks executing simultaneously
