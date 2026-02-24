@@ -28,38 +28,56 @@ from agents.exceptions import (
     OutputGuardrailTripwireTriggered,
 )
 
-from eval.assistant import cleanup_eval_data, cleanup_onboarding_eval_data, extract_tool_calls, invoke_onboarding_conversation, invoke_production_agent, invoke_returning_user_agent, invoke_returning_user_conversation, query_saved_onboarding_data, seed_eval_data
+from eval.assistant import cleanup_eval_data, cleanup_onboarding_eval_data, ensure_eval_user, extract_tool_calls, get_eval_user_uuid, invoke_onboarding_conversation, invoke_production_agent, invoke_returning_user_agent, invoke_returning_user_conversation, query_notifications, query_saved_onboarding_data, query_scheduled_tasks, seed_eval_data
 from eval.config import EvalSettings, get_eval_settings
-from eval.dataset import DatasetError, load_dataset, load_graph_extraction_dataset, load_memory_dataset, load_memory_informed_dataset, load_memory_write_dataset, load_multi_cap_dataset, load_onboarding_dataset, load_returning_greeting_dataset, load_routing_dataset, load_tone_dataset, load_weather_dataset
+from eval.dataset import DatasetError, load_contradiction_handling_dataset, load_dataset, load_error_recovery_dataset, load_graph_extraction_dataset, load_knowledge_connections_dataset, load_long_conversation_dataset, load_memory_dataset, load_memory_informed_dataset, load_memory_write_dataset, load_multi_cap_dataset, load_notification_judgment_dataset, load_onboarding_dataset, load_returning_greeting_dataset, load_routing_dataset, load_schedule_cron_dataset, load_tone_dataset, load_weather_dataset
 from eval.judge import create_quality_judge, score_to_label, score_to_passed
 from eval.mlflow_datasets import (
     get_experiment_id,
     get_or_create_dataset,
+    prepare_contradiction_handling_records,
+    prepare_error_recovery_records,
     prepare_graph_extraction_records,
+    prepare_knowledge_connections_records,
+    prepare_long_conversation_records,
     prepare_memory_informed_records,
     prepare_memory_retrieval_records,
     prepare_memory_write_records,
     prepare_multi_cap_records,
+    prepare_notification_judgment_records,
     prepare_onboarding_records,
     prepare_quality_records,
     prepare_returning_greeting_records,
     prepare_routing_records,
+    prepare_schedule_cron_records,
     prepare_tone_records,
     prepare_weather_records,
 )
 from eval.memory_judge import MemoryJudge
 from eval.memory_write_judge import MemoryWriteJudge
 from eval.graph_extraction_judge import GraphExtractionJudge
-from eval.alfred_judge import compute_routing_accuracy, create_greeting_judge, create_memory_informed_judge, create_multi_cap_judge, create_routing_quality_judge, create_tone_judge
+from eval.alfred_judge import compute_cron_equivalence, compute_notification_judgment, compute_routing_accuracy, create_contradiction_judge, create_error_recovery_judge, create_greeting_judge, create_knowledge_connections_judge, create_long_conversation_judge, create_memory_informed_judge, create_multi_cap_judge, create_notification_quality_judge, create_routing_quality_judge, create_schedule_quality_judge, create_tone_judge
 from eval.alfred_models import (
+    ContradictionHandlingCaseResult,
+    ContradictionHandlingMetrics,
+    ErrorRecoveryCaseResult,
+    ErrorRecoveryMetrics,
+    KnowledgeConnectionsCaseResult,
+    KnowledgeConnectionsMetrics,
+    LongConversationCaseResult,
+    LongConversationMetrics,
     MemoryInformedCaseResult,
     MemoryInformedMetrics,
     MultiCapCaseResult,
     MultiCapMetrics,
+    NotificationJudgmentCaseResult,
+    NotificationJudgmentMetrics,
     ReturningGreetingCaseResult,
     ReturningGreetingMetrics,
     RoutingCaseResult,
     RoutingMetrics,
+    ScheduleCronCaseResult,
+    ScheduleCronMetrics,
     ToneCaseResult,
     ToneMetrics,
 )
@@ -3691,6 +3709,970 @@ def format_multi_cap_summary(result: MultiCapEvaluationResult) -> str:
         lines.append("MULTI-CAP GATE: PASS")
     else:
         lines.append("MULTI-CAP GATE: FAIL")
+        if m.quality_pass_rate < 0.80:
+            lines.append(f"   Reason: Quality pass rate {m.quality_pass_rate:.1%} < 80%")
+    lines.append("=" * 60)
+    return "\n".join(lines)
+
+
+# ============================================================
+# Tier 2 — Dataclasses & Dataset Detection
+# ============================================================
+
+
+@dataclass
+class NotificationJudgmentEvaluationResult:
+    metrics: NotificationJudgmentMetrics
+    results: list[NotificationJudgmentCaseResult]
+    mlflow_run_id: str | None
+    dataset_version: str
+    error: str | None = None
+
+
+@dataclass
+class ErrorRecoveryEvaluationResult:
+    metrics: ErrorRecoveryMetrics
+    results: list[ErrorRecoveryCaseResult]
+    mlflow_run_id: str | None
+    dataset_version: str
+    error: str | None = None
+
+
+@dataclass
+class ScheduleCronEvaluationResult:
+    metrics: ScheduleCronMetrics
+    results: list[ScheduleCronCaseResult]
+    mlflow_run_id: str | None
+    dataset_version: str
+    error: str | None = None
+
+
+@dataclass
+class KnowledgeConnectionsEvaluationResult:
+    metrics: KnowledgeConnectionsMetrics
+    results: list[KnowledgeConnectionsCaseResult]
+    mlflow_run_id: str | None
+    dataset_version: str
+    error: str | None = None
+
+
+@dataclass
+class ContradictionHandlingEvaluationResult:
+    metrics: ContradictionHandlingMetrics
+    results: list[ContradictionHandlingCaseResult]
+    mlflow_run_id: str | None
+    dataset_version: str
+    error: str | None = None
+
+
+@dataclass
+class LongConversationEvaluationResult:
+    metrics: LongConversationMetrics
+    results: list[LongConversationCaseResult]
+    mlflow_run_id: str | None
+    dataset_version: str
+    error: str | None = None
+
+
+def is_notification_judgment_dataset(path: str | Path) -> bool:
+    from eval.dataset import is_notification_judgment_dataset as _is
+    return _is(path)
+
+
+def is_error_recovery_dataset(path: str | Path) -> bool:
+    from eval.dataset import is_error_recovery_dataset as _is
+    return _is(path)
+
+
+def is_schedule_cron_dataset(path: str | Path) -> bool:
+    from eval.dataset import is_schedule_cron_dataset as _is
+    return _is(path)
+
+
+def is_knowledge_connections_dataset(path: str | Path) -> bool:
+    from eval.dataset import is_knowledge_connections_dataset as _is
+    return _is(path)
+
+
+def is_contradiction_handling_dataset(path: str | Path) -> bool:
+    from eval.dataset import is_contradiction_handling_dataset as _is
+    return _is(path)
+
+
+def is_long_conversation_dataset(path: str | Path) -> bool:
+    from eval.dataset import is_long_conversation_dataset as _is
+    return _is(path)
+
+
+# ============================================================
+# B7: Notification Judgment — Runner
+# ============================================================
+
+
+def run_notification_judgment_evaluation(
+    dataset_path: str | Path = "eval/notification_judgment_golden_dataset.json",
+    verbose: bool = False,
+    dry_run: bool = False,
+) -> NotificationJudgmentEvaluationResult:
+    """Run notification judgment evaluation (two-phase with DB query)."""
+    settings = get_eval_settings()
+    dataset = load_notification_judgment_dataset(dataset_path)
+
+    if verbose:
+        print(f"Loaded notification judgment dataset v{dataset.version} with {len(dataset.cases)} cases")
+
+    if dry_run:
+        return NotificationJudgmentEvaluationResult(
+            metrics=NotificationJudgmentMetrics(total_cases=len(dataset.cases), notification_accuracy=0.0, quality_pass_rate=0.0, error_cases=0, overall_passed=False),
+            results=[], mlflow_run_id=None, dataset_version=dataset.version,
+        )
+
+    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+    mlflow.set_experiment(settings.mlflow_experiment_name + "-notification-judgment")
+    experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-notification-judgment")
+    mlflow_records = prepare_notification_judgment_records(dataset)
+    mlflow_dataset = get_or_create_dataset(dataset_path=dataset_path, version=dataset.version, experiment_id=experiment_id, records=mlflow_records)
+
+    os.environ["MLFLOW_GENAI_EVAL_MAX_WORKERS"] = "1"
+    api_key = settings.openai_api_key
+    actual_model = settings.openai_model
+    judge_model = settings.judge_model
+    results: list[NotificationJudgmentCaseResult] = []
+
+    with mlflow.start_run() as run:
+        run_id = run.info.run_id
+        mlflow.log_params({"dataset_type": "notification_judgment", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "notification_accuracy_threshold": 0.80, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
+
+        # Phase 1
+        mlflow.openai.autolog(disable=True)
+        case_predictions: list[tuple] = []
+        if verbose:
+            print("Phase 1: Running agent predictions and querying notifications...")
+        start_time = time.perf_counter()
+
+        for case in dataset.cases:
+            eval_user_id = get_eval_user_uuid(f"eval-notif-{case.id}")
+            case_start = time.perf_counter()
+            try:
+                cleanup_eval_data(eval_user_id)
+                ensure_eval_user(eval_user_id)
+                run_result = invoke_returning_user_agent(prompt=case.user_prompt, user_id=eval_user_id, model=actual_model, api_key=api_key)
+                response = run_result.final_output
+                notifications = query_notifications(eval_user_id)
+                scheduled_tasks = query_scheduled_tasks(eval_user_id)
+                # Count either notifications or scheduled tasks as "proactive action taken"
+                proactive_action_count = len(notifications) + len(scheduled_tasks)
+                notification_created = proactive_action_count > 0
+            except Exception as e:
+                response = f"[ERROR: {type(e).__name__}: {str(e)}]"
+                notifications = []
+                notification_created = False
+                proactive_action_count = 0
+            latency_ms = int((time.perf_counter() - case_start) * 1000)
+
+            notification_correct = None
+            if case.expected_notification is not None:
+                # Check proactive action: either a notification or a scheduled task counts
+                notification_correct = compute_notification_judgment(
+                    actual_notifications=notifications,
+                    expected_notification=case.expected_notification,
+                    actual_scheduled_tasks_count=proactive_action_count - len(notifications),
+                )
+
+            case_predictions.append((case, response, notification_created, notification_correct, latency_ms))
+            if verbose:
+                print(f"  {case.id}: notif={'YES' if notification_created else 'NO'} correct={notification_correct} ({latency_ms}ms)")
+
+        # Phase 2
+        mlflow.openai.autolog()
+        if verbose:
+            print("\nPhase 2: Running notification quality judge...")
+        quality_judge = create_notification_quality_judge(judge_model)
+        eval_data = [{"inputs": {"question": c.user_prompt}, "outputs": {"response": r}, "expectations": {"rubric": c.rubric}} for c, r, _, _, _ in case_predictions]
+        eval_results = genai_evaluate(data=eval_data, scorers=[quality_judge])
+        eval_duration_ms = int((time.perf_counter() - start_time) * 1000)
+
+        try:
+            results_df = eval_results.tables["eval_results_table"]
+        except (KeyError, AttributeError):
+            try:
+                results_df = eval_results.tables["eval_results"]
+            except (KeyError, AttributeError):
+                results_df = pd.DataFrame()
+
+        for idx, (case, response, notification_created, notification_correct, latency_ms) in enumerate(case_predictions):
+            rating = "poor"
+            if idx < len(results_df):
+                row = results_df.iloc[idx]
+                value = row.get("notification_quality/value")
+                if pd.notna(value):
+                    rating = str(value).strip().lower()
+            quality_passed = rating in ("excellent", "good")
+            results.append(NotificationJudgmentCaseResult(case_id=case.id, response=response, notification_created=notification_created, notification_correct=notification_correct, quality_passed=quality_passed, quality_rating=rating, latency_ms=latency_ms))
+            if verbose:
+                print(f"  {case.id}: {rating} ({'PASS' if quality_passed else 'FAIL'}) {latency_ms}ms")
+
+        valid = [r for r in results if r.error is None]
+        error_count = len(results) - len(valid)
+        # For notification accuracy, only count cases with expected_notification set
+        notif_cases = [r for r in valid if r.notification_correct is not None]
+        notification_accuracy = sum(1 for r in notif_cases if r.notification_correct) / len(notif_cases) if notif_cases else 0.0
+        quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
+        overall_passed = notification_accuracy >= 0.80 and quality_pass_rate >= 0.80
+        metrics = NotificationJudgmentMetrics(total_cases=len(dataset.cases), notification_accuracy=notification_accuracy, quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
+        mlflow.log_metrics({"notif_accuracy": notification_accuracy, "notif_quality_pass_rate": quality_pass_rate, "notif_error_cases": error_count, "notif_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
+
+        results_json = [r.model_dump() for r in results]
+        results_path = Path("notification_judgment_eval_results.json")
+        with open(results_path, "w") as f:
+            json.dump(results_json, f, indent=2, default=str)
+        mlflow.log_artifact(str(results_path))
+        results_path.unlink()
+
+    return NotificationJudgmentEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
+
+
+def format_notification_judgment_summary(result: NotificationJudgmentEvaluationResult) -> str:
+    m = result.metrics
+    lines = ["", "=" * 60, "NOTIFICATION JUDGMENT EVALUATION SUMMARY", "=" * 60, f"Dataset Version: {result.dataset_version}", f"MLflow Run ID:   {result.mlflow_run_id or 'N/A'}", "", f"Total Cases:              {m.total_cases}", f"Error Cases:              {m.error_cases}", f"Notification Accuracy:    {m.notification_accuracy:.1%} (threshold: >=80%)", f"Quality Pass Rate:        {m.quality_pass_rate:.1%} (threshold: >=80%)", ""]
+    if m.overall_passed:
+        lines.append("NOTIFICATION GATE: PASS")
+    else:
+        lines.append("NOTIFICATION GATE: FAIL")
+        reasons = []
+        if m.notification_accuracy < 0.80:
+            reasons.append(f"Notification accuracy {m.notification_accuracy:.1%} < 80%")
+        if m.quality_pass_rate < 0.80:
+            reasons.append(f"Quality pass rate {m.quality_pass_rate:.1%} < 80%")
+        if reasons:
+            lines.append(f"   Reasons: {'; '.join(reasons)}")
+    lines.append("=" * 60)
+    return "\n".join(lines)
+
+
+# ============================================================
+# B9: Error Recovery — Runner
+# ============================================================
+
+
+def run_error_recovery_evaluation(
+    dataset_path: str | Path = "eval/error_recovery_golden_dataset.json",
+    verbose: bool = False,
+    dry_run: bool = False,
+) -> ErrorRecoveryEvaluationResult:
+    """Run error recovery evaluation (two-phase, LLM judge only)."""
+    settings = get_eval_settings()
+    dataset = load_error_recovery_dataset(dataset_path)
+
+    if verbose:
+        print(f"Loaded error recovery dataset v{dataset.version} with {len(dataset.cases)} cases")
+
+    if dry_run:
+        return ErrorRecoveryEvaluationResult(
+            metrics=ErrorRecoveryMetrics(total_cases=len(dataset.cases), quality_pass_rate=0.0, error_cases=0, overall_passed=False),
+            results=[], mlflow_run_id=None, dataset_version=dataset.version,
+        )
+
+    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+    mlflow.set_experiment(settings.mlflow_experiment_name + "-error-recovery")
+    experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-error-recovery")
+    mlflow_records = prepare_error_recovery_records(dataset)
+    mlflow_dataset = get_or_create_dataset(dataset_path=dataset_path, version=dataset.version, experiment_id=experiment_id, records=mlflow_records)
+
+    os.environ["MLFLOW_GENAI_EVAL_MAX_WORKERS"] = "1"
+    api_key = settings.openai_api_key
+    actual_model = settings.openai_model
+    judge_model = settings.judge_model
+    results: list[ErrorRecoveryCaseResult] = []
+
+    with mlflow.start_run() as run:
+        run_id = run.info.run_id
+        mlflow.log_params({"dataset_type": "error_recovery", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
+
+        # Phase 1
+        mlflow.openai.autolog(disable=True)
+        case_predictions: list[tuple] = []
+        if verbose:
+            print("Phase 1: Running agent predictions with error scenarios...")
+        start_time = time.perf_counter()
+
+        for case in dataset.cases:
+            eval_user_id = get_eval_user_uuid(f"eval-errrecov-{case.id}")
+            case_start = time.perf_counter()
+            try:
+                cleanup_eval_data(eval_user_id)
+                ensure_eval_user(eval_user_id)
+                run_result = invoke_returning_user_agent(prompt=case.user_prompt, user_id=eval_user_id, model=actual_model, api_key=api_key)
+                response = run_result.final_output
+            except Exception as e:
+                response = f"[ERROR: {type(e).__name__}: {str(e)}]"
+            latency_ms = int((time.perf_counter() - case_start) * 1000)
+            case_predictions.append((case, response, latency_ms))
+            if verbose:
+                print(f"  {case.id}: predicted ({latency_ms}ms)")
+
+        # Phase 2
+        mlflow.openai.autolog()
+        if verbose:
+            print("\nPhase 2: Running error recovery quality judge...")
+        error_judge = create_error_recovery_judge(judge_model)
+        eval_data = [{"inputs": {"question": c.user_prompt}, "outputs": {"response": r}, "expectations": {"rubric": c.scenario}} for c, r, _ in case_predictions]
+        eval_results = genai_evaluate(data=eval_data, scorers=[error_judge])
+        eval_duration_ms = int((time.perf_counter() - start_time) * 1000)
+
+        try:
+            results_df = eval_results.tables["eval_results_table"]
+        except (KeyError, AttributeError):
+            try:
+                results_df = eval_results.tables["eval_results"]
+            except (KeyError, AttributeError):
+                results_df = pd.DataFrame()
+
+        for idx, (case, response, latency_ms) in enumerate(case_predictions):
+            rating = "poor"
+            if idx < len(results_df):
+                row = results_df.iloc[idx]
+                value = row.get("error_recovery_quality/value")
+                if pd.notna(value):
+                    rating = str(value).strip().lower()
+            passed = rating in ("excellent", "good")
+            results.append(ErrorRecoveryCaseResult(case_id=case.id, response=response, quality_passed=passed, quality_rating=rating, latency_ms=latency_ms))
+            if verbose:
+                print(f"  {case.id}: {rating} ({'PASS' if passed else 'FAIL'}) {latency_ms}ms")
+
+        valid = [r for r in results if r.error is None]
+        error_count = len(results) - len(valid)
+        quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
+        overall_passed = quality_pass_rate >= 0.80
+        metrics = ErrorRecoveryMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
+        mlflow.log_metrics({"errrecov_quality_pass_rate": quality_pass_rate, "errrecov_error_cases": error_count, "errrecov_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
+
+        results_json = [r.model_dump() for r in results]
+        results_path = Path("error_recovery_eval_results.json")
+        with open(results_path, "w") as f:
+            json.dump(results_json, f, indent=2, default=str)
+        mlflow.log_artifact(str(results_path))
+        results_path.unlink()
+
+    return ErrorRecoveryEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
+
+
+def format_error_recovery_summary(result: ErrorRecoveryEvaluationResult) -> str:
+    m = result.metrics
+    lines = ["", "=" * 60, "ERROR RECOVERY EVALUATION SUMMARY", "=" * 60, f"Dataset Version: {result.dataset_version}", f"MLflow Run ID:   {result.mlflow_run_id or 'N/A'}", "", f"Total Cases:              {m.total_cases}", f"Error Cases:              {m.error_cases}", f"Quality Pass Rate:        {m.quality_pass_rate:.1%} (threshold: >=80%)", ""]
+    if m.overall_passed:
+        lines.append("ERROR RECOVERY GATE: PASS")
+    else:
+        lines.append("ERROR RECOVERY GATE: FAIL")
+        if m.quality_pass_rate < 0.80:
+            lines.append(f"   Reason: Quality pass rate {m.quality_pass_rate:.1%} < 80%")
+    lines.append("=" * 60)
+    return "\n".join(lines)
+
+
+# ============================================================
+# B6: Schedule Cron Accuracy — Runner
+# ============================================================
+
+
+def run_schedule_cron_evaluation(
+    dataset_path: str | Path = "eval/schedule_cron_golden_dataset.json",
+    verbose: bool = False,
+    dry_run: bool = False,
+) -> ScheduleCronEvaluationResult:
+    """Run schedule cron accuracy evaluation (two-phase with DB query)."""
+    settings = get_eval_settings()
+    dataset = load_schedule_cron_dataset(dataset_path)
+
+    if verbose:
+        print(f"Loaded schedule cron dataset v{dataset.version} with {len(dataset.cases)} cases")
+
+    if dry_run:
+        return ScheduleCronEvaluationResult(
+            metrics=ScheduleCronMetrics(total_cases=len(dataset.cases), cron_accuracy=0.0, quality_pass_rate=0.0, error_cases=0, overall_passed=False),
+            results=[], mlflow_run_id=None, dataset_version=dataset.version,
+        )
+
+    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+    mlflow.set_experiment(settings.mlflow_experiment_name + "-schedule-cron")
+    experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-schedule-cron")
+    mlflow_records = prepare_schedule_cron_records(dataset)
+    mlflow_dataset = get_or_create_dataset(dataset_path=dataset_path, version=dataset.version, experiment_id=experiment_id, records=mlflow_records)
+
+    os.environ["MLFLOW_GENAI_EVAL_MAX_WORKERS"] = "1"
+    api_key = settings.openai_api_key
+    actual_model = settings.openai_model
+    judge_model = settings.judge_model
+    results: list[ScheduleCronCaseResult] = []
+
+    with mlflow.start_run() as run:
+        run_id = run.info.run_id
+        mlflow.log_params({"dataset_type": "schedule_cron", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "cron_accuracy_threshold": 0.80, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
+
+        # Phase 1
+        mlflow.openai.autolog(disable=True)
+        case_predictions: list[tuple] = []
+        if verbose:
+            print("Phase 1: Running agent predictions and querying scheduled tasks...")
+        start_time = time.perf_counter()
+
+        for case in dataset.cases:
+            eval_user_id = get_eval_user_uuid(f"eval-cron-{case.id}")
+            case_start = time.perf_counter()
+            try:
+                cleanup_eval_data(eval_user_id)
+                ensure_eval_user(eval_user_id)
+                run_result = invoke_returning_user_agent(prompt=case.user_prompt, user_id=eval_user_id, model=actual_model, api_key=api_key)
+                response = run_result.final_output
+                tasks = query_scheduled_tasks(eval_user_id)
+                actual_cron = None
+                actual_task_type = None
+                if tasks:
+                    actual_cron = tasks[0].get("schedule_cron")
+                    actual_task_type = tasks[0].get("task_type")
+            except Exception as e:
+                response = f"[ERROR: {type(e).__name__}: {str(e)}]"
+                tasks = []
+                actual_cron = None
+                actual_task_type = None
+            latency_ms = int((time.perf_counter() - case_start) * 1000)
+
+            cron_correct = False
+            if case.expected_task_type == "one_time":
+                cron_correct = actual_task_type == "one_time" or (actual_cron is None and len(tasks) > 0)
+            elif case.expected_cron and actual_cron:
+                cron_correct = compute_cron_equivalence(actual_cron, case.expected_cron)
+            elif not case.expected_cron and actual_cron and len(tasks) > 0:
+                # Flexible case: no exact cron expected, just verify a schedule was created
+                cron_correct = True
+            elif not case.expected_cron and not actual_cron and len(tasks) > 0:
+                cron_correct = True
+
+            case_predictions.append((case, response, actual_cron, actual_task_type, cron_correct, latency_ms))
+            if verbose:
+                print(f"  {case.id}: cron={'CORRECT' if cron_correct else 'WRONG'} expected={case.expected_cron} actual={actual_cron} type={actual_task_type} ({latency_ms}ms)")
+
+        # Phase 2
+        mlflow.openai.autolog()
+        if verbose:
+            print("\nPhase 2: Running schedule quality judge...")
+        schedule_judge = create_schedule_quality_judge(judge_model)
+        eval_data = [{"inputs": {"question": c.user_prompt}, "outputs": {"response": r}, "expectations": {"rubric": c.rubric}} for c, r, _, _, _, _ in case_predictions]
+        eval_results = genai_evaluate(data=eval_data, scorers=[schedule_judge])
+        eval_duration_ms = int((time.perf_counter() - start_time) * 1000)
+
+        try:
+            results_df = eval_results.tables["eval_results_table"]
+        except (KeyError, AttributeError):
+            try:
+                results_df = eval_results.tables["eval_results"]
+            except (KeyError, AttributeError):
+                results_df = pd.DataFrame()
+
+        for idx, (case, response, actual_cron, actual_task_type, cron_correct, latency_ms) in enumerate(case_predictions):
+            rating = "poor"
+            if idx < len(results_df):
+                row = results_df.iloc[idx]
+                value = row.get("schedule_quality/value")
+                if pd.notna(value):
+                    rating = str(value).strip().lower()
+            quality_passed = rating in ("excellent", "good")
+            results.append(ScheduleCronCaseResult(case_id=case.id, response=response, actual_cron=actual_cron, actual_task_type=actual_task_type, cron_correct=cron_correct, quality_passed=quality_passed, quality_rating=rating, latency_ms=latency_ms))
+            if verbose:
+                print(f"  {case.id}: {rating} ({'PASS' if quality_passed else 'FAIL'}) {latency_ms}ms")
+
+        valid = [r for r in results if r.error is None]
+        error_count = len(results) - len(valid)
+        cron_accuracy = sum(1 for r in valid if r.cron_correct) / len(valid) if valid else 0.0
+        quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
+        overall_passed = cron_accuracy >= 0.80 and quality_pass_rate >= 0.80
+        metrics = ScheduleCronMetrics(total_cases=len(dataset.cases), cron_accuracy=cron_accuracy, quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
+        mlflow.log_metrics({"cron_accuracy": cron_accuracy, "cron_quality_pass_rate": quality_pass_rate, "cron_error_cases": error_count, "cron_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
+
+        results_json = [r.model_dump() for r in results]
+        results_path = Path("schedule_cron_eval_results.json")
+        with open(results_path, "w") as f:
+            json.dump(results_json, f, indent=2, default=str)
+        mlflow.log_artifact(str(results_path))
+        results_path.unlink()
+
+    return ScheduleCronEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
+
+
+def format_schedule_cron_summary(result: ScheduleCronEvaluationResult) -> str:
+    m = result.metrics
+    lines = ["", "=" * 60, "SCHEDULE CRON ACCURACY EVALUATION SUMMARY", "=" * 60, f"Dataset Version: {result.dataset_version}", f"MLflow Run ID:   {result.mlflow_run_id or 'N/A'}", "", f"Total Cases:              {m.total_cases}", f"Error Cases:              {m.error_cases}", f"Cron Accuracy:            {m.cron_accuracy:.1%} (threshold: >=80%)", f"Quality Pass Rate:        {m.quality_pass_rate:.1%} (threshold: >=80%)", ""]
+    if m.overall_passed:
+        lines.append("CRON GATE: PASS")
+    else:
+        lines.append("CRON GATE: FAIL")
+        reasons = []
+        if m.cron_accuracy < 0.80:
+            reasons.append(f"Cron accuracy {m.cron_accuracy:.1%} < 80%")
+        if m.quality_pass_rate < 0.80:
+            reasons.append(f"Quality pass rate {m.quality_pass_rate:.1%} < 80%")
+        if reasons:
+            lines.append(f"   Reasons: {'; '.join(reasons)}")
+    lines.append("=" * 60)
+    return "\n".join(lines)
+
+
+# ============================================================
+# B8: Knowledge Graph Connections — Runner
+# ============================================================
+
+
+def run_knowledge_connections_evaluation(
+    dataset_path: str | Path = "eval/knowledge_connections_golden_dataset.json",
+    verbose: bool = False,
+    dry_run: bool = False,
+) -> KnowledgeConnectionsEvaluationResult:
+    """Run knowledge graph connections evaluation (two-phase with pre-seeding)."""
+    settings = get_eval_settings()
+    dataset = load_knowledge_connections_dataset(dataset_path)
+
+    if verbose:
+        print(f"Loaded knowledge connections dataset v{dataset.version} with {len(dataset.cases)} cases")
+
+    if dry_run:
+        return KnowledgeConnectionsEvaluationResult(
+            metrics=KnowledgeConnectionsMetrics(total_cases=len(dataset.cases), quality_pass_rate=0.0, error_cases=0, overall_passed=False),
+            results=[], mlflow_run_id=None, dataset_version=dataset.version,
+        )
+
+    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+    mlflow.set_experiment(settings.mlflow_experiment_name + "-knowledge-connections")
+    experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-knowledge-connections")
+    mlflow_records = prepare_knowledge_connections_records(dataset)
+    mlflow_dataset = get_or_create_dataset(dataset_path=dataset_path, version=dataset.version, experiment_id=experiment_id, records=mlflow_records)
+
+    os.environ["MLFLOW_GENAI_EVAL_MAX_WORKERS"] = "1"
+    api_key = settings.openai_api_key
+    actual_model = settings.openai_model
+    judge_model = settings.judge_model
+    results: list[KnowledgeConnectionsCaseResult] = []
+
+    with mlflow.start_run() as run:
+        run_id = run.info.run_id
+        mlflow.log_params({"dataset_type": "knowledge_connections", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
+
+        # Phase 1
+        mlflow.openai.autolog(disable=True)
+        case_predictions: list[tuple] = []
+        if verbose:
+            print("Phase 1: Pre-seeding knowledge graph and running predictions...")
+        start_time = time.perf_counter()
+
+        for case in dataset.cases:
+            eval_user_id = get_eval_user_uuid(f"eval-kg-{case.id}")
+            case_start = time.perf_counter()
+            try:
+                cleanup_eval_data(eval_user_id)
+                ensure_eval_user(eval_user_id)
+                seed_eval_data(
+                    user_id=eval_user_id,
+                    memories=[m.model_dump() for m in case.seed_memories],
+                    entities=[e.model_dump() for e in case.seed_entities],
+                    relationships=[r.model_dump() for r in case.seed_relationships] if case.seed_relationships else None,
+                )
+                run_result = invoke_returning_user_agent(prompt=case.user_prompt, user_id=eval_user_id, model=actual_model, api_key=api_key)
+                response = run_result.final_output
+            except Exception as e:
+                response = f"[ERROR: {type(e).__name__}: {str(e)}]"
+            latency_ms = int((time.perf_counter() - case_start) * 1000)
+            case_predictions.append((case, response, latency_ms))
+            if verbose:
+                print(f"  {case.id}: predicted ({latency_ms}ms)")
+
+        # Phase 2
+        mlflow.openai.autolog()
+        if verbose:
+            print("\nPhase 2: Running knowledge connections quality judge...")
+        kg_judge = create_knowledge_connections_judge(judge_model)
+        eval_data = [{"inputs": {"question": c.user_prompt}, "outputs": {"response": r}, "expectations": {"rubric": c.rubric}} for c, r, _ in case_predictions]
+        eval_results = genai_evaluate(data=eval_data, scorers=[kg_judge])
+        eval_duration_ms = int((time.perf_counter() - start_time) * 1000)
+
+        try:
+            results_df = eval_results.tables["eval_results_table"]
+        except (KeyError, AttributeError):
+            try:
+                results_df = eval_results.tables["eval_results"]
+            except (KeyError, AttributeError):
+                results_df = pd.DataFrame()
+
+        for idx, (case, response, latency_ms) in enumerate(case_predictions):
+            rating = "poor"
+            if idx < len(results_df):
+                row = results_df.iloc[idx]
+                value = row.get("knowledge_connections_quality/value")
+                if pd.notna(value):
+                    rating = str(value).strip().lower()
+            passed = rating in ("excellent", "good")
+            results.append(KnowledgeConnectionsCaseResult(case_id=case.id, response=response, quality_passed=passed, quality_rating=rating, latency_ms=latency_ms))
+            if verbose:
+                print(f"  {case.id}: {rating} ({'PASS' if passed else 'FAIL'}) {latency_ms}ms")
+
+        valid = [r for r in results if r.error is None]
+        error_count = len(results) - len(valid)
+        quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
+        overall_passed = quality_pass_rate >= 0.80
+        metrics = KnowledgeConnectionsMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
+        mlflow.log_metrics({"kg_quality_pass_rate": quality_pass_rate, "kg_error_cases": error_count, "kg_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
+
+        results_json = [r.model_dump() for r in results]
+        results_path = Path("knowledge_connections_eval_results.json")
+        with open(results_path, "w") as f:
+            json.dump(results_json, f, indent=2, default=str)
+        mlflow.log_artifact(str(results_path))
+        results_path.unlink()
+
+    return KnowledgeConnectionsEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
+
+
+def format_knowledge_connections_summary(result: KnowledgeConnectionsEvaluationResult) -> str:
+    m = result.metrics
+    lines = ["", "=" * 60, "KNOWLEDGE GRAPH CONNECTIONS EVALUATION SUMMARY", "=" * 60, f"Dataset Version: {result.dataset_version}", f"MLflow Run ID:   {result.mlflow_run_id or 'N/A'}", "", f"Total Cases:              {m.total_cases}", f"Error Cases:              {m.error_cases}", f"Quality Pass Rate:        {m.quality_pass_rate:.1%} (threshold: >=80%)", ""]
+    if m.overall_passed:
+        lines.append("KNOWLEDGE CONNECTIONS GATE: PASS")
+    else:
+        lines.append("KNOWLEDGE CONNECTIONS GATE: FAIL")
+        if m.quality_pass_rate < 0.80:
+            lines.append(f"   Reason: Quality pass rate {m.quality_pass_rate:.1%} < 80%")
+    lines.append("=" * 60)
+    return "\n".join(lines)
+
+
+# ============================================================
+# B11: Contradiction Handling — Runner
+# ============================================================
+
+
+def run_contradiction_handling_evaluation(
+    dataset_path: str | Path = "eval/contradiction_handling_golden_dataset.json",
+    verbose: bool = False,
+    dry_run: bool = False,
+) -> ContradictionHandlingEvaluationResult:
+    """Run contradiction handling evaluation (two-phase with pre-seeding, multi-turn)."""
+    settings = get_eval_settings()
+    dataset = load_contradiction_handling_dataset(dataset_path)
+
+    if verbose:
+        print(f"Loaded contradiction handling dataset v{dataset.version} with {len(dataset.cases)} cases")
+
+    if dry_run:
+        return ContradictionHandlingEvaluationResult(
+            metrics=ContradictionHandlingMetrics(total_cases=len(dataset.cases), quality_pass_rate=0.0, error_cases=0, overall_passed=False),
+            results=[], mlflow_run_id=None, dataset_version=dataset.version,
+        )
+
+    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+    mlflow.set_experiment(settings.mlflow_experiment_name + "-contradiction")
+    experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-contradiction")
+    mlflow_records = prepare_contradiction_handling_records(dataset)
+    mlflow_dataset = get_or_create_dataset(dataset_path=dataset_path, version=dataset.version, experiment_id=experiment_id, records=mlflow_records)
+
+    os.environ["MLFLOW_GENAI_EVAL_MAX_WORKERS"] = "1"
+    api_key = settings.openai_api_key
+    actual_model = settings.openai_model
+    judge_model = settings.judge_model
+    results: list[ContradictionHandlingCaseResult] = []
+
+    with mlflow.start_run() as run:
+        run_id = run.info.run_id
+        run_prefix = run_id[:8]
+        mlflow.log_params({"dataset_type": "contradiction_handling", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
+
+        # Phase 1
+        mlflow.openai.autolog(disable=True)
+        case_data: list[tuple] = []
+        if verbose:
+            print("Phase 1: Pre-seeding data and running contradiction conversations...")
+        start_time = time.perf_counter()
+
+        for case in dataset.cases:
+            eval_user_id = f"eval-contra-{case.id}"
+            case_session_id = f"contra-{run_prefix}-{case.id}"
+            case_start = time.perf_counter()
+            try:
+                cleanup_eval_data(eval_user_id)
+                seed_eval_data(user_id=eval_user_id, memories=[m.model_dump() for m in case.seed_memories], entities=[])
+                turn_results, all_tool_calls, _ = invoke_returning_user_conversation(user_turns=case.user_turns, user_id=eval_user_id, model=actual_model, api_key=api_key, max_turns=10, session_id=case_session_id)
+
+                transcript_parts = []
+                for idx, user_msg in enumerate(case.user_turns):
+                    transcript_parts.append(f"[turn-{idx + 1}] User: {user_msg}")
+                    matching = [r for label, r in turn_results if label == f"turn-{idx + 1}"]
+                    if matching:
+                        transcript_parts.append(f"[turn-{idx + 1}] Assistant: {matching[0].final_output}")
+                transcript = "\n".join(transcript_parts)
+                latency_ms = int((time.perf_counter() - case_start) * 1000)
+                case_data.append((case, transcript, latency_ms, None))
+                if verbose:
+                    print(f"  {case.id}: {len(turn_results)} turns ({latency_ms}ms)")
+            except Exception as e:
+                latency_ms = int((time.perf_counter() - case_start) * 1000)
+                case_data.append((case, f"[ERROR: {str(e)}]", latency_ms, str(e)))
+                if verbose:
+                    print(f"  {case.id}: ERROR ({latency_ms}ms) - {str(e)}")
+
+        # Phase 2
+        mlflow.openai.autolog()
+        if verbose:
+            print("\nPhase 2: Running contradiction quality evaluation...")
+
+        quality_by_case: dict[str, str] = {}
+        try:
+            from collections import defaultdict
+            session_traces = mlflow.search_traces(locations=[experiment_id], return_type="list")
+            session_traces = [t for t in session_traces if t.info.request_metadata.get("mlflow.sourceRun") == run_id and t.info.request_metadata.get("mlflow.trace.session")]
+
+            case_by_session: dict[str, Any] = {}
+            for case in dataset.cases:
+                case_by_session[f"contra-{run_prefix}-{case.id}"] = case
+
+            if verbose:
+                print(f"  Found {len(session_traces)} traces")
+
+            contra_judge = create_contradiction_judge(judge_model)
+            eval_results = genai_evaluate(data=session_traces, scorers=[contra_judge])
+            results_df = eval_results.tables["eval_results"]
+            for _, row in results_df.iterrows():
+                qv = row.get("contradiction_quality/value")
+                if pd.notna(qv) and str(qv).strip():
+                    meta = row.get("trace_metadata", {})
+                    if isinstance(meta, dict):
+                        session = meta.get("mlflow.trace.session", "")
+                        c = case_by_session.get(session)
+                        if c:
+                            quality_by_case[c.id] = str(qv).strip().lower()
+            if verbose:
+                print(f"  Quality ratings: {len(quality_by_case)}/{len(dataset.cases)} cases")
+        except Exception as e:
+            if verbose:
+                import traceback
+                traceback.print_exc()
+                print(f"  Session trace eval failed ({e}), falling back to direct judge")
+            import httpx
+            for case, transcript, latency_ms, error in case_data:
+                if error:
+                    continue
+                try:
+                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this conversation on contradiction handling: excellent, good, adequate, or poor. Answer ONLY one word."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
+                    resp.raise_for_status()
+                    answer = resp.json()["choices"][0]["message"]["content"].strip().lower()
+                    for vr in ("excellent", "good", "adequate", "poor"):
+                        if vr in answer:
+                            quality_by_case[case.id] = vr
+                            break
+                    else:
+                        quality_by_case[case.id] = "poor"
+                except Exception:
+                    quality_by_case[case.id] = "poor"
+
+        for case, transcript, latency_ms, error in case_data:
+            qr = quality_by_case.get(case.id, "poor")
+            qp = qr in ("excellent", "good")
+            results.append(ContradictionHandlingCaseResult(case_id=case.id, persona=case.persona, conversation_transcript=transcript, quality_passed=qp, quality_rating=qr, latency_ms=latency_ms, error=error))
+            if verbose:
+                print(f"  {case.id}: {qr} ({'PASS' if qp else 'FAIL'}) {latency_ms}ms")
+
+        eval_duration_ms = int((time.perf_counter() - start_time) * 1000)
+        valid = [r for r in results if r.error is None]
+        error_count = len(results) - len(valid)
+        quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
+        overall_passed = quality_pass_rate >= 0.80
+        metrics = ContradictionHandlingMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
+        mlflow.log_metrics({"contra_quality_pass_rate": quality_pass_rate, "contra_error_cases": error_count, "contra_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
+
+        results_json = [r.model_dump() for r in results]
+        results_path = Path("contradiction_handling_eval_results.json")
+        with open(results_path, "w") as f:
+            json.dump(results_json, f, indent=2, default=str)
+        mlflow.log_artifact(str(results_path))
+        results_path.unlink()
+
+    return ContradictionHandlingEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
+
+
+def format_contradiction_handling_summary(result: ContradictionHandlingEvaluationResult) -> str:
+    m = result.metrics
+    lines = ["", "=" * 60, "CONTRADICTION HANDLING EVALUATION SUMMARY", "=" * 60, f"Dataset Version: {result.dataset_version}", f"MLflow Run ID:   {result.mlflow_run_id or 'N/A'}", "", f"Total Cases:              {m.total_cases}", f"Error Cases:              {m.error_cases}", f"Quality Pass Rate:        {m.quality_pass_rate:.1%} (threshold: >=80%)", ""]
+    if m.overall_passed:
+        lines.append("CONTRADICTION GATE: PASS")
+    else:
+        lines.append("CONTRADICTION GATE: FAIL")
+        if m.quality_pass_rate < 0.80:
+            lines.append(f"   Reason: Quality pass rate {m.quality_pass_rate:.1%} < 80%")
+    lines.append("=" * 60)
+    return "\n".join(lines)
+
+
+# ============================================================
+# B10: Long Conversation Coherence — Runner
+# ============================================================
+
+
+def run_long_conversation_evaluation(
+    dataset_path: str | Path = "eval/long_conversation_golden_dataset.json",
+    verbose: bool = False,
+    dry_run: bool = False,
+) -> LongConversationEvaluationResult:
+    """Run long conversation coherence evaluation (two-phase with pre-seeding, many turns)."""
+    settings = get_eval_settings()
+    dataset = load_long_conversation_dataset(dataset_path)
+
+    if verbose:
+        print(f"Loaded long conversation dataset v{dataset.version} with {len(dataset.cases)} cases")
+
+    if dry_run:
+        return LongConversationEvaluationResult(
+            metrics=LongConversationMetrics(total_cases=len(dataset.cases), quality_pass_rate=0.0, error_cases=0, overall_passed=False),
+            results=[], mlflow_run_id=None, dataset_version=dataset.version,
+        )
+
+    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+    mlflow.set_experiment(settings.mlflow_experiment_name + "-long-conversation")
+    experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-long-conversation")
+    mlflow_records = prepare_long_conversation_records(dataset)
+    mlflow_dataset = get_or_create_dataset(dataset_path=dataset_path, version=dataset.version, experiment_id=experiment_id, records=mlflow_records)
+
+    os.environ["MLFLOW_GENAI_EVAL_MAX_WORKERS"] = "1"
+    api_key = settings.openai_api_key
+    actual_model = settings.openai_model
+    judge_model = settings.judge_model
+    results: list[LongConversationCaseResult] = []
+
+    with mlflow.start_run() as run:
+        run_id = run.info.run_id
+        run_prefix = run_id[:8]
+        mlflow.log_params({"dataset_type": "long_conversation", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
+
+        # Phase 1
+        mlflow.openai.autolog(disable=True)
+        case_data: list[tuple] = []
+        if verbose:
+            print("Phase 1: Pre-seeding data and running long conversations...")
+        start_time = time.perf_counter()
+
+        for case in dataset.cases:
+            eval_user_id = get_eval_user_uuid(f"eval-longconv-{case.id}")
+            case_session_id = f"longconv-{run_prefix}-{case.id}"
+            case_start = time.perf_counter()
+            try:
+                cleanup_eval_data(eval_user_id)
+                ensure_eval_user(eval_user_id)
+                seed_eval_data(
+                    user_id=eval_user_id,
+                    memories=[m.model_dump() for m in case.seed_memories],
+                    entities=[e.model_dump() for e in case.seed_entities],
+                    relationships=[r.model_dump() for r in case.seed_relationships] if case.seed_relationships else None,
+                )
+                turn_results, all_tool_calls, _ = invoke_returning_user_conversation(user_turns=case.user_turns, user_id=eval_user_id, model=actual_model, api_key=api_key, max_turns=15, session_id=case_session_id)
+
+                transcript_parts = []
+                for idx, user_msg in enumerate(case.user_turns):
+                    transcript_parts.append(f"[turn-{idx + 1}] User: {user_msg}")
+                    matching = [r for label, r in turn_results if label == f"turn-{idx + 1}"]
+                    if matching:
+                        transcript_parts.append(f"[turn-{idx + 1}] Assistant: {matching[0].final_output}")
+                transcript = "\n".join(transcript_parts)
+                latency_ms = int((time.perf_counter() - case_start) * 1000)
+                case_data.append((case, transcript, latency_ms, None))
+                if verbose:
+                    print(f"  {case.id}: {len(turn_results)} turns ({latency_ms}ms)")
+            except Exception as e:
+                latency_ms = int((time.perf_counter() - case_start) * 1000)
+                case_data.append((case, f"[ERROR: {str(e)}]", latency_ms, str(e)))
+                if verbose:
+                    print(f"  {case.id}: ERROR ({latency_ms}ms) - {str(e)}")
+
+        # Phase 2
+        mlflow.openai.autolog()
+        if verbose:
+            print("\nPhase 2: Running long conversation quality evaluation...")
+
+        quality_by_case: dict[str, str] = {}
+        try:
+            from collections import defaultdict
+            session_traces = mlflow.search_traces(locations=[experiment_id], return_type="list")
+            session_traces = [t for t in session_traces if t.info.request_metadata.get("mlflow.sourceRun") == run_id and t.info.request_metadata.get("mlflow.trace.session")]
+
+            case_by_session: dict[str, Any] = {}
+            for case in dataset.cases:
+                case_by_session[f"longconv-{run_prefix}-{case.id}"] = case
+
+            if verbose:
+                print(f"  Found {len(session_traces)} traces")
+
+            lc_judge = create_long_conversation_judge(judge_model)
+            eval_results = genai_evaluate(data=session_traces, scorers=[lc_judge])
+            results_df = eval_results.tables["eval_results"]
+            for _, row in results_df.iterrows():
+                qv = row.get("long_conversation_quality/value")
+                if pd.notna(qv) and str(qv).strip():
+                    meta = row.get("trace_metadata", {})
+                    if isinstance(meta, dict):
+                        session = meta.get("mlflow.trace.session", "")
+                        c = case_by_session.get(session)
+                        if c:
+                            quality_by_case[c.id] = str(qv).strip().lower()
+            if verbose:
+                print(f"  Quality ratings: {len(quality_by_case)}/{len(dataset.cases)} cases")
+        except Exception as e:
+            if verbose:
+                import traceback
+                traceback.print_exc()
+                print(f"  Session trace eval failed ({e}), falling back to direct judge")
+            import httpx
+            for case, transcript, latency_ms, error in case_data:
+                if error:
+                    continue
+                try:
+                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this long conversation on coherence and context retention: excellent, good, adequate, or poor. Answer ONLY one word."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
+                    resp.raise_for_status()
+                    answer = resp.json()["choices"][0]["message"]["content"].strip().lower()
+                    for vr in ("excellent", "good", "adequate", "poor"):
+                        if vr in answer:
+                            quality_by_case[case.id] = vr
+                            break
+                    else:
+                        quality_by_case[case.id] = "poor"
+                except Exception:
+                    quality_by_case[case.id] = "poor"
+
+        for case, transcript, latency_ms, error in case_data:
+            qr = quality_by_case.get(case.id, "poor")
+            qp = qr in ("excellent", "good")
+            results.append(LongConversationCaseResult(case_id=case.id, persona=case.persona, scenario=case.scenario, conversation_transcript=transcript, quality_passed=qp, quality_rating=qr, latency_ms=latency_ms, error=error))
+            if verbose:
+                print(f"  {case.id}: {qr} ({'PASS' if qp else 'FAIL'}) {latency_ms}ms")
+
+        eval_duration_ms = int((time.perf_counter() - start_time) * 1000)
+        valid = [r for r in results if r.error is None]
+        error_count = len(results) - len(valid)
+        quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
+        overall_passed = quality_pass_rate >= 0.80
+        metrics = LongConversationMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
+        mlflow.log_metrics({"longconv_quality_pass_rate": quality_pass_rate, "longconv_error_cases": error_count, "longconv_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
+
+        results_json = [r.model_dump() for r in results]
+        results_path = Path("long_conversation_eval_results.json")
+        with open(results_path, "w") as f:
+            json.dump(results_json, f, indent=2, default=str)
+        mlflow.log_artifact(str(results_path))
+        results_path.unlink()
+
+    return LongConversationEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
+
+
+def format_long_conversation_summary(result: LongConversationEvaluationResult) -> str:
+    m = result.metrics
+    lines = ["", "=" * 60, "LONG CONVERSATION COHERENCE EVALUATION SUMMARY", "=" * 60, f"Dataset Version: {result.dataset_version}", f"MLflow Run ID:   {result.mlflow_run_id or 'N/A'}", "", f"Total Cases:              {m.total_cases}", f"Error Cases:              {m.error_cases}", f"Quality Pass Rate:        {m.quality_pass_rate:.1%} (threshold: >=80%)", ""]
+    if m.overall_passed:
+        lines.append("LONG CONVERSATION GATE: PASS")
+    else:
+        lines.append("LONG CONVERSATION GATE: FAIL")
         if m.quality_pass_rate < 0.80:
             lines.append(f"   Reason: Quality pass rate {m.quality_pass_rate:.1%} < 80%")
     lines.append("=" * 60)

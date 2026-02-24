@@ -13,10 +13,16 @@ from typing import Any
 from pydantic import ValidationError
 
 from eval.alfred_models import (
+    ContradictionHandlingGoldenDataset,
+    ErrorRecoveryGoldenDataset,
+    KnowledgeConnectionsGoldenDataset,
+    LongConversationGoldenDataset,
     MemoryInformedGoldenDataset,
     MultiCapGoldenDataset,
+    NotificationJudgmentGoldenDataset,
     ReturningGreetingGoldenDataset,
     RoutingGoldenDataset,
+    ScheduleCronGoldenDataset,
     ToneGoldenDataset,
 )
 from eval.models import (
@@ -696,31 +702,28 @@ def _detect_eval_type(path: str | Path) -> str | None:
     """
     path = Path(path)
 
+    _KNOWN_EVAL_TYPES = (
+        "tone", "returning_greeting", "routing",
+        "memory_informed", "multi_cap",
+        "notification_judgment", "error_recovery", "schedule_cron",
+        "knowledge_connections", "contradiction_handling", "long_conversation",
+    )
+
     # Check content for eval_type field (definitive)
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         eval_type = data.get("eval_type")
-        if eval_type in (
-            "tone", "returning_greeting", "routing",
-            "memory_informed", "multi_cap",
-        ):
+        if eval_type in _KNOWN_EVAL_TYPES:
             return eval_type
     except (json.JSONDecodeError, OSError):
         pass
 
     # Filename heuristics
     name = path.name.lower()
-    if "tone" in name:
-        return "tone"
-    if "returning_greeting" in name:
-        return "returning_greeting"
-    if "routing" in name:
-        return "routing"
-    if "memory_informed" in name:
-        return "memory_informed"
-    if "multi_cap" in name:
-        return "multi_cap"
+    for et in _KNOWN_EVAL_TYPES:
+        if et in name:
+            return et
 
     return None
 
@@ -800,3 +803,68 @@ def load_memory_informed_dataset(path: str | Path) -> MemoryInformedGoldenDatase
 def load_multi_cap_dataset(path: str | Path) -> MultiCapGoldenDataset:
     """Load and validate a multi-capability evaluation dataset."""
     return _load_alfred_dataset(path, MultiCapGoldenDataset, "Multi-capability")
+
+
+# ============================================================
+# Tier 2 Alfred Eval Suite — Dataset Detection & Loading
+# ============================================================
+
+
+def is_notification_judgment_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a notification judgment evaluation dataset."""
+    return _detect_eval_type(path) == "notification_judgment"
+
+
+def is_error_recovery_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is an error recovery evaluation dataset."""
+    return _detect_eval_type(path) == "error_recovery"
+
+
+def is_schedule_cron_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a schedule cron evaluation dataset."""
+    return _detect_eval_type(path) == "schedule_cron"
+
+
+def is_knowledge_connections_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a knowledge connections evaluation dataset."""
+    return _detect_eval_type(path) == "knowledge_connections"
+
+
+def is_contradiction_handling_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a contradiction handling evaluation dataset."""
+    return _detect_eval_type(path) == "contradiction_handling"
+
+
+def is_long_conversation_dataset(path: str | Path) -> bool:
+    """Check if a dataset file is a long conversation evaluation dataset."""
+    return _detect_eval_type(path) == "long_conversation"
+
+
+def load_notification_judgment_dataset(path: str | Path) -> NotificationJudgmentGoldenDataset:
+    """Load and validate a notification judgment evaluation dataset."""
+    return _load_alfred_dataset(path, NotificationJudgmentGoldenDataset, "Notification judgment")
+
+
+def load_error_recovery_dataset(path: str | Path) -> ErrorRecoveryGoldenDataset:
+    """Load and validate an error recovery evaluation dataset."""
+    return _load_alfred_dataset(path, ErrorRecoveryGoldenDataset, "Error recovery")
+
+
+def load_schedule_cron_dataset(path: str | Path) -> ScheduleCronGoldenDataset:
+    """Load and validate a schedule cron evaluation dataset."""
+    return _load_alfred_dataset(path, ScheduleCronGoldenDataset, "Schedule cron")
+
+
+def load_knowledge_connections_dataset(path: str | Path) -> KnowledgeConnectionsGoldenDataset:
+    """Load and validate a knowledge connections evaluation dataset."""
+    return _load_alfred_dataset(path, KnowledgeConnectionsGoldenDataset, "Knowledge connections")
+
+
+def load_contradiction_handling_dataset(path: str | Path) -> ContradictionHandlingGoldenDataset:
+    """Load and validate a contradiction handling evaluation dataset."""
+    return _load_alfred_dataset(path, ContradictionHandlingGoldenDataset, "Contradiction handling")
+
+
+def load_long_conversation_dataset(path: str | Path) -> LongConversationGoldenDataset:
+    """Load and validate a long conversation evaluation dataset."""
+    return _load_alfred_dataset(path, LongConversationGoldenDataset, "Long conversation")

@@ -21,6 +21,7 @@ detailed execution traces during evaluation.
 import asyncio
 import json
 import os
+import uuid
 from uuid import uuid4
 
 import mlflow
@@ -40,6 +41,71 @@ mlflow.openai.autolog()
 
 # Track whether migrations have been run (idempotent, only need to run once per process)
 _db_migrated = False
+
+# Namespace UUID for deterministic eval user UUID generation
+EVAL_UUID_NAMESPACE = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+
+
+def get_eval_user_uuid(eval_id: str) -> str:
+    """Generate a deterministic UUID string from an eval user ID.
+
+    Notifications and scheduled_tasks tables require UUID user_ids
+    (FK to users table). This converts eval IDs like 'eval-notif-case1'
+    into valid UUID strings that remain deterministic for cleanup.
+
+    Args:
+        eval_id: The human-readable eval user ID string.
+
+    Returns:
+        A valid UUID string derived from the input.
+    """
+    return str(uuid.uuid5(EVAL_UUID_NAMESPACE, eval_id))
+
+
+def ensure_eval_user(user_id: str) -> None:
+    """Create a user record for the eval user if it doesn't exist.
+
+    Required because notifications and scheduled_tasks tables have
+    FK constraints to users(id). The user record is created with
+    a dummy password hash and is_active=True.
+
+    Args:
+        user_id: A valid UUID string for the eval user.
+    """
+    async def _ensure():
+        global _db_migrated
+        from src.database import init_database, run_migrations, close_database
+
+        try:
+            pool = await init_database()
+            if not _db_migrated:
+                await run_migrations()
+                _db_migrated = True
+        except Exception:
+            return
+
+        try:
+            uid = uuid.UUID(user_id)
+            existing = await pool.fetchrow(
+                "SELECT id FROM users WHERE id = $1", uid,
+            )
+            if not existing:
+                await pool.execute(
+                    """INSERT INTO users (id, username, password_hash, display_name, is_admin)
+                       VALUES ($1, $2, $3, $4, $5)
+                       ON CONFLICT (id) DO NOTHING""",
+                    uid,
+                    f"eval-{user_id[:8]}",
+                    "$2b$12$evalDummyHashNotForRealAuth000000000000000000000",
+                    "Eval User",
+                    False,
+                )
+        except Exception:
+            pass
+        finally:
+            await close_database()
+
+    asyncio.run(_ensure())
 
 
 def invoke_production_agent(
@@ -386,64 +452,74 @@ def seed_eval_data(
             return
 
         try:
-            # Seed memories
-            for mem in memories:
-                embedding = _get_embedding(mem["content"])
-                await pool.execute(
-                    """
-                    INSERT INTO memory_items (user_id, content, type, embedding, importance, confidence)
-                    VALUES ($1, $2, $3, $4::vector, $5, $6)
-                    """,
-                    user_id,
-                    mem["content"],
-                    mem.get("type", "fact"),
-                    str(embedding),
-                    0.5,
-                    mem.get("confidence", 0.9),
-                )
-
-            # Seed entities
-            entity_name_map: dict[str, str] = {}  # name -> canonical_name
-            for ent in entities:
-                embedding = _get_embedding(ent["name"] + " " + ent.get("description", ""))
-                canonical = ent["name"].lower().replace(" ", "_")
-                entity_name_map[ent["name"]] = canonical
-                await pool.execute(
-                    """
-                    INSERT INTO entities (user_id, name, canonical_name, type, description, embedding)
-                    VALUES ($1, $2, $3, $4, $5, $6::vector)
-                    """,
-                    user_id,
-                    ent["name"],
-                    canonical,
-                    ent.get("type", "concept"),
-                    ent.get("description", ""),
-                    str(embedding),
-                )
-
-            # Seed relationships
-            if relationships:
-                for rel in relationships:
-                    # Look up entity IDs
-                    source_row = await pool.fetchrow(
-                        "SELECT id FROM entities WHERE user_id = $1 AND name = $2 AND deleted_at IS NULL",
-                        user_id, rel["source"],
+            # Use a single connection for all seeding to guarantee
+            # read-after-write visibility (entity lookups for relationships)
+            async with pool.acquire() as conn:
+                # Seed memories
+                for mem in memories:
+                    embedding = _get_embedding(mem["content"])
+                    await conn.execute(
+                        """
+                        INSERT INTO memory_items (user_id, content, type, embedding, importance, confidence)
+                        VALUES ($1, $2, $3, $4::vector, $5, $6)
+                        """,
+                        user_id,
+                        mem["content"],
+                        mem.get("type", "fact"),
+                        str(embedding),
+                        0.5,
+                        mem.get("confidence", 0.9),
                     )
-                    target_row = await pool.fetchrow(
-                        "SELECT id FROM entities WHERE user_id = $1 AND name = $2 AND deleted_at IS NULL",
-                        user_id, rel["target"],
+
+                # Seed entities
+                entity_name_map: dict[str, str] = {}  # name -> canonical_name
+                for ent in entities:
+                    embedding = _get_embedding(ent["name"] + " " + ent.get("description", ""))
+                    from src.services.graph_service import normalize_entity_name
+                    canonical = normalize_entity_name(ent["name"])
+                    entity_name_map[ent["name"]] = canonical
+                    await conn.execute(
+                        """
+                        INSERT INTO entities (user_id, name, canonical_name, type, description, embedding)
+                        VALUES ($1, $2, $3, $4, $5, $6::vector)
+                        """,
+                        user_id,
+                        ent["name"],
+                        canonical,
+                        ent.get("type", "concept"),
+                        ent.get("description", ""),
+                        str(embedding),
                     )
-                    if source_row and target_row:
-                        await pool.execute(
-                            """
-                            INSERT INTO entity_relationships (user_id, source_entity_id, target_entity_id, relationship_type)
-                            VALUES ($1, $2, $3, $4)
-                            """,
-                            user_id,
-                            source_row["id"],
-                            target_row["id"],
-                            rel["type"],
+
+                # Seed relationships
+                if relationships:
+                    for rel in relationships:
+                        # Look up entity IDs (same connection guarantees visibility)
+                        source_row = await conn.fetchrow(
+                            "SELECT id FROM entities WHERE user_id = $1 AND name = $2 AND deleted_at IS NULL",
+                            user_id, rel["source"],
                         )
+                        target_row = await conn.fetchrow(
+                            "SELECT id FROM entities WHERE user_id = $1 AND name = $2 AND deleted_at IS NULL",
+                            user_id, rel["target"],
+                        )
+                        if source_row and target_row:
+                            await conn.execute(
+                                """
+                                INSERT INTO entity_relationships (user_id, source_entity_id, target_entity_id, relationship_type)
+                                VALUES ($1, $2, $3, $4)
+                                """,
+                                user_id,
+                                source_row["id"],
+                                target_row["id"],
+                                rel["type"],
+                            )
+
+                    # Verify relationships were seeded
+                    rel_count = await conn.fetchval(
+                        "SELECT COUNT(*) FROM entity_relationships WHERE user_id = $1 AND deleted_at IS NULL",
+                        user_id,
+                    )
         finally:
             await close_database()
 
@@ -472,6 +548,7 @@ def cleanup_eval_data(user_id: str) -> None:
             return
 
         try:
+            # Soft-delete tables with deleted_at column
             for table in (
                 "memory_items", "entities", "entity_relationships",
                 "observed_patterns", "proactiveness_settings",
@@ -484,6 +561,26 @@ def cleanup_eval_data(user_id: str) -> None:
                     )
                 except Exception:
                     pass  # Table may not exist yet
+
+            # Cancel active scheduled tasks (no deleted_at column)
+            try:
+                await pool.execute(
+                    "UPDATE scheduled_tasks SET status = 'cancelled' "
+                    "WHERE user_id = $1 AND status = 'active'",
+                    user_id,
+                )
+            except Exception:
+                pass
+
+            # Dismiss undismissed notifications
+            try:
+                await pool.execute(
+                    "UPDATE notifications SET dismissed_at = NOW() "
+                    "WHERE user_id = $1 AND dismissed_at IS NULL",
+                    user_id,
+                )
+            except Exception:
+                pass
         finally:
             await close_database()
 
@@ -670,6 +767,79 @@ def invoke_returning_user_conversation(
 
     asyncio.run(_run_conversation())
     return turn_results, all_tool_calls, session_id
+
+
+def query_scheduled_tasks(user_id: str) -> list[dict]:
+    """Query scheduled_tasks table for tasks created during eval.
+
+    Args:
+        user_id: The eval user ID to query.
+
+    Returns:
+        List of dicts with task details (name, task_type, schedule_cron, etc.).
+    """
+    async def _query():
+        from src.database import init_database, close_database
+
+        try:
+            pool = await init_database()
+        except Exception:
+            return []
+
+        try:
+            rows = await pool.fetch(
+                """
+                SELECT name, task_type, schedule_cron, scheduled_at,
+                       tool_name, status, description
+                FROM scheduled_tasks
+                WHERE user_id = $1 AND status = 'active'
+                ORDER BY created_at DESC
+                """,
+                user_id,
+            )
+            return [dict(row) for row in rows]
+        except Exception:
+            return []
+        finally:
+            await close_database()
+
+    return asyncio.run(_query())
+
+
+def query_notifications(user_id: str) -> list[dict]:
+    """Query notifications table for notifications created during eval.
+
+    Args:
+        user_id: The eval user ID to query.
+
+    Returns:
+        List of dicts with notification details (message, type, created_at).
+    """
+    async def _query():
+        from src.database import init_database, close_database
+
+        try:
+            pool = await init_database()
+        except Exception:
+            return []
+
+        try:
+            rows = await pool.fetch(
+                """
+                SELECT message, type, created_at
+                FROM notifications
+                WHERE user_id = $1 AND dismissed_at IS NULL
+                ORDER BY created_at DESC
+                """,
+                user_id,
+            )
+            return [dict(row) for row in rows]
+        except Exception:
+            return []
+        finally:
+            await close_database()
+
+    return asyncio.run(_query())
 
 
 def extract_tool_calls(result: RunResult) -> list[dict]:

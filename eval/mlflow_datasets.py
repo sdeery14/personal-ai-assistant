@@ -12,10 +12,16 @@ import mlflow
 from mlflow.genai.datasets import create_dataset, search_datasets
 
 from eval.alfred_models import (
+    ContradictionHandlingGoldenDataset,
+    ErrorRecoveryGoldenDataset,
+    KnowledgeConnectionsGoldenDataset,
+    LongConversationGoldenDataset,
     MemoryInformedGoldenDataset,
     MultiCapGoldenDataset,
+    NotificationJudgmentGoldenDataset,
     ReturningGreetingGoldenDataset,
     RoutingGoldenDataset,
+    ScheduleCronGoldenDataset,
     ToneGoldenDataset,
 )
 from eval.models import (
@@ -41,6 +47,12 @@ DATASET_TYPE_MAP = {
     "routing_golden_dataset": "routing",
     "memory_informed_golden_dataset": "memory-informed-responses",
     "multi_cap_golden_dataset": "multi-capability",
+    "notification_judgment_golden_dataset": "notification-judgment",
+    "error_recovery_golden_dataset": "error-recovery",
+    "schedule_cron_golden_dataset": "schedule-cron",
+    "knowledge_connections_golden_dataset": "knowledge-connections",
+    "contradiction_handling_golden_dataset": "contradiction-handling",
+    "long_conversation_golden_dataset": "long-conversation",
 }
 
 
@@ -320,6 +332,113 @@ def prepare_multi_cap_records(
             "expectations": {
                 "rubric": case.rubric,
                 "expected_capabilities": case.expected_capabilities,
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+# ============================================================
+# Tier 2 Alfred Eval Suite — MLflow Record Preparation
+# ============================================================
+
+
+def prepare_notification_judgment_records(
+    dataset: NotificationJudgmentGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert notification judgment dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {"question": case.user_prompt},
+            "expectations": {
+                "rubric": case.rubric,
+                "expected_notification": case.expected_notification,
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+def prepare_error_recovery_records(
+    dataset: ErrorRecoveryGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert error recovery dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {"question": case.user_prompt},
+            "expectations": {
+                "rubric": case.rubric,
+                "scenario": case.scenario,
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+def prepare_schedule_cron_records(
+    dataset: ScheduleCronGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert schedule cron dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {"question": case.user_prompt},
+            "expectations": {
+                "rubric": case.rubric,
+                "expected_cron": case.expected_cron,
+                "expected_task_type": case.expected_task_type,
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+def prepare_knowledge_connections_records(
+    dataset: KnowledgeConnectionsGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert knowledge connections dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {"question": case.user_prompt},
+            "expectations": {
+                "rubric": case.rubric,
+                "expected_entity_references": case.expected_entity_references,
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+def prepare_contradiction_handling_records(
+    dataset: ContradictionHandlingGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert contradiction handling dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {
+                "persona": case.persona,
+                "user_turns": case.user_turns,
+            },
+            "expectations": {
+                "rubric": case.rubric,
+            },
+        }
+        for case in dataset.cases
+    ]
+
+
+def prepare_long_conversation_records(
+    dataset: LongConversationGoldenDataset,
+) -> list[dict[str, Any]]:
+    """Convert long conversation dataset to MLflow record format."""
+    return [
+        {
+            "inputs": {
+                "persona": case.persona,
+                "scenario": case.scenario,
+                "user_turns": case.user_turns,
+            },
+            "expectations": {
+                "rubric": case.rubric,
             },
         }
         for case in dataset.cases

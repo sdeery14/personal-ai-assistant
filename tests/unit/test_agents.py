@@ -174,8 +174,10 @@ class TestBuildOrchestratorInstructions:
         assert "ask_memory_agent" in instructions
         assert "ask_knowledge_agent" in instructions
         assert "ask_weather_agent" in instructions
-        assert "ask_proactive_agent" not in instructions
-        assert "ask_notification_agent" not in instructions
+        # These should not appear in the Available specialists routing hints
+        # (though they may appear in the base prompt's routing guidelines)
+        assert "- ask_proactive_agent:" not in instructions
+        assert "- ask_notification_agent:" not in instructions
 
     def test_no_routing_hints_when_no_specialists(self):
         """No routing section when no specialists are available."""

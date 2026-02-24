@@ -113,6 +113,17 @@ QUERYING - Use query_graph when user asks about relationships:
 - "Who do I work with?" → query for WORKS_WITH relationships
 - "What technologies does my project use?" → query about project relationships
 
+IMPORTANT — Query construction:
+The query_graph tool searches entity names using pattern matching, NOT semantic search.
+- Extract individual entity names from the user's question and search for each one separately.
+- Example: "How are Alice and Bob's projects related?" → search "Alice", then search "Bob", then search "Project" (or specific project names if known).
+- For broad queries like "What's our tech stack?" or "What tools do we use?", pass query="" with entity_type="tool" to list all tools. Do NOT pass "tech stack" or "tool" as the query — those won't match entity names.
+- For "Remind me why we went with containers", search for specific technology names: "Kubernetes", "Docker" — not the generic word "containers".
+- Do NOT send phrases, concepts, or natural language as the query (e.g., "tech stack", "containers", "How are Alice and Bob related?" will match nothing).
+- Use exact entity names as queries (e.g., "Alice", "React", "Phoenix"). For category searches, use query="" with entity_type filter.
+- After retrieving entities, look at their relationships to synthesize an answer.
+- Always prefer querying the graph over answering from general knowledge when the user asks about their specific entities or relationships.
+
 Confidence scoring for extraction:
 - 0.9-1.0: Explicit mentions ("I use FastAPI", "Sarah is my colleague")
 - 0.8-0.9: Clear context ("we're building with React" = project USES React)
@@ -206,9 +217,10 @@ When to use create_schedule:
 Creating schedules:
 - Parse natural language time expressions into cron (e.g., "every morning at 7am" = "0 7 * * *", "every Monday" = "0 9 * * 1")
 - For one-time tasks, convert to ISO datetime
-- Always confirm the schedule details with the user before creating
+- Create the schedule immediately using create_schedule — do NOT ask for confirmation, timezone, or additional details unless the request is genuinely ambiguous (e.g., no time specified at all)
 - Write clear prompt_templates that will make sense to the agent when executed later
 - Set tool_name to the relevant tool (e.g., "get_weather" for weather requests)
+- If the user specifies a time, use it directly. Default to the user's local time. Do not ask for timezone.
 
 Managing schedules:
 - When user asks to pause, resume, or cancel a schedule, use manage_schedule
@@ -293,8 +305,27 @@ You have access to specialist agents that handle specific domains. Delegate to t
 When delegating, pass the user's request and any relevant context as input to the specialist. Incorporate the specialist's response naturally into your reply — the user should not be aware of the delegation.
 
 Do NOT delegate for:
-- Simple greetings, small talk, or general knowledge questions
+- Simple greetings or small talk
+- General knowledge questions unrelated to the user's stored data
 - Tasks you can handle directly without specialist tools
+
+ALWAYS delegate to the knowledge agent when the user asks about:
+- People, projects, teams, or tools they've told you about
+- Relationships or connections between things (e.g., "how are X and Y related?", "what's our tech stack?")
+- Decisions, dependencies, or context about their work
+- Impact or consequence questions about named services, projects, or systems (e.g., "what happens if Service B goes down?", "what depends on X?")
+These questions require querying the user's knowledge graph — do not answer from general knowledge alone.
+
+ALWAYS delegate to the proactive agent OR notification agent when the user:
+- Explicitly asks for a reminder or schedule ("remind me", "schedule", "set up a recurring task")
+- Expresses intent to remember something ("I need to remember...", "don't let me forget...", "I should do X later")
+- Asks to be alerted or notified ("alert me", "notify me", "let me know when")
+- Requests any time-based action ("check the weather every morning", "every Monday at 9am")
+- Mentions needing to do something later ("I need to buy groceries after work", "I have to call the dentist tomorrow")
+
+Use ask_proactive_agent for recurring schedules and time-specific actions.
+Use ask_notification_agent for simple one-off reminders without a specific scheduled time.
+You do NOT have schedule creation or notification tools yourself. You MUST delegate to the appropriate specialist. Responding conversationally about reminders or schedules without delegating is NOT acceptable — no action will be taken unless a specialist handles it.
 """
 
 # ---------------------------------------------------------------------------
@@ -564,10 +595,11 @@ def build_orchestrator_tools(model: str) -> tuple[list, dict[str, bool]]:
         tools.append(proactive_agent.as_tool(
             tool_name="ask_proactive_agent",
             tool_description=(
-                "Delegate to the proactive assistant specialist. Use for recording "
-                "behavioral patterns, managing schedules/reminders, adjusting "
-                "proactiveness settings, or retrieving the user profile. Pass the "
-                "user's request as input."
+                "Delegate to the proactive assistant specialist. MUST be called for: "
+                "creating schedules/recurring tasks, setting up reminders, managing "
+                "existing schedules. Also used for: recording behavioral patterns, "
+                "adjusting proactiveness settings, or retrieving the user profile. "
+                "Pass the user's request as input."
             ),
             run_config=sub_agent_config,
         ))
