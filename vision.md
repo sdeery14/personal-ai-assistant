@@ -334,6 +334,13 @@ Gmail read/search, calendar read, explicit permission prompts, audit logging. No
 - Multi-modal inputs (images, documents, file uploads in chat)
 - Interactive knowledge graph visualization (zoomable node-and-edge diagram)
 
+#### Proactive Intelligence
+
+- Multi-hop graph traversal (`find_paths()`) for discovering indirect entity relationships
+- Event-triggered scheduled tasks (e.g., "notify me when a new entity is detected")
+- Relevance scoring engine: entity recency, mention frequency, relationship strength weighting
+- Agent-suggested schedules based on detected patterns (currently agent can record patterns but doesn't auto-suggest schedules)
+
 #### Integrations & Automation
 
 - Write-capable integrations (send email, create calendar events)

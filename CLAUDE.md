@@ -188,7 +188,7 @@ Optional: `OPENAI_MODEL` (default: gpt-4o), `MAX_TOKENS` (default: 2000), `TIMEO
 
 ## Feature Roadmap Context
 
-See `vision.md` for the full roadmap. Completed: 001–009. Next: 010 (Agent Notifications).
+See `vision.md` for the full roadmap. Completed: 001–011. Next: 012 (Voice Interaction).
 
 When a feature, idea, or capability is deferred or declared out of scope during any phase (specify, clarify, plan, implement), add it to the **Future Capabilities** section in `vision.md` so it is not lost.
 
