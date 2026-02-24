@@ -19,19 +19,21 @@ from src.services.guardrails import validate_input, validate_output
 
 logger = structlog.get_logger(__name__)
 
-# Re-export prompt constants for backward compatibility (used by tests and eval)
-from src.services.agents import (  # noqa: E402, F401
-    CALIBRATION_SYSTEM_PROMPT,
-    GRAPH_SYSTEM_PROMPT,
-    MEMORY_SYSTEM_PROMPT,
-    MEMORY_WRITE_SYSTEM_PROMPT,
-    NOTIFICATION_SYSTEM_PROMPT,
-    OBSERVATION_SYSTEM_PROMPT,
-    ONBOARDING_SYSTEM_PROMPT,
-    PROACTIVE_GREETING_PROMPT,
-    SCHEDULE_SYSTEM_PROMPT,
-    WEATHER_SYSTEM_PROMPT,
-)
+# Backward-compatible prompt re-exports — delegate to prompt_service.load_prompt()
+# so existing test imports continue to work while loading from the registry.
+from src.prompts.defaults import PROMPT_DEFAULTS as _PROMPT_DEFAULTS  # noqa: E402
+
+ORCHESTRATOR_BASE_PROMPT = _PROMPT_DEFAULTS["orchestrator-base"]
+ONBOARDING_SYSTEM_PROMPT = _PROMPT_DEFAULTS["onboarding"]
+PROACTIVE_GREETING_PROMPT = _PROMPT_DEFAULTS["proactive-greeting"]
+MEMORY_SYSTEM_PROMPT = _PROMPT_DEFAULTS["memory"]
+MEMORY_WRITE_SYSTEM_PROMPT = _PROMPT_DEFAULTS["memory-write"]
+WEATHER_SYSTEM_PROMPT = _PROMPT_DEFAULTS["weather"]
+GRAPH_SYSTEM_PROMPT = _PROMPT_DEFAULTS["knowledge-graph"]
+CALIBRATION_SYSTEM_PROMPT = _PROMPT_DEFAULTS["calibration"]
+SCHEDULE_SYSTEM_PROMPT = _PROMPT_DEFAULTS["schedule"]
+OBSERVATION_SYSTEM_PROMPT = _PROMPT_DEFAULTS["observation"]
+NOTIFICATION_SYSTEM_PROMPT = _PROMPT_DEFAULTS["notification"]
 
 
 class ChatService:

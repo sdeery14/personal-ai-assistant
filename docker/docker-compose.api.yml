@@ -49,11 +49,15 @@ services:
     environment:
       - POSTGRES_URL=postgresql://assistant:assistant_dev_password@postgres:5432/assistant
       - REDIS_URL=redis://redis:6379/0
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - default
+      - mlflow_default
     restart: unless-stopped
     healthcheck:
       test:
@@ -71,3 +75,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  mlflow_default:
+    external: true

@@ -5,9 +5,6 @@ from unittest.mock import patch
 import pytest
 
 from src.services.agents import (
-    ONBOARDING_SYSTEM_PROMPT,
-    ORCHESTRATOR_BASE_PROMPT,
-    PROACTIVE_GREETING_PROMPT,
     build_orchestrator_instructions,
     build_orchestrator_tools,
     create_knowledge_agent,
