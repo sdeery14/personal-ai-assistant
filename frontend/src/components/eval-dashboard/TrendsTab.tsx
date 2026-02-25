@@ -198,7 +198,7 @@ export function TrendsTab() {
   );
 }
 
-type SortKey = "timestamp" | "pass_rate" | "average_score" | "eval_status";
+type SortKey = "timestamp" | "pass_rate" | "average_score" | "total_cases" | "error_cases" | "eval_status";
 type SortDir = "asc" | "desc";
 
 function SortArrow({ active, dir }: { active: boolean; dir: SortDir }) {
@@ -229,6 +229,10 @@ function DetailView({
         cmp = a.pass_rate - b.pass_rate;
       } else if (sortKey === "average_score") {
         cmp = a.average_score - b.average_score;
+      } else if (sortKey === "total_cases") {
+        cmp = a.total_cases - b.total_cases;
+      } else if (sortKey === "error_cases") {
+        cmp = a.error_cases - b.error_cases;
       } else if (sortKey === "eval_status") {
         cmp = a.eval_status.localeCompare(b.eval_status);
       }
@@ -342,6 +346,20 @@ function DetailView({
                 <SortArrow active={sortKey === "average_score"} dir={sortDir} />
               </th>
               <th
+                className="cursor-pointer select-none px-2 py-1.5 text-right font-medium text-gray-600 dark:text-gray-400"
+                onClick={() => handleSort("total_cases")}
+              >
+                Cases
+                <SortArrow active={sortKey === "total_cases"} dir={sortDir} />
+              </th>
+              <th
+                className="cursor-pointer select-none px-2 py-1.5 text-right font-medium text-gray-600 dark:text-gray-400"
+                onClick={() => handleSort("error_cases")}
+              >
+                Errors
+                <SortArrow active={sortKey === "error_cases"} dir={sortDir} />
+              </th>
+              <th
                 className="cursor-pointer select-none px-2 py-1.5 text-left font-medium text-gray-600 dark:text-gray-400"
                 onClick={() => handleSort("eval_status")}
               >
@@ -367,6 +385,16 @@ function DetailView({
                 </td>
                 <td className="px-2 py-1.5 text-right text-gray-700 dark:text-gray-300">
                   {p.average_score.toFixed(2)}
+                </td>
+                <td className="px-2 py-1.5 text-right text-gray-700 dark:text-gray-300">
+                  {p.total_cases}
+                </td>
+                <td className="px-2 py-1.5 text-right text-gray-700 dark:text-gray-300">
+                  {p.error_cases > 0 ? (
+                    <span className="text-red-600 dark:text-red-400">{p.error_cases}</span>
+                  ) : (
+                    0
+                  )}
                 </td>
                 <td className="px-2 py-1.5">
                   <span
