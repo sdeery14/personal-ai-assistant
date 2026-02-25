@@ -216,4 +216,110 @@ describe("TrendsTab", () => {
 
     expect(screen.getByText("\u2014")).toBeInTheDocument();
   });
+
+  it("detail table defaults to latest-first", () => {
+    defaultTrendsReturn.summaries = [
+      makeSummary({
+        eval_type: "quality",
+        points: [
+          {
+            run_id: "run-old",
+            timestamp: "2026-02-20T12:00:00Z",
+            eval_type: "quality",
+            pass_rate: 0.7,
+            average_score: 3.5,
+            total_cases: 10,
+            error_cases: 0,
+            prompt_versions: { system: "1" },
+            eval_status: "passed",
+          },
+          {
+            run_id: "run-mid",
+            timestamp: "2026-02-22T12:00:00Z",
+            eval_type: "quality",
+            pass_rate: 0.8,
+            average_score: 4.0,
+            total_cases: 10,
+            error_cases: 0,
+            prompt_versions: { system: "1" },
+            eval_status: "passed",
+          },
+          {
+            run_id: "run-new",
+            timestamp: "2026-02-24T12:00:00Z",
+            eval_type: "quality",
+            pass_rate: 0.9,
+            average_score: 4.5,
+            total_cases: 10,
+            error_cases: 0,
+            prompt_versions: { system: "1" },
+            eval_status: "passed",
+          },
+        ],
+      }),
+    ];
+    render(<TrendsTab />);
+    fireEvent.click(screen.getByText("quality"));
+
+    const rows = screen.getAllByRole("row").filter((row) =>
+      row.querySelector("td.font-mono")
+    );
+    // First data row should be the newest run
+    expect(rows[0]).toHaveTextContent("run-new");
+    expect(rows[2]).toHaveTextContent("run-old");
+  });
+
+  it("clicking a column header toggles sort order", () => {
+    defaultTrendsReturn.summaries = [
+      makeSummary({
+        eval_type: "quality",
+        points: [
+          {
+            run_id: "run-low",
+            timestamp: "2026-02-20T12:00:00Z",
+            eval_type: "quality",
+            pass_rate: 0.5,
+            average_score: 2.0,
+            total_cases: 10,
+            error_cases: 0,
+            prompt_versions: { system: "1" },
+            eval_status: "passed",
+          },
+          {
+            run_id: "run-high",
+            timestamp: "2026-02-24T12:00:00Z",
+            eval_type: "quality",
+            pass_rate: 0.9,
+            average_score: 4.5,
+            total_cases: 10,
+            error_cases: 0,
+            prompt_versions: { system: "1" },
+            eval_status: "passed",
+          },
+        ],
+      }),
+    ];
+    render(<TrendsTab />);
+    fireEvent.click(screen.getByText("quality"));
+
+    // Default: Date desc — run-high (newest) first
+    let rows = screen.getAllByRole("row").filter((row) =>
+      row.querySelector("td.font-mono")
+    );
+    expect(rows[0]).toHaveTextContent("run-high");
+
+    // Click Date header to toggle to asc
+    fireEvent.click(screen.getByText(/^Date/));
+    rows = screen.getAllByRole("row").filter((row) =>
+      row.querySelector("td.font-mono")
+    );
+    expect(rows[0]).toHaveTextContent("run-low");
+
+    // Click Pass Rate to sort desc by pass_rate
+    fireEvent.click(screen.getByText(/^Pass Rate/));
+    rows = screen.getAllByRole("row").filter((row) =>
+      row.querySelector("td.font-mono")
+    );
+    expect(rows[0]).toHaveTextContent("run-high");
+  });
 });

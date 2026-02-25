@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, Button } from "@/components/ui";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { TrendChart } from "./TrendChart";
@@ -198,6 +198,14 @@ export function TrendsTab() {
   );
 }
 
+type SortKey = "timestamp" | "pass_rate" | "average_score" | "eval_status";
+type SortDir = "asc" | "desc";
+
+function SortArrow({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active) return null;
+  return <span className="ml-1">{dir === "asc" ? "\u25B2" : "\u25BC"}</span>;
+}
+
 function DetailView({
   summary,
   regression,
@@ -206,9 +214,37 @@ function DetailView({
   regression?: RegressionReport;
 }) {
   const [detailLimit, setDetailLimit] = useState(10);
+  const [sortKey, setSortKey] = useState<SortKey>("timestamp");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   // Slice points to the most recent N (points are sorted oldest → newest)
   const visiblePoints = summary.points.slice(-detailLimit);
+
+  const sortedPoints = useMemo(() => {
+    const sorted = [...visiblePoints].sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "timestamp") {
+        cmp = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+      } else if (sortKey === "pass_rate") {
+        cmp = a.pass_rate - b.pass_rate;
+      } else if (sortKey === "average_score") {
+        cmp = a.average_score - b.average_score;
+      } else if (sortKey === "eval_status") {
+        cmp = a.eval_status.localeCompare(b.eval_status);
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return sorted;
+  }, [visiblePoints, sortKey, sortDir]);
+
+  function handleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  }
 
   return (
     <Card>
@@ -284,22 +320,38 @@ function DetailView({
               <th className="px-2 py-1.5 text-left font-medium text-gray-600 dark:text-gray-400">
                 Run ID
               </th>
-              <th className="px-2 py-1.5 text-left font-medium text-gray-600 dark:text-gray-400">
+              <th
+                className="cursor-pointer select-none px-2 py-1.5 text-left font-medium text-gray-600 dark:text-gray-400"
+                onClick={() => handleSort("timestamp")}
+              >
                 Date
+                <SortArrow active={sortKey === "timestamp"} dir={sortDir} />
               </th>
-              <th className="px-2 py-1.5 text-right font-medium text-gray-600 dark:text-gray-400">
+              <th
+                className="cursor-pointer select-none px-2 py-1.5 text-right font-medium text-gray-600 dark:text-gray-400"
+                onClick={() => handleSort("pass_rate")}
+              >
                 Pass Rate
+                <SortArrow active={sortKey === "pass_rate"} dir={sortDir} />
               </th>
-              <th className="px-2 py-1.5 text-right font-medium text-gray-600 dark:text-gray-400">
+              <th
+                className="cursor-pointer select-none px-2 py-1.5 text-right font-medium text-gray-600 dark:text-gray-400"
+                onClick={() => handleSort("average_score")}
+              >
                 Avg Score
+                <SortArrow active={sortKey === "average_score"} dir={sortDir} />
               </th>
-              <th className="px-2 py-1.5 text-left font-medium text-gray-600 dark:text-gray-400">
+              <th
+                className="cursor-pointer select-none px-2 py-1.5 text-left font-medium text-gray-600 dark:text-gray-400"
+                onClick={() => handleSort("eval_status")}
+              >
                 Status
+                <SortArrow active={sortKey === "eval_status"} dir={sortDir} />
               </th>
             </tr>
           </thead>
           <tbody>
-            {visiblePoints.map((p) => (
+            {sortedPoints.map((p) => (
               <tr
                 key={p.run_id}
                 className="border-b border-gray-100 dark:border-gray-800"
