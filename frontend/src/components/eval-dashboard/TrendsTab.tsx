@@ -7,7 +7,7 @@ import { TrendChart } from "./TrendChart";
 import { useTrends, useRegressions } from "@/hooks/useEvalDashboard";
 import type { TrendSummary, RegressionReport } from "@/types/eval-dashboard";
 
-const LIMIT_OPTIONS = [5, 10, 20, 50];
+const DETAIL_LIMIT_OPTIONS = [5, 10, 20, 50, 100];
 
 const trendColors: Record<string, string> = {
   improving: "text-green-600 dark:text-green-400",
@@ -44,8 +44,7 @@ function formatDelta(delta: number): string {
 }
 
 export function TrendsTab() {
-  const [limit, setLimit] = useState(10);
-  const { summaries, isLoading, error, refresh } = useTrends(undefined, limit);
+  const { summaries, isLoading, error, refresh } = useTrends(undefined, 100);
   const {
     reports,
     hasRegressions,
@@ -98,23 +97,6 @@ export function TrendsTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600 dark:text-gray-400">
-              Runs:
-            </label>
-            <select
-              value={limit}
-              onChange={(e) => setLimit(Number(e.target.value))}
-              className="rounded border border-gray-300 bg-white px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
-            >
-              {LIMIT_OPTIONS.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </div>
-
           {/* Regression banner */}
           {reports.length > 0 && (
             hasRegressions ? (
@@ -223,6 +205,11 @@ function DetailView({
   summary: TrendSummary;
   regression?: RegressionReport;
 }) {
+  const [detailLimit, setDetailLimit] = useState(10);
+
+  // Slice points to the most recent N (points are sorted oldest → newest)
+  const visiblePoints = summary.points.slice(-detailLimit);
+
   return (
     <Card>
       <h3 className="mb-3 text-lg font-semibold text-gray-900 dark:text-gray-100">
@@ -268,8 +255,26 @@ function DetailView({
         </div>
       )}
 
+      {/* Runs dropdown */}
+      <div className="mb-3 flex items-center gap-2">
+        <label className="text-sm text-gray-600 dark:text-gray-400">
+          Runs:
+        </label>
+        <select
+          value={detailLimit}
+          onChange={(e) => setDetailLimit(Number(e.target.value))}
+          className="rounded border border-gray-300 bg-white px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+        >
+          {DETAIL_LIMIT_OPTIONS.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <TrendChart
-        points={summary.points}
+        points={visiblePoints}
         promptChanges={summary.prompt_changes}
       />
       <div className="mt-4 overflow-x-auto">
@@ -294,7 +299,7 @@ function DetailView({
             </tr>
           </thead>
           <tbody>
-            {summary.points.map((p) => (
+            {visiblePoints.map((p) => (
               <tr
                 key={p.run_id}
                 className="border-b border-gray-100 dark:border-gray-800"

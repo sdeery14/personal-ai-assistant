@@ -200,6 +200,15 @@ describe("TrendsTab", () => {
     expect(screen.getByText(/Changed: system v1/)).toBeInTheDocument();
   });
 
+  it("shows runs dropdown in detail view", () => {
+    defaultTrendsReturn.summaries = [makeSummary()];
+    render(<TrendsTab />);
+
+    fireEvent.click(screen.getByText("quality"));
+    const select = screen.getByDisplayValue("10");
+    expect(select).toBeInTheDocument();
+  });
+
   it("shows dash for delta when no regression data for eval type", () => {
     defaultTrendsReturn.summaries = [makeSummary({ eval_type: "quality" })];
     // No regression reports
