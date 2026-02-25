@@ -75,7 +75,7 @@ export function useRegressions(evalType?: string) {
         params
       );
       setReports(data.reports);
-      setHasRegressions(data.hasRegressions);
+      setHasRegressions(data.has_regressions);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to load regressions"

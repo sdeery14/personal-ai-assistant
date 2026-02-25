@@ -27,17 +27,17 @@ vi.mock("next-auth/react", () => ({
 
 function makeReport(overrides: Partial<RegressionReport> = {}): RegressionReport {
   return {
-    evalType: "quality",
-    baselineRunId: "run-0",
-    currentRunId: "run-1",
-    baselinePassRate: 0.85,
-    currentPassRate: 0.9,
-    deltaPp: 0.05,
+    eval_type: "quality",
+    baseline_run_id: "run-0",
+    current_run_id: "run-1",
+    baseline_pass_rate: 0.85,
+    current_pass_rate: 0.9,
+    delta_pp: 0.05,
     threshold: 0.8,
     verdict: "PASS",
-    changedPrompts: [],
-    baselineTimestamp: "2026-02-23T12:00:00Z",
-    currentTimestamp: "2026-02-24T12:00:00Z",
+    changed_prompts: [],
+    baseline_timestamp: "2026-02-23T12:00:00Z",
+    current_timestamp: "2026-02-24T12:00:00Z",
     ...overrides,
   };
 }
@@ -60,11 +60,11 @@ describe("RegressionsTab", () => {
 
   it("renders comparison table with verdicts", () => {
     defaultHookReturn.reports = [
-      makeReport({ evalType: "quality", verdict: "PASS" }),
+      makeReport({ eval_type: "quality", verdict: "PASS" }),
       makeReport({
-        evalType: "security",
+        eval_type: "security",
         verdict: "REGRESSION",
-        deltaPp: -0.15,
+        delta_pp: -0.15,
       }),
     ];
     defaultHookReturn.hasRegressions = true;
@@ -95,13 +95,13 @@ describe("RegressionsTab", () => {
   it("displays changed prompts", () => {
     defaultHookReturn.reports = [
       makeReport({
-        changedPrompts: [
+        changed_prompts: [
           {
             timestamp: "2026-02-24T12:00:00Z",
-            runId: "run-1",
-            promptName: "system",
-            fromVersion: "1",
-            toVersion: "2",
+            run_id: "run-1",
+            prompt_name: "system",
+            from_version: "1",
+            to_version: "2",
           },
         ],
       }),
@@ -121,7 +121,7 @@ describe("RegressionsTab", () => {
   it("shows summary counts", () => {
     defaultHookReturn.reports = [
       makeReport({ verdict: "PASS" }),
-      makeReport({ evalType: "security", verdict: "REGRESSION" }),
+      makeReport({ eval_type: "security", verdict: "REGRESSION" }),
     ];
     defaultHookReturn.hasRegressions = true;
     render(<RegressionsTab />);

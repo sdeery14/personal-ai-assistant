@@ -37,8 +37,8 @@ describe("PromoteTab", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     defaultPromptsHook.prompts = [
-      { name: "system", currentVersion: 2 },
-      { name: "judge", currentVersion: 1 },
+      { name: "system", current_version: 2 },
+      { name: "judge", current_version: 1 },
     ];
     defaultPromptsHook.isLoading = false;
     defaultPromoteHook.isLoading = false;
@@ -66,21 +66,21 @@ describe("PromoteTab", () => {
   it("shows gate check results when allowed", async () => {
     const gateResult: PromotionGateResult = {
       allowed: true,
-      promptName: "system",
-      fromAlias: "experiment",
-      toAlias: "production",
+      prompt_name: "system",
+      from_alias: "experiment",
+      to_alias: "production",
       version: 2,
-      evalResults: [
+      eval_results: [
         {
-          evalType: "quality",
-          passRate: 0.9,
+          eval_type: "quality",
+          pass_rate: 0.9,
           threshold: 0.8,
           passed: true,
-          runId: "run-1",
+          run_id: "run-1",
         },
       ],
-      blockingEvals: [],
-      justifyingRunIds: ["run-1"],
+      blocking_evals: [],
+      justifying_run_ids: ["run-1"],
     };
     mockCheckGate.mockResolvedValue(gateResult);
 

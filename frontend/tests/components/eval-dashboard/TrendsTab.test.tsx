@@ -42,24 +42,24 @@ vi.mock("next-auth/react", () => ({
 
 function makeSummary(overrides: Partial<TrendSummary> = {}): TrendSummary {
   return {
-    evalType: "quality",
-    latestPassRate: 0.9,
-    trendDirection: "stable",
-    runCount: 5,
+    eval_type: "quality",
+    latest_pass_rate: 0.9,
+    trend_direction: "stable",
+    run_count: 5,
     points: [
       {
-        runId: "run-1",
+        run_id: "run-1",
         timestamp: "2026-02-24T12:00:00Z",
-        evalType: "quality",
-        passRate: 0.9,
-        averageScore: 4.2,
-        totalCases: 10,
-        errorCases: 0,
-        promptVersions: { system: "1" },
-        evalStatus: "passed",
+        eval_type: "quality",
+        pass_rate: 0.9,
+        average_score: 4.2,
+        total_cases: 10,
+        error_cases: 0,
+        prompt_versions: { system: "1" },
+        eval_status: "passed",
       },
     ],
-    promptChanges: [],
+    prompt_changes: [],
     ...overrides,
   };
 }
@@ -79,8 +79,8 @@ describe("TrendsTab", () => {
 
   it("renders summary table with eval types", () => {
     defaultHookReturn.summaries = [
-      makeSummary({ evalType: "quality", latestPassRate: 0.9, runCount: 5 }),
-      makeSummary({ evalType: "security", latestPassRate: 0.85, runCount: 3 }),
+      makeSummary({ eval_type: "quality", latest_pass_rate: 0.9, run_count: 5 }),
+      makeSummary({ eval_type: "security", latest_pass_rate: 0.85, run_count: 3 }),
     ];
     render(<TrendsTab />);
 

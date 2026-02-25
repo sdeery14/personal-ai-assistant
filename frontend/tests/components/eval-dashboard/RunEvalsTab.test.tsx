@@ -56,18 +56,18 @@ describe("RunEvalsTab", () => {
 
   it("shows progress during run", () => {
     defaultHookReturn.status = {
-      runId: "test-123",
+      run_id: "test-123",
       suite: "core",
       status: "running",
       total: 5,
       completed: 2,
       results: [
-        { datasetPath: "eval/golden_dataset.json", exitCode: 0, passed: true },
-        { datasetPath: "eval/security_golden_dataset.json", exitCode: 0, passed: true },
+        { dataset_path: "eval/golden_dataset.json", exit_code: 0, passed: true },
+        { dataset_path: "eval/security_golden_dataset.json", exit_code: 0, passed: true },
       ],
-      regressionReports: null,
-      startedAt: "2026-02-24T12:00:00Z",
-      finishedAt: null,
+      regression_reports: null,
+      started_at: "2026-02-24T12:00:00Z",
+      finished_at: null,
     };
     render(<RunEvalsTab />);
 
@@ -77,18 +77,18 @@ describe("RunEvalsTab", () => {
 
   it("shows completion with results", () => {
     defaultHookReturn.status = {
-      runId: "test-123",
+      run_id: "test-123",
       suite: "core",
       status: "completed",
       total: 2,
       completed: 2,
       results: [
-        { datasetPath: "eval/golden_dataset.json", exitCode: 0, passed: true },
-        { datasetPath: "eval/security_golden_dataset.json", exitCode: 1, passed: false },
+        { dataset_path: "eval/golden_dataset.json", exit_code: 0, passed: true },
+        { dataset_path: "eval/security_golden_dataset.json", exit_code: 1, passed: false },
       ],
-      regressionReports: [],
-      startedAt: "2026-02-24T12:00:00Z",
-      finishedAt: "2026-02-24T12:05:00Z",
+      regression_reports: [],
+      started_at: "2026-02-24T12:00:00Z",
+      finished_at: "2026-02-24T12:05:00Z",
     };
     render(<RunEvalsTab />);
 

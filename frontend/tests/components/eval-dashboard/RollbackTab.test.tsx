@@ -38,8 +38,8 @@ describe("RollbackTab", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     defaultPromptsHook.prompts = [
-      { name: "system", currentVersion: 3 },
-      { name: "judge", currentVersion: 1 },
+      { name: "system", current_version: 3 },
+      { name: "judge", current_version: 1 },
     ];
     defaultPromptsHook.isLoading = false;
     defaultRollbackHook.rollbackInfo = null;
@@ -62,9 +62,9 @@ describe("RollbackTab", () => {
 
   it("shows rollback info with versions", () => {
     defaultRollbackHook.rollbackInfo = {
-      promptName: "system",
-      currentVersion: 3,
-      previousVersion: 2,
+      prompt_name: "system",
+      current_version: 3,
+      previous_version: 2,
       alias: "production",
     };
     render(<RollbackTab />);
@@ -74,9 +74,9 @@ describe("RollbackTab", () => {
 
   it("disables rollback when no previous version", () => {
     defaultRollbackHook.rollbackInfo = {
-      promptName: "judge",
-      currentVersion: 1,
-      previousVersion: null,
+      prompt_name: "judge",
+      current_version: 1,
+      previous_version: null,
       alias: "production",
     };
     render(<RollbackTab />);
@@ -87,9 +87,9 @@ describe("RollbackTab", () => {
 
   it("requires reason before executing rollback", () => {
     defaultRollbackHook.rollbackInfo = {
-      promptName: "system",
-      currentVersion: 3,
-      previousVersion: 2,
+      prompt_name: "system",
+      current_version: 3,
+      previous_version: 2,
       alias: "production",
     };
     render(<RollbackTab />);

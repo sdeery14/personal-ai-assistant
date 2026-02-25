@@ -31,12 +31,12 @@ export function RollbackTab() {
   };
 
   const handleRollback = async () => {
-    if (!rollbackInfo || rollbackInfo.previousVersion === null || !reason.trim())
+    if (!rollbackInfo || rollbackInfo.previous_version === null || !reason.trim())
       return;
     const result = await executeRollback(
-      rollbackInfo.promptName,
+      rollbackInfo.prompt_name,
       rollbackInfo.alias,
-      rollbackInfo.previousVersion,
+      rollbackInfo.previous_version,
       reason.trim()
     );
     if (result) {
@@ -72,7 +72,7 @@ export function RollbackTab() {
           <option value="">Choose a prompt...</option>
           {prompts.map((p) => (
             <option key={p.name} value={p.name}>
-              {p.name} (v{p.currentVersion})
+              {p.name} (v{p.current_version})
             </option>
           ))}
         </select>
@@ -88,7 +88,7 @@ export function RollbackTab() {
       {rollbackInfo && (
         <Card>
           <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">
-            Rollback: {rollbackInfo.promptName}
+            Rollback: {rollbackInfo.prompt_name}
           </h3>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
             <dt className="text-gray-500 dark:text-gray-400">Alias</dt>
@@ -97,17 +97,17 @@ export function RollbackTab() {
             </dd>
             <dt className="text-gray-500 dark:text-gray-400">Current Version</dt>
             <dd className="text-gray-900 dark:text-gray-100">
-              v{rollbackInfo.currentVersion}
+              v{rollbackInfo.current_version}
             </dd>
             <dt className="text-gray-500 dark:text-gray-400">Target Version</dt>
             <dd className="text-gray-900 dark:text-gray-100">
-              {rollbackInfo.previousVersion !== null
-                ? `v${rollbackInfo.previousVersion}`
+              {rollbackInfo.previous_version !== null
+                ? `v${rollbackInfo.previous_version}`
                 : "—"}
             </dd>
           </dl>
 
-          {rollbackInfo.previousVersion === null ? (
+          {rollbackInfo.previous_version === null ? (
             <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
               No previous version available
             </p>
@@ -142,11 +142,11 @@ export function RollbackTab() {
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
             <dt className="text-gray-500 dark:text-gray-400">Prompt</dt>
             <dd className="text-gray-900 dark:text-gray-100">
-              {auditResult.promptName}
+              {auditResult.prompt_name}
             </dd>
             <dt className="text-gray-500 dark:text-gray-400">Version</dt>
             <dd className="text-gray-900 dark:text-gray-100">
-              v{auditResult.fromVersion} → v{auditResult.toVersion}
+              v{auditResult.from_version} → v{auditResult.to_version}
             </dd>
             <dt className="text-gray-500 dark:text-gray-400">Alias</dt>
             <dd className="text-gray-900 dark:text-gray-100">

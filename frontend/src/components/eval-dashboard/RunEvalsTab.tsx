@@ -79,7 +79,7 @@ export function RunEvalsTab() {
         <Card>
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              Run: {status.runId.slice(0, 8)}
+              Run: {status.run_id.slice(0, 8)}
               <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
                 ({status.suite})
               </span>
@@ -120,7 +120,7 @@ export function RunEvalsTab() {
                     className="flex items-center justify-between rounded px-2 py-1 text-xs"
                   >
                     <span className="text-gray-700 dark:text-gray-300">
-                      {r.datasetPath.split("/").pop()}
+                      {r.dataset_path.split("/").pop()}
                     </span>
                     <span
                       className={`rounded px-1.5 py-0.5 font-medium ${
@@ -138,24 +138,24 @@ export function RunEvalsTab() {
           )}
 
           {/* Regression results after completion */}
-          {status.status === "completed" && status.regressionReports && (
+          {status.status === "completed" && status.regression_reports && (
             <div>
               <h4 className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">
                 Regression Check
               </h4>
-              {status.regressionReports.length === 0 ? (
+              {status.regression_reports.length === 0 ? (
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   No regression data available
                 </p>
               ) : (
                 <div className="space-y-1">
-                  {status.regressionReports.map((r: RegressionReport) => (
+                  {status.regression_reports.map((r: RegressionReport) => (
                     <div
-                      key={r.evalType}
+                      key={r.eval_type}
                       className="flex items-center justify-between rounded px-2 py-1 text-xs"
                     >
                       <span className="text-gray-700 dark:text-gray-300">
-                        {r.evalType}
+                        {r.eval_type}
                       </span>
                       <span
                         className={`rounded px-1.5 py-0.5 font-semibold ${verdictStyles[r.verdict] || verdictStyles.PASS}`}
@@ -171,10 +171,10 @@ export function RunEvalsTab() {
 
           {/* Timestamps */}
           <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            Started: {new Date(status.startedAt).toLocaleString()}
-            {status.finishedAt && (
+            Started: {new Date(status.started_at).toLocaleString()}
+            {status.finished_at && (
               <span className="ml-3">
-                Finished: {new Date(status.finishedAt).toLocaleString()}
+                Finished: {new Date(status.finished_at).toLocaleString()}
               </span>
             )}
           </div>

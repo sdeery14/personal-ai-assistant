@@ -26,8 +26,8 @@ export function PromoteTab() {
   const handlePromote = async () => {
     if (!gateResult) return;
     const result = await executePromotion(
-      gateResult.promptName,
-      gateResult.toAlias,
+      gateResult.prompt_name,
+      gateResult.to_alias,
       gateResult.version,
       false,
       ""
@@ -41,8 +41,8 @@ export function PromoteTab() {
   const handleForcePromote = async () => {
     if (!gateResult || !forceReason.trim()) return;
     const result = await executePromotion(
-      gateResult.promptName,
-      gateResult.toAlias,
+      gateResult.prompt_name,
+      gateResult.to_alias,
       gateResult.version,
       true,
       forceReason.trim()
@@ -87,7 +87,7 @@ export function PromoteTab() {
               <option value="">Choose a prompt...</option>
               {prompts.map((p) => (
                 <option key={p.name} value={p.name}>
-                  {p.name} (v{p.currentVersion})
+                  {p.name} (v{p.current_version})
                 </option>
               ))}
             </select>
@@ -113,9 +113,9 @@ export function PromoteTab() {
       {gateResult && (
         <Card>
           <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">
-            Promotion Gate: {gateResult.promptName} v{gateResult.version}
+            Promotion Gate: {gateResult.prompt_name} v{gateResult.version}
             <span className="ml-2">
-              ({gateResult.fromAlias} → {gateResult.toAlias})
+              ({gateResult.from_alias} → {gateResult.to_alias})
             </span>
           </h3>
 
@@ -137,16 +137,16 @@ export function PromoteTab() {
               </tr>
             </thead>
             <tbody>
-              {gateResult.evalResults.map((e) => (
+              {gateResult.eval_results.map((e) => (
                 <tr
-                  key={e.evalType}
+                  key={e.eval_type}
                   className="border-b border-gray-100 dark:border-gray-800"
                 >
                   <td className="px-3 py-2 text-gray-900 dark:text-gray-100">
-                    {e.evalType}
+                    {e.eval_type}
                   </td>
                   <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">
-                    {(e.passRate * 100).toFixed(1)}%
+                    {(e.pass_rate * 100).toFixed(1)}%
                   </td>
                   <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">
                     {(e.threshold * 100).toFixed(1)}%
@@ -174,7 +174,7 @@ export function PromoteTab() {
           ) : (
             <div className="space-y-2">
               <p className="text-sm text-red-600 dark:text-red-400">
-                Blocked by: {gateResult.blockingEvals.join(", ")}
+                Blocked by: {gateResult.blocking_evals.join(", ")}
               </p>
               <Button
                 variant="danger"
@@ -253,10 +253,10 @@ function AuditDisplay({ record }: { record: AuditRecord }) {
       </h3>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
         <dt className="text-gray-500 dark:text-gray-400">Prompt</dt>
-        <dd className="text-gray-900 dark:text-gray-100">{record.promptName}</dd>
+        <dd className="text-gray-900 dark:text-gray-100">{record.prompt_name}</dd>
         <dt className="text-gray-500 dark:text-gray-400">Version</dt>
         <dd className="text-gray-900 dark:text-gray-100">
-          v{record.fromVersion} → v{record.toVersion}
+          v{record.from_version} → v{record.to_version}
         </dd>
         <dt className="text-gray-500 dark:text-gray-400">Alias</dt>
         <dd className="text-gray-900 dark:text-gray-100">{record.alias}</dd>

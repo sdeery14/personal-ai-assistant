@@ -124,39 +124,39 @@ export function RegressionsTab() {
           <tbody>
             {reports.map((r: RegressionReport) => (
               <tr
-                key={r.evalType}
+                key={r.eval_type}
                 className="border-b border-gray-100 dark:border-gray-800"
               >
                 <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">
-                  {r.evalType}
-                  {r.changedPrompts.length > 0 && (
+                  {r.eval_type}
+                  {r.changed_prompts.length > 0 && (
                     <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      {r.changedPrompts.map((c, i) => (
+                      {r.changed_prompts.map((c, i) => (
                         <span key={i}>
-                          Changed: {c.promptName} v{c.fromVersion} → v
-                          {c.toVersion}
-                          {i < r.changedPrompts.length - 1 && ", "}
+                          Changed: {c.prompt_name} v{c.from_version} → v
+                          {c.to_version}
+                          {i < r.changed_prompts.length - 1 && ", "}
                         </span>
                       ))}
                     </div>
                   )}
                 </td>
                 <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">
-                  {(r.baselinePassRate * 100).toFixed(1)}%
+                  {(r.baseline_pass_rate * 100).toFixed(1)}%
                 </td>
                 <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">
-                  {(r.currentPassRate * 100).toFixed(1)}%
+                  {(r.current_pass_rate * 100).toFixed(1)}%
                 </td>
                 <td
                   className={`px-3 py-2 text-right font-medium ${
-                    r.deltaPp > 0
+                    r.delta_pp > 0
                       ? "text-green-600 dark:text-green-400"
-                      : r.deltaPp < 0
+                      : r.delta_pp < 0
                         ? "text-red-600 dark:text-red-400"
                         : "text-gray-500"
                   }`}
                 >
-                  {formatDelta(r.deltaPp)}
+                  {formatDelta(r.delta_pp)}
                 </td>
                 <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">
                   {(r.threshold * 100).toFixed(1)}%

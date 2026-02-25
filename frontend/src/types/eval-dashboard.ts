@@ -1,32 +1,32 @@
 /** TypeScript interfaces for Eval Dashboard API responses. */
 
 export interface TrendPoint {
-  runId: string;
+  run_id: string;
   timestamp: string;
-  evalType: string;
-  passRate: number;
-  averageScore: number;
-  totalCases: number;
-  errorCases: number;
-  promptVersions: Record<string, string>;
-  evalStatus: string;
+  eval_type: string;
+  pass_rate: number;
+  average_score: number;
+  total_cases: number;
+  error_cases: number;
+  prompt_versions: Record<string, string>;
+  eval_status: string;
 }
 
 export interface PromptChange {
   timestamp: string;
-  runId: string;
-  promptName: string;
-  fromVersion: string;
-  toVersion: string;
+  run_id: string;
+  prompt_name: string;
+  from_version: string;
+  to_version: string;
 }
 
 export interface TrendSummary {
-  evalType: string;
-  latestPassRate: number;
-  trendDirection: string;
-  runCount: number;
+  eval_type: string;
+  latest_pass_rate: number;
+  trend_direction: string;
+  run_count: number;
   points: TrendPoint[];
-  promptChanges: PromptChange[];
+  prompt_changes: PromptChange[];
 }
 
 export interface TrendsResponse {
@@ -34,27 +34,27 @@ export interface TrendsResponse {
 }
 
 export interface RegressionReport {
-  evalType: string;
-  baselineRunId: string;
-  currentRunId: string;
-  baselinePassRate: number;
-  currentPassRate: number;
-  deltaPp: number;
+  eval_type: string;
+  baseline_run_id: string;
+  current_run_id: string;
+  baseline_pass_rate: number;
+  current_pass_rate: number;
+  delta_pp: number;
   threshold: number;
   verdict: string;
-  changedPrompts: PromptChange[];
-  baselineTimestamp: string;
-  currentTimestamp: string;
+  changed_prompts: PromptChange[];
+  baseline_timestamp: string;
+  current_timestamp: string;
 }
 
 export interface RegressionsResponse {
   reports: RegressionReport[];
-  hasRegressions: boolean;
+  has_regressions: boolean;
 }
 
 export interface PromptListItem {
   name: string;
-  currentVersion: number;
+  current_version: number;
 }
 
 export interface PromptsResponse {
@@ -62,29 +62,29 @@ export interface PromptsResponse {
 }
 
 export interface PromotionEvalCheck {
-  evalType: string;
-  passRate: number;
+  eval_type: string;
+  pass_rate: number;
   threshold: number;
   passed: boolean;
-  runId: string;
+  run_id: string;
 }
 
 export interface PromotionGateResult {
   allowed: boolean;
-  promptName: string;
-  fromAlias: string;
-  toAlias: string;
+  prompt_name: string;
+  from_alias: string;
+  to_alias: string;
   version: number;
-  evalResults: PromotionEvalCheck[];
-  blockingEvals: string[];
-  justifyingRunIds: string[];
+  eval_results: PromotionEvalCheck[];
+  blocking_evals: string[];
+  justifying_run_ids: string[];
 }
 
 export interface AuditRecord {
   action: string;
-  promptName: string;
-  fromVersion: number;
-  toVersion: number;
+  prompt_name: string;
+  from_version: number;
+  to_version: number;
   alias: string;
   timestamp: string;
   actor: string;
@@ -92,26 +92,26 @@ export interface AuditRecord {
 }
 
 export interface EvalRunResult {
-  datasetPath: string;
-  exitCode: number;
+  dataset_path: string;
+  exit_code: number;
   passed: boolean;
 }
 
 export interface EvalRunStatus {
-  runId: string;
+  run_id: string;
   suite: string;
   status: string;
   total: number;
   completed: number;
   results: EvalRunResult[];
-  regressionReports: RegressionReport[] | null;
-  startedAt: string;
-  finishedAt: string | null;
+  regression_reports: RegressionReport[] | null;
+  started_at: string;
+  finished_at: string | null;
 }
 
 export interface RollbackInfo {
-  promptName: string;
-  currentVersion: number;
-  previousVersion: number | null;
+  prompt_name: string;
+  current_version: number;
+  previous_version: number | null;
   alias: string;
 }
