@@ -33,31 +33,142 @@ function PassedBadge({ passed }: { passed: boolean | null }) {
   );
 }
 
-function CaseExpandedRow({ c }: { c: RunCaseResult }) {
-  const extraEntries = Object.entries(c.extra).filter(
-    ([, v]) => v !== null && v !== undefined && v !== ""
+/** Parse a conversation transcript string into user/assistant turn pairs. */
+function parseTranscript(
+  text: string
+): { role: "user" | "assistant"; content: string }[] {
+  const turns: { role: "user" | "assistant"; content: string }[] = [];
+  // Match patterns like "[turn-1] User:" or "[turn-1] Assistant:"
+  const regex = /\[turn-\d+]\s*(User|Assistant):\s*/gi;
+  let lastIndex = 0;
+  let lastRole: "user" | "assistant" | null = null;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (lastRole !== null) {
+      turns.push({ role: lastRole, content: text.slice(lastIndex, match.index).trim() });
+    }
+    lastRole = match[1].toLowerCase() as "user" | "assistant";
+    lastIndex = regex.lastIndex;
+  }
+  if (lastRole !== null) {
+    turns.push({ role: lastRole, content: text.slice(lastIndex).trim() });
+  }
+  // If no turn markers found, return the whole thing as a single assistant entry
+  if (turns.length === 0 && text) {
+    turns.push({ role: "assistant", content: text });
+  }
+  return turns;
+}
+
+function ConversationView({ transcript }: { transcript: string }) {
+  const turns = parseTranscript(transcript);
+  return (
+    <div className="space-y-2">
+      {turns.map((t, i) => (
+        <div
+          key={i}
+          className={`rounded px-3 py-2 text-xs ${
+            t.role === "user"
+              ? "border-l-2 border-blue-400 bg-blue-50/50 dark:border-blue-500 dark:bg-blue-900/20"
+              : "border-l-2 border-green-400 bg-green-50/50 dark:border-green-500 dark:bg-green-900/20"
+          }`}
+        >
+          <span
+            className={`font-semibold ${
+              t.role === "user"
+                ? "text-blue-600 dark:text-blue-400"
+                : "text-green-600 dark:text-green-400"
+            }`}
+          >
+            {t.role === "user" ? "User" : "Assistant"}
+          </span>
+          <p className="mt-1 whitespace-pre-wrap text-gray-800 dark:text-gray-200">
+            {t.content}
+          </p>
+        </div>
+      ))}
+    </div>
   );
+}
+
+function CaseExpandedRow({ c }: { c: RunCaseResult }) {
+  const transcript =
+    typeof c.extra.conversation_transcript === "string"
+      ? c.extra.conversation_transcript
+      : null;
+
+  // Separate conversation_transcript and persona from other extra fields
+  const extraEntries = Object.entries(c.extra).filter(
+    ([k, v]) =>
+      v !== null &&
+      v !== undefined &&
+      v !== "" &&
+      k !== "conversation_transcript" &&
+      k !== "persona"
+  );
+
+  const persona =
+    typeof c.extra.persona === "string" ? c.extra.persona : null;
+
+  const hasPromptResponse = !!(c.user_prompt || c.assistant_response);
 
   return (
     <tr>
       <td colSpan={6} className="px-2 py-3">
         <div className="space-y-3 rounded border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
-          <div>
-            <p className="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
-              User Prompt
+          {/* Persona label */}
+          {persona && (
+            <div>
+              <span className="rounded bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                {persona}
+              </span>
+            </div>
+          )}
+
+          {/* Multi-turn conversation view */}
+          {transcript && (
+            <div>
+              <p className="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                Conversation
+              </p>
+              <ConversationView transcript={transcript} />
+            </div>
+          )}
+
+          {/* Single-turn prompt/response view */}
+          {hasPromptResponse && (
+            <>
+              {c.user_prompt && (
+                <div>
+                  <p className="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                    User Prompt
+                  </p>
+                  <p className="whitespace-pre-wrap text-xs text-gray-800 dark:text-gray-200">
+                    {c.user_prompt}
+                  </p>
+                </div>
+              )}
+              {c.assistant_response && (
+                <div>
+                  <p className="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                    Assistant Response
+                  </p>
+                  <p className="whitespace-pre-wrap text-xs text-gray-800 dark:text-gray-200">
+                    {c.assistant_response}
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Nothing to show */}
+          {!transcript && !hasPromptResponse && (
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              No conversation data available.
             </p>
-            <p className="whitespace-pre-wrap text-xs text-gray-800 dark:text-gray-200">
-              {c.user_prompt || "(empty)"}
-            </p>
-          </div>
-          <div>
-            <p className="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
-              Assistant Response
-            </p>
-            <p className="whitespace-pre-wrap text-xs text-gray-800 dark:text-gray-200">
-              {c.assistant_response || "(empty)"}
-            </p>
-          </div>
+          )}
+
           {c.justification && (
             <div>
               <p className="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">

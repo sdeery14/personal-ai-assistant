@@ -310,6 +310,8 @@ _RATING_SCORES: dict[str, float] = {
 }
 
 # Fields consumed by _parse_case_results; anything else lands in `extra`.
+# Note: conversation_transcript and persona are intentionally NOT listed here
+# so they flow into `extra` for the frontend to render as a conversation view.
 _COMMON_CASE_FIELDS = frozenset({
     "case_id", "score", "passed", "duration_ms", "error",
     "user_prompt", "assistant_response", "justification",
@@ -318,8 +320,7 @@ _COMMON_CASE_FIELDS = frozenset({
     "quality_passed", "judge_passed", "behavior_match",
     "quality_rating",
     "latency_ms", "total_latency_ms",
-    "query", "response", "conversation_transcript",
-    "persona",
+    "query", "response",
 })
 
 
@@ -360,8 +361,10 @@ def _parse_case_results(raw_cases: list[dict]) -> list[RunCaseResult]:
         )
 
         # --- assistant response ---
+        # Note: conversation_transcript is NOT included here; it goes to extra
+        # so the frontend can render it as a multi-turn conversation view.
         assistant_response = str(
-            _first(raw, "assistant_response", "response", "conversation_transcript") or ""
+            _first(raw, "assistant_response", "response") or ""
         )
 
         results.append(
