@@ -136,30 +136,35 @@ function CaseExpandedRow({ c }: { c: RunCaseResult }) {
             </div>
           )}
 
-          {/* Single-turn prompt/response view */}
+          {/* Single-turn prompt/response view (same styling as multi-turn) */}
           {hasPromptResponse && (
-            <>
-              {c.user_prompt && (
-                <div>
-                  <p className="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
-                    User Prompt
-                  </p>
-                  <p className="whitespace-pre-wrap text-xs text-gray-800 dark:text-gray-200">
-                    {c.user_prompt}
-                  </p>
-                </div>
-              )}
-              {c.assistant_response && (
-                <div>
-                  <p className="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
-                    Assistant Response
-                  </p>
-                  <p className="whitespace-pre-wrap text-xs text-gray-800 dark:text-gray-200">
-                    {c.assistant_response}
-                  </p>
-                </div>
-              )}
-            </>
+            <div>
+              <p className="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                Conversation
+              </p>
+              <div className="space-y-2">
+                {c.user_prompt && (
+                  <div className="rounded px-3 py-2 text-xs border-l-2 border-blue-400 bg-blue-50/50 dark:border-blue-500 dark:bg-blue-900/20">
+                    <span className="font-semibold text-blue-600 dark:text-blue-400">
+                      User
+                    </span>
+                    <p className="mt-1 whitespace-pre-wrap text-gray-800 dark:text-gray-200">
+                      {c.user_prompt}
+                    </p>
+                  </div>
+                )}
+                {c.assistant_response && (
+                  <div className="rounded px-3 py-2 text-xs border-l-2 border-green-400 bg-green-50/50 dark:border-green-500 dark:bg-green-900/20">
+                    <span className="font-semibold text-green-600 dark:text-green-400">
+                      Assistant
+                    </span>
+                    <p className="mt-1 whitespace-pre-wrap text-gray-800 dark:text-gray-200">
+                      {c.assistant_response}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
           {/* Nothing to show */}
