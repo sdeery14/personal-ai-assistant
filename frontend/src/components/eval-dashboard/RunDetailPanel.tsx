@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { Fragment, useState, useMemo } from "react";
 import { Card, Button } from "@/components/ui";
 import type { RunDetail, RunCaseResult } from "@/types/eval-dashboard";
 
@@ -326,9 +326,8 @@ export function RunDetailPanel({
             </thead>
             <tbody>
               {sortedCases.map((c) => (
-                <>
+                <Fragment key={c.case_id}>
                   <tr
-                    key={c.case_id}
                     className={`cursor-pointer border-b border-gray-100 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-700/50 ${
                       expandedCaseId === c.case_id
                         ? "bg-blue-50/50 dark:bg-blue-900/10"
@@ -367,9 +366,9 @@ export function RunDetailPanel({
                     </td>
                   </tr>
                   {expandedCaseId === c.case_id && (
-                    <CaseExpandedRow key={`${c.case_id}-expanded`} c={c} />
+                    <CaseExpandedRow c={c} />
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>
