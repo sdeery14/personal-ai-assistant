@@ -244,6 +244,23 @@ def get_run_detail(run_id: str, eval_type: str) -> RunDetail:
         except (ValueError, TypeError):
             pass
 
+    # Add canonical keys so the frontend can always read pass_rate, total_cases, etc.
+    metric_names = get_metric_names(eval_type)
+    for canonical_key, column_name in metric_names.items():
+        if not column_name or canonical_key in metrics:
+            continue
+        if column_name.startswith("params."):
+            param_key = column_name[len("params."):]
+            if param_key in params:
+                try:
+                    metrics[canonical_key] = float(params[param_key])
+                except (ValueError, TypeError):
+                    pass
+        elif column_name.startswith("metrics."):
+            metric_key = column_name[len("metrics."):]
+            if metric_key in metrics:
+                metrics[canonical_key] = metrics[metric_key]
+
     # Determine timestamp
     start_time = run.info.start_time
     if start_time is not None:

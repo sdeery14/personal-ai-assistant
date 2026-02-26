@@ -398,7 +398,7 @@ function DetailView({
                   {(p.pass_rate * 100).toFixed(1)}%
                 </td>
                 <td className="px-2 py-1.5 text-right text-gray-700 dark:text-gray-300">
-                  {p.average_score.toFixed(2)}
+                  {p.average_score > 0 ? p.average_score.toFixed(2) : "-"}
                 </td>
                 <td className="px-2 py-1.5 text-right text-gray-700 dark:text-gray-300">
                   {p.total_cases}
