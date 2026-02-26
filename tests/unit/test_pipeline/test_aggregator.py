@@ -101,7 +101,8 @@ class TestGetEvalExperiments:
 
 class TestGetTrendPoints:
     @patch("eval.pipeline.aggregator.mlflow")
-    def test_returns_sorted_points(self, mock_mlflow):
+    def test_returns_sorted_points_quality(self, mock_mlflow):
+        """Quality eval uses metrics.pass_rate directly."""
         df = _make_runs_df([
             {
                 "run_id": "run2",
@@ -126,7 +127,7 @@ class TestGetTrendPoints:
         ])
         mock_mlflow.search_runs.return_value = df
 
-        points = get_trend_points("personal-ai-assistant-eval-tone", "tone", limit=10)
+        points = get_trend_points("personal-ai-assistant-eval", "quality", limit=10)
 
         assert len(points) == 2
         assert points[0].run_id == "run1"  # older first
@@ -135,16 +136,87 @@ class TestGetTrendPoints:
         assert points[1].pass_rate == 0.90
 
     @patch("eval.pipeline.aggregator.mlflow")
+    def test_returns_sorted_points_tone(self, mock_mlflow):
+        """Tone eval uses metrics.tone_quality_pass_rate (prefixed metric)."""
+        df = _make_runs_df([
+            {
+                "run_id": "run2",
+                "start_time": pd.Timestamp("2026-02-24 12:00:00", tz="UTC"),
+                "status": "FINISHED",
+                "metrics.tone_quality_pass_rate": 0.90,
+                "metrics.tone_error_cases": 0,
+                "params.total_cases": 10,
+                "params.prompt.orchestrator-base": "v2",
+            },
+            {
+                "run_id": "run1",
+                "start_time": pd.Timestamp("2026-02-24 10:00:00", tz="UTC"),
+                "status": "FINISHED",
+                "metrics.tone_quality_pass_rate": 0.85,
+                "metrics.tone_error_cases": 0,
+                "params.total_cases": 10,
+                "params.prompt.orchestrator-base": "v1",
+            },
+        ])
+        mock_mlflow.search_runs.return_value = df
+
+        points = get_trend_points("personal-ai-assistant-eval-tone", "tone", limit=10)
+
+        assert len(points) == 2
+        assert points[0].run_id == "run1"
+        assert points[1].run_id == "run2"
+        assert points[0].pass_rate == 0.85
+        assert points[1].pass_rate == 0.90
+
+    @patch("eval.pipeline.aggregator.mlflow")
+    def test_reads_memory_metrics(self, mock_mlflow):
+        """Memory eval uses memory_recall_at_5 as its pass rate."""
+        df = _make_runs_df([
+            {
+                "run_id": "run1",
+                "start_time": pd.Timestamp("2026-02-24 10:00:00", tz="UTC"),
+                "status": "FINISHED",
+                "metrics.memory_recall_at_5": 0.92,
+                "metrics.memory_error_cases": 1,
+                "params.total_cases": 8,
+            },
+        ])
+        mock_mlflow.search_runs.return_value = df
+
+        points = get_trend_points("test", "memory")
+        assert points[0].pass_rate == 0.92
+        assert points[0].total_cases == 8
+        assert points[0].error_cases == 1
+
+    @patch("eval.pipeline.aggregator.mlflow")
+    def test_reads_weather_metrics(self, mock_mlflow):
+        """Weather eval uses weather_success_rate as its pass rate."""
+        df = _make_runs_df([
+            {
+                "run_id": "run1",
+                "start_time": pd.Timestamp("2026-02-24 10:00:00", tz="UTC"),
+                "status": "FINISHED",
+                "metrics.weather_success_rate": 0.75,
+                "metrics.weather_error_cases": 2,
+                "params.total_cases": 10,
+            },
+        ])
+        mock_mlflow.search_runs.return_value = df
+
+        points = get_trend_points("test", "weather")
+        assert points[0].pass_rate == 0.75
+        assert points[0].error_cases == 2
+
+    @patch("eval.pipeline.aggregator.mlflow")
     def test_extracts_prompt_versions(self, mock_mlflow):
         df = _make_runs_df([
             {
                 "run_id": "run1",
                 "start_time": pd.Timestamp("2026-02-24 10:00:00", tz="UTC"),
                 "status": "FINISHED",
-                "metrics.pass_rate": 0.90,
-                "metrics.average_score": 4.0,
-                "metrics.total_cases": 10,
-                "metrics.error_cases": 0,
+                "metrics.tone_quality_pass_rate": 0.90,
+                "metrics.tone_error_cases": 0,
+                "params.total_cases": 10,
                 "params.prompt.orchestrator-base": "v2",
                 "params.prompt.onboarding": "v1",
             },
@@ -164,10 +236,9 @@ class TestGetTrendPoints:
                 "run_id": "run1",
                 "start_time": pd.Timestamp("2026-02-24 10:00:00", tz="UTC"),
                 "status": "FINISHED",
-                "metrics.pass_rate": 0.90,
-                "metrics.average_score": 4.0,
-                "metrics.total_cases": 10,
-                "metrics.error_cases": 0,
+                "metrics.tone_quality_pass_rate": 0.90,
+                "metrics.tone_error_cases": 0,
+                "params.total_cases": 10,
             },
         ])
         mock_mlflow.search_runs.return_value = df
@@ -181,10 +252,9 @@ class TestGetTrendPoints:
                 "run_id": "run1",
                 "start_time": pd.Timestamp("2026-02-24 10:00:00", tz="UTC"),
                 "status": "FINISHED",
-                "metrics.pass_rate": 0.80,
-                "metrics.average_score": 3.5,
-                "metrics.total_cases": 10,
-                "metrics.error_cases": 2,
+                "metrics.tone_quality_pass_rate": 0.80,
+                "metrics.tone_error_cases": 2,
+                "params.total_cases": 10,
             },
         ])
         mock_mlflow.search_runs.return_value = df
@@ -202,6 +272,25 @@ class TestGetTrendPoints:
         mock_mlflow.search_runs.side_effect = Exception("connection error")
         points = get_trend_points("test", "tone")
         assert points == []
+
+    @patch("eval.pipeline.aggregator.mlflow")
+    def test_unknown_eval_type_falls_back_to_default(self, mock_mlflow):
+        """Unknown eval types fall back to metrics.pass_rate (quality pattern)."""
+        df = _make_runs_df([
+            {
+                "run_id": "run1",
+                "start_time": pd.Timestamp("2026-02-24 10:00:00", tz="UTC"),
+                "status": "FINISHED",
+                "metrics.pass_rate": 0.77,
+                "metrics.average_score": 3.5,
+                "metrics.total_cases": 5,
+                "metrics.error_cases": 0,
+            },
+        ])
+        mock_mlflow.search_runs.return_value = df
+        points = get_trend_points("test", "some-future-eval")
+        assert points[0].pass_rate == 0.77
+        assert points[0].average_score == 3.5
 
 
 # ---------------------------------------------------------------------------

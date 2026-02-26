@@ -8,7 +8,7 @@ import mlflow
 import structlog
 
 from eval.pipeline.models import PromptChange, RunCaseResult, RunDetail, TrendPoint, TrendSummary
-from eval.pipeline_config import EXPERIMENT_SUFFIXES, get_artifact_filename, get_base_experiment_name
+from eval.pipeline_config import EXPERIMENT_SUFFIXES, get_artifact_filename, get_base_experiment_name, get_metric_names
 
 logger = structlog.get_logger(__name__)
 
@@ -87,10 +87,15 @@ def get_trend_points(
         else:
             timestamp = datetime.now(timezone.utc)
 
-        pass_rate = _safe_float(row, "metrics.pass_rate", 0.0)
-        average_score = _safe_float(row, "metrics.average_score", 0.0)
-        total_cases = int(_safe_float(row, "metrics.total_cases", 0))
-        error_cases = int(_safe_float(row, "metrics.error_cases", 0))
+        metric_names = get_metric_names(eval_type)
+        pass_rate = _safe_float(row, metric_names["pass_rate"], 0.0)
+        average_score = (
+            _safe_float(row, metric_names["average_score"], 0.0)
+            if metric_names["average_score"]
+            else 0.0
+        )
+        total_cases = int(_safe_float(row, metric_names["total_cases"], 0))
+        error_cases = int(_safe_float(row, metric_names["error_cases"], 0))
 
         # Extract prompt versions from params.prompt.* columns
         prompt_versions: dict[str, str] = {}
