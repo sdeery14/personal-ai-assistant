@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from eval.pipeline.aggregator import (
+    _parse_case_results,
     build_trend_summary,
     get_eval_experiments,
     get_trend_points,
@@ -374,3 +375,44 @@ class TestBuildTrendSummary:
         summary = build_trend_summary("tone", points)
         assert summary.latest_pass_rate == 0.90
         assert summary.trend_direction == "stable"
+
+
+class TestParseCaseResults:
+    """Tests for _parse_case_results field-name normalization."""
+
+    def test_quality_rationale_maps_to_justification(self):
+        raw = [{"case_id": "c1", "quality_passed": True, "quality_rating": "good", "quality_rationale": "The response was helpful and warm."}]
+        results = _parse_case_results(raw)
+        assert len(results) == 1
+        assert results[0].justification == "The response was helpful and warm."
+
+    def test_justification_takes_precedence_over_quality_rationale(self):
+        raw = [{"case_id": "c1", "justification": "Direct justification", "quality_rationale": "Should not appear"}]
+        results = _parse_case_results(raw)
+        assert results[0].justification == "Direct justification"
+
+    def test_quality_rating_maps_to_score(self):
+        raw = [{"case_id": "c1", "quality_rating": "adequate"}]
+        results = _parse_case_results(raw)
+        assert results[0].score == 3.0
+
+    def test_passed_fallback_chain(self):
+        raw = [{"case_id": "c1", "quality_passed": True}]
+        results = _parse_case_results(raw)
+        assert results[0].passed is True
+
+    def test_duration_fallback_chain(self):
+        raw = [{"case_id": "c1", "total_latency_ms": 1234}]
+        results = _parse_case_results(raw)
+        assert results[0].duration_ms == 1234
+
+    def test_conversation_transcript_goes_to_extra(self):
+        raw = [{"case_id": "c1", "conversation_transcript": "hello"}]
+        results = _parse_case_results(raw)
+        assert "conversation_transcript" in results[0].extra
+        assert results[0].assistant_response == ""
+
+    def test_no_rationale_returns_none_justification(self):
+        raw = [{"case_id": "c1", "quality_passed": False}]
+        results = _parse_case_results(raw)
+        assert results[0].justification is None

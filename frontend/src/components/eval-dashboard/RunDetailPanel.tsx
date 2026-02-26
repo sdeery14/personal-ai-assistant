@@ -177,7 +177,7 @@ function CaseExpandedRow({ c }: { c: RunCaseResult }) {
           {c.justification && (
             <div>
               <p className="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
-                Justification
+                Judge Feedback
               </p>
               <p className="whitespace-pre-wrap text-xs text-gray-800 dark:text-gray-200">
                 {c.justification}

@@ -126,6 +126,9 @@ class OnboardingCaseResult(BaseModel):
     quality_rating: Optional[str] = Field(
         default=None, description="LLM judge rating (excellent/good/adequate/poor)"
     )
+    quality_rationale: Optional[str] = Field(
+        default=None, description="LLM judge rationale for the rating"
+    )
     total_latency_ms: int = Field(..., ge=0, description="Total conversation latency")
     error: Optional[str] = Field(default=None, description="Error if evaluation failed")
 

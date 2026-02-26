@@ -318,7 +318,7 @@ _COMMON_CASE_FIELDS = frozenset({
     "question", "expected_answer", "rubric",
     # Alternate names consumed via fallback chains below:
     "quality_passed", "judge_passed", "behavior_match",
-    "quality_rating",
+    "quality_rating", "quality_rationale",
     "latency_ms", "total_latency_ms",
     "query", "response",
 })
@@ -367,6 +367,11 @@ def _parse_case_results(raw_cases: list[dict]) -> list[RunCaseResult]:
             _first(raw, "assistant_response", "response") or ""
         )
 
+        # --- justification / rationale ---
+        justification = str(
+            _first(raw, "justification", "quality_rationale") or ""
+        ) or None
+
         results.append(
             RunCaseResult(
                 case_id=str(raw.get("case_id", f"case_{i}")),
@@ -376,7 +381,7 @@ def _parse_case_results(raw_cases: list[dict]) -> list[RunCaseResult]:
                 error=raw.get("error"),
                 user_prompt=user_prompt,
                 assistant_response=assistant_response,
-                justification=raw.get("justification"),
+                justification=justification,
                 extra=extra,
             )
         )

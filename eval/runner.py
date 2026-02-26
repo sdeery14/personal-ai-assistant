@@ -119,6 +119,35 @@ def _log_prompt_versions():
         pass
 
 
+def _extract_rationale(row: Any, scorer_name: str) -> str | None:
+    """Extract judge rationale from an eval_results DataFrame row.
+
+    Tries two approaches:
+    1. Direct ``<scorer_name>/rationale`` column (MLflow >= 3.10).
+    2. ``assessments`` list where ``assessment["name"] == scorer_name``.
+
+    Returns *None* if no rationale is found.
+    """
+    # Approach 1: direct rationale column
+    rationale_col = f"{scorer_name}/rationale"
+    val = row.get(rationale_col) if hasattr(row, "get") else None
+    if val is not None and not (isinstance(val, float) and val != val):
+        text = str(val).strip()
+        if text:
+            return text
+
+    # Approach 2: assessments list (MLflow stores feedback here)
+    assessments = row.get("assessments", []) if hasattr(row, "get") else []
+    if isinstance(assessments, list):
+        for a in assessments:
+            if isinstance(a, dict) and a.get("name") == scorer_name:
+                r = a.get("rationale")
+                if r:
+                    return str(r).strip()
+
+    return None
+
+
 @dataclass
 class EvaluationResult:
     """Complete results from an evaluation run."""
@@ -2625,6 +2654,7 @@ def run_onboarding_evaluation(
 
         # Multi-turn quality evaluation via session traces
         quality_by_case: dict[str, str] = {}  # case_id -> quality_rating
+        rationale_by_case: dict[str, str | None] = {}  # case_id -> rationale
 
         from collections import defaultdict
         from typing import Literal
@@ -2749,6 +2779,7 @@ def run_onboarding_evaluation(
                             quality_by_case[case.id] = str(
                                 quality_value
                             ).strip().lower()
+                            rationale_by_case[case.id] = _extract_rationale(row, "onboarding_quality")
 
             if verbose:
                 print(
@@ -2835,6 +2866,7 @@ def run_onboarding_evaluation(
                 entity_recall=ent_recall,
                 quality_passed=quality_passed,
                 quality_rating=quality_rating,
+                quality_rationale=rationale_by_case.get(case.id),
                 total_latency_ms=latency_ms,
                 error=error,
             ))
@@ -3108,8 +3140,9 @@ def run_tone_evaluation(
                 value = row.get("tone_quality/value")
                 if pd.notna(value):
                     rating = str(value).strip().lower()
+                rationale = _extract_rationale(row, "tone_quality")
             passed = rating in ("excellent", "good")
-            results.append(ToneCaseResult(case_id=case.id, response=response, quality_passed=passed, quality_rating=rating, latency_ms=latency_ms))
+            results.append(ToneCaseResult(case_id=case.id, response=response, quality_passed=passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if passed else 'FAIL'}) {latency_ms}ms")
 
@@ -3230,8 +3263,9 @@ def run_returning_greeting_evaluation(
                 value = row.get("greeting_quality/value")
                 if pd.notna(value):
                     rating = str(value).strip().lower()
+                rationale = _extract_rationale(row, "greeting_quality")
             passed = rating in ("excellent", "good")
-            results.append(ReturningGreetingCaseResult(case_id=case.id, persona=case.persona, response=response, quality_passed=passed, quality_rating=rating, latency_ms=latency_ms))
+            results.append(ReturningGreetingCaseResult(case_id=case.id, persona=case.persona, response=response, quality_passed=passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if passed else 'FAIL'}) {latency_ms}ms")
 
@@ -3353,13 +3387,15 @@ def run_routing_evaluation(
 
         for idx, (case, response, actual_delegations, routing_correct, latency_ms) in enumerate(case_predictions):
             rating = "poor"
+            rationale = None
             if idx < len(results_df):
                 row = results_df.iloc[idx]
                 value = row.get("routing_quality/value")
                 if pd.notna(value):
                     rating = str(value).strip().lower()
+                rationale = _extract_rationale(row, "routing_quality")
             quality_passed = rating in ("excellent", "good")
-            results.append(RoutingCaseResult(case_id=case.id, response=response, actual_delegations=actual_delegations, routing_correct=routing_correct, quality_passed=quality_passed, quality_rating=rating, latency_ms=latency_ms))
+            results.append(RoutingCaseResult(case_id=case.id, response=response, actual_delegations=actual_delegations, routing_correct=routing_correct, quality_passed=quality_passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if quality_passed else 'FAIL'}) {latency_ms}ms")
 
@@ -3479,6 +3515,7 @@ def run_memory_informed_evaluation(
             print("\nPhase 2: Running memory-informed quality evaluation...")
 
         quality_by_case: dict[str, str] = {}
+        rationale_by_case: dict[str, str | None] = {}
         try:
             from collections import defaultdict
             session_traces = mlflow.search_traces(locations=[experiment_id], return_type="list")
@@ -3507,6 +3544,7 @@ def run_memory_informed_evaluation(
                         c = case_by_session.get(session)
                         if c:
                             quality_by_case[c.id] = str(qv).strip().lower()
+                            rationale_by_case[c.id] = _extract_rationale(row, "memory_informed_quality")
             if verbose:
                 print(f"  Quality ratings: {len(quality_by_case)}/{len(dataset.cases)} cases")
         except Exception as e:
@@ -3534,7 +3572,7 @@ def run_memory_informed_evaluation(
         for case, transcript, latency_ms, error in case_data:
             qr = quality_by_case.get(case.id, "poor")
             qp = qr in ("excellent", "good")
-            results.append(MemoryInformedCaseResult(case_id=case.id, persona=case.persona, conversation_transcript=transcript, quality_passed=qp, quality_rating=qr, latency_ms=latency_ms, error=error))
+            results.append(MemoryInformedCaseResult(case_id=case.id, persona=case.persona, conversation_transcript=transcript, quality_passed=qp, quality_rating=qr, quality_rationale=rationale_by_case.get(case.id), latency_ms=latency_ms, error=error))
             if verbose:
                 print(f"  {case.id}: {qr} ({'PASS' if qp else 'FAIL'}) {latency_ms}ms")
 
@@ -3649,6 +3687,7 @@ def run_multi_cap_evaluation(
             print("\nPhase 2: Running multi-capability quality evaluation...")
 
         quality_by_case: dict[str, str] = {}
+        rationale_by_case: dict[str, str | None] = {}
         try:
             from collections import defaultdict
             session_traces = mlflow.search_traces(locations=[experiment_id], return_type="list")
@@ -3677,6 +3716,7 @@ def run_multi_cap_evaluation(
                         c = case_by_session.get(session)
                         if c:
                             quality_by_case[c.id] = str(qv).strip().lower()
+                            rationale_by_case[c.id] = _extract_rationale(row, "multi_cap_quality")
             if verbose:
                 print(f"  Quality ratings: {len(quality_by_case)}/{len(dataset.cases)} cases")
         except Exception as e:
@@ -3704,7 +3744,7 @@ def run_multi_cap_evaluation(
         for case, transcript, tool_calls, latency_ms, error in case_data:
             qr = quality_by_case.get(case.id, "poor")
             qp = qr in ("excellent", "good")
-            results.append(MultiCapCaseResult(case_id=case.id, persona=case.persona, scenario=case.scenario, conversation_transcript=transcript, tool_calls=tool_calls, quality_passed=qp, quality_rating=qr, latency_ms=latency_ms, error=error))
+            results.append(MultiCapCaseResult(case_id=case.id, persona=case.persona, scenario=case.scenario, conversation_transcript=transcript, tool_calls=tool_calls, quality_passed=qp, quality_rating=qr, quality_rationale=rationale_by_case.get(case.id), latency_ms=latency_ms, error=error))
             if verbose:
                 print(f"  {case.id}: {qr} ({'PASS' if qp else 'FAIL'}) {latency_ms}ms")
 
@@ -3927,13 +3967,15 @@ def run_notification_judgment_evaluation(
 
         for idx, (case, response, notification_created, notification_correct, latency_ms) in enumerate(case_predictions):
             rating = "poor"
+            rationale = None
             if idx < len(results_df):
                 row = results_df.iloc[idx]
                 value = row.get("notification_quality/value")
                 if pd.notna(value):
                     rating = str(value).strip().lower()
+                rationale = _extract_rationale(row, "notification_quality")
             quality_passed = rating in ("excellent", "good")
-            results.append(NotificationJudgmentCaseResult(case_id=case.id, response=response, notification_created=notification_created, notification_correct=notification_correct, quality_passed=quality_passed, quality_rating=rating, latency_ms=latency_ms))
+            results.append(NotificationJudgmentCaseResult(case_id=case.id, response=response, notification_created=notification_created, notification_correct=notification_correct, quality_passed=quality_passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if quality_passed else 'FAIL'}) {latency_ms}ms")
 
@@ -4056,13 +4098,15 @@ def run_error_recovery_evaluation(
 
         for idx, (case, response, latency_ms) in enumerate(case_predictions):
             rating = "poor"
+            rationale = None
             if idx < len(results_df):
                 row = results_df.iloc[idx]
                 value = row.get("error_recovery_quality/value")
                 if pd.notna(value):
                     rating = str(value).strip().lower()
+                rationale = _extract_rationale(row, "error_recovery_quality")
             passed = rating in ("excellent", "good")
-            results.append(ErrorRecoveryCaseResult(case_id=case.id, response=response, quality_passed=passed, quality_rating=rating, latency_ms=latency_ms))
+            results.append(ErrorRecoveryCaseResult(case_id=case.id, response=response, quality_passed=passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if passed else 'FAIL'}) {latency_ms}ms")
 
@@ -4198,13 +4242,15 @@ def run_schedule_cron_evaluation(
 
         for idx, (case, response, actual_cron, actual_task_type, cron_correct, latency_ms) in enumerate(case_predictions):
             rating = "poor"
+            rationale = None
             if idx < len(results_df):
                 row = results_df.iloc[idx]
                 value = row.get("schedule_quality/value")
                 if pd.notna(value):
                     rating = str(value).strip().lower()
+                rationale = _extract_rationale(row, "schedule_quality")
             quality_passed = rating in ("excellent", "good")
-            results.append(ScheduleCronCaseResult(case_id=case.id, response=response, actual_cron=actual_cron, actual_task_type=actual_task_type, cron_correct=cron_correct, quality_passed=quality_passed, quality_rating=rating, latency_ms=latency_ms))
+            results.append(ScheduleCronCaseResult(case_id=case.id, response=response, actual_cron=actual_cron, actual_task_type=actual_task_type, cron_correct=cron_correct, quality_passed=quality_passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if quality_passed else 'FAIL'}) {latency_ms}ms")
 
@@ -4331,13 +4377,15 @@ def run_knowledge_connections_evaluation(
 
         for idx, (case, response, latency_ms) in enumerate(case_predictions):
             rating = "poor"
+            rationale = None
             if idx < len(results_df):
                 row = results_df.iloc[idx]
                 value = row.get("knowledge_connections_quality/value")
                 if pd.notna(value):
                     rating = str(value).strip().lower()
+                rationale = _extract_rationale(row, "knowledge_connections_quality")
             passed = rating in ("excellent", "good")
-            results.append(KnowledgeConnectionsCaseResult(case_id=case.id, response=response, quality_passed=passed, quality_rating=rating, latency_ms=latency_ms))
+            results.append(KnowledgeConnectionsCaseResult(case_id=case.id, response=response, quality_passed=passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if passed else 'FAIL'}) {latency_ms}ms")
 
@@ -4451,6 +4499,7 @@ def run_contradiction_handling_evaluation(
             print("\nPhase 2: Running contradiction quality evaluation...")
 
         quality_by_case: dict[str, str] = {}
+        rationale_by_case: dict[str, str | None] = {}
         try:
             from collections import defaultdict
             session_traces = mlflow.search_traces(locations=[experiment_id], return_type="list")
@@ -4475,6 +4524,7 @@ def run_contradiction_handling_evaluation(
                         c = case_by_session.get(session)
                         if c:
                             quality_by_case[c.id] = str(qv).strip().lower()
+                            rationale_by_case[c.id] = _extract_rationale(row, "contradiction_quality")
             if verbose:
                 print(f"  Quality ratings: {len(quality_by_case)}/{len(dataset.cases)} cases")
         except Exception as e:
@@ -4502,7 +4552,7 @@ def run_contradiction_handling_evaluation(
         for case, transcript, latency_ms, error in case_data:
             qr = quality_by_case.get(case.id, "poor")
             qp = qr in ("excellent", "good")
-            results.append(ContradictionHandlingCaseResult(case_id=case.id, persona=case.persona, conversation_transcript=transcript, quality_passed=qp, quality_rating=qr, latency_ms=latency_ms, error=error))
+            results.append(ContradictionHandlingCaseResult(case_id=case.id, persona=case.persona, conversation_transcript=transcript, quality_passed=qp, quality_rating=qr, quality_rationale=rationale_by_case.get(case.id), latency_ms=latency_ms, error=error))
             if verbose:
                 print(f"  {case.id}: {qr} ({'PASS' if qp else 'FAIL'}) {latency_ms}ms")
 
@@ -4623,6 +4673,7 @@ def run_long_conversation_evaluation(
             print("\nPhase 2: Running long conversation quality evaluation...")
 
         quality_by_case: dict[str, str] = {}
+        rationale_by_case: dict[str, str | None] = {}
         try:
             from collections import defaultdict
             session_traces = mlflow.search_traces(locations=[experiment_id], return_type="list")
@@ -4647,6 +4698,7 @@ def run_long_conversation_evaluation(
                         c = case_by_session.get(session)
                         if c:
                             quality_by_case[c.id] = str(qv).strip().lower()
+                            rationale_by_case[c.id] = _extract_rationale(row, "long_conversation_quality")
             if verbose:
                 print(f"  Quality ratings: {len(quality_by_case)}/{len(dataset.cases)} cases")
         except Exception as e:
@@ -4674,7 +4726,7 @@ def run_long_conversation_evaluation(
         for case, transcript, latency_ms, error in case_data:
             qr = quality_by_case.get(case.id, "poor")
             qp = qr in ("excellent", "good")
-            results.append(LongConversationCaseResult(case_id=case.id, persona=case.persona, scenario=case.scenario, conversation_transcript=transcript, quality_passed=qp, quality_rating=qr, latency_ms=latency_ms, error=error))
+            results.append(LongConversationCaseResult(case_id=case.id, persona=case.persona, scenario=case.scenario, conversation_transcript=transcript, quality_passed=qp, quality_rating=qr, quality_rationale=rationale_by_case.get(case.id), latency_ms=latency_ms, error=error))
             if verbose:
                 print(f"  {case.id}: {qr} ({'PASS' if qp else 'FAIL'}) {latency_ms}ms")
 
