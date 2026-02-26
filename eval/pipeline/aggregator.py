@@ -301,29 +301,78 @@ def get_run_detail(run_id: str, eval_type: str) -> RunDetail:
     )
 
 
-# Well-known fields extracted explicitly from per-case result dicts.
+# Quality-rating string → numeric score mapping.
+_RATING_SCORES: dict[str, float] = {
+    "excellent": 5.0,
+    "good": 4.0,
+    "adequate": 3.0,
+    "poor": 1.0,
+}
+
+# Fields consumed by _parse_case_results; anything else lands in `extra`.
 _COMMON_CASE_FIELDS = frozenset({
     "case_id", "score", "passed", "duration_ms", "error",
     "user_prompt", "assistant_response", "justification",
-    # Also skip these common keys that aren't useful in extra
     "question", "expected_answer", "rubric",
+    # Alternate names consumed via fallback chains below:
+    "quality_passed", "judge_passed", "behavior_match",
+    "quality_rating",
+    "latency_ms", "total_latency_ms",
+    "query", "response", "conversation_transcript",
+    "persona",
 })
 
 
+def _first(raw: dict, *keys: str) -> object:
+    """Return the value of the first key found in *raw*, or None."""
+    for k in keys:
+        if k in raw:
+            return raw[k]
+    return None
+
+
 def _parse_case_results(raw_cases: list[dict]) -> list[RunCaseResult]:
-    """Parse a list of raw case dicts into RunCaseResult objects."""
+    """Parse a list of raw case dicts into RunCaseResult objects.
+
+    Handles field-name variations across eval types by trying fallback
+    chains for each canonical field.
+    """
     results: list[RunCaseResult] = []
     for i, raw in enumerate(raw_cases):
         extra = {k: v for k, v in raw.items() if k not in _COMMON_CASE_FIELDS}
+
+        # --- passed ---
+        passed = _opt_bool(_first(raw, "passed", "quality_passed", "judge_passed", "behavior_match"))
+
+        # --- score (numeric) ---
+        score = _opt_float(raw.get("score"))
+        if score is None:
+            rating = raw.get("quality_rating")
+            if isinstance(rating, str):
+                score = _RATING_SCORES.get(rating.lower())
+
+        # --- duration ---
+        duration_ms = _opt_int(_first(raw, "duration_ms", "latency_ms", "total_latency_ms"))
+
+        # --- user prompt ---
+        user_prompt = str(
+            _first(raw, "user_prompt", "question", "query") or ""
+        )
+
+        # --- assistant response ---
+        assistant_response = str(
+            _first(raw, "assistant_response", "response", "conversation_transcript") or ""
+        )
+
         results.append(
             RunCaseResult(
                 case_id=str(raw.get("case_id", f"case_{i}")),
-                score=_opt_float(raw.get("score")),
-                passed=_opt_bool(raw.get("passed")),
-                duration_ms=_opt_int(raw.get("duration_ms")),
+                score=score,
+                passed=passed,
+                duration_ms=duration_ms,
                 error=raw.get("error"),
-                user_prompt=str(raw.get("user_prompt", raw.get("question", ""))),
-                assistant_response=str(raw.get("assistant_response", raw.get("expected_answer", ""))),
+                user_prompt=user_prompt,
+                assistant_response=assistant_response,
                 justification=raw.get("justification"),
                 extra=extra,
             )
