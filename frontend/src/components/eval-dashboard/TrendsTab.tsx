@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, Button } from "@/components/ui";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { TrendChart } from "./TrendChart";
@@ -191,6 +191,7 @@ export function TrendsTab() {
       {/* Detail view for expanded eval type */}
       {expandedType && (
         <DetailView
+          key={expandedType}
           summary={summaries.find((s) => s.eval_type === expandedType)!}
           regression={regressionByType.get(expandedType)}
         />
@@ -219,6 +220,15 @@ function DetailView({
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const { detail, isLoading: detailLoading, error: detailError, fetchDetail, clear: clearDetail } = useRunDetail();
+
+  // Auto-select the latest run on mount
+  useEffect(() => {
+    if (summary.points.length > 0) {
+      const latest = summary.points[summary.points.length - 1];
+      setSelectedRunId(latest.run_id);
+      fetchDetail(latest.run_id, summary.eval_type);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- run once on mount; key={evalType} handles resets
 
   // Slice points to the most recent N (points are sorted oldest → newest)
   const visiblePoints = summary.points.slice(-detailLimit);
