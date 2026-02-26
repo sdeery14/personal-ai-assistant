@@ -1,7 +1,7 @@
 """Pydantic request/response models for the eval dashboard API."""
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -161,3 +161,29 @@ class RollbackExecuteRequest(BaseModel):
     alias: str = "production"
     previous_version: int
     reason: str
+
+
+# ---------------------------------------------------------------------------
+# Run detail drill-down
+# ---------------------------------------------------------------------------
+
+
+class RunCaseResultResponse(BaseModel):
+    case_id: str
+    score: float | None
+    passed: bool | None
+    duration_ms: int | None
+    error: str | None
+    user_prompt: str
+    assistant_response: str
+    justification: str | None
+    extra: dict[str, Any]
+
+
+class RunDetailResponse(BaseModel):
+    run_id: str
+    eval_type: str
+    timestamp: datetime
+    params: dict[str, str]
+    metrics: dict[str, float]
+    cases: list[RunCaseResultResponse]

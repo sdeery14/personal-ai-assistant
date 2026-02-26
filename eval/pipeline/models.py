@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 
 @dataclass
@@ -135,3 +136,30 @@ class AuditRecord:
             "audit.actor": self.actor,
             "audit.reason": self.reason,
         }
+
+
+@dataclass
+class RunCaseResult:
+    """Per-case result from an eval run artifact."""
+
+    case_id: str
+    score: float | None
+    passed: bool | None
+    duration_ms: int | None
+    error: str | None
+    user_prompt: str
+    assistant_response: str
+    justification: str | None
+    extra: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class RunDetail:
+    """Full detail for a single MLflow eval run."""
+
+    run_id: str
+    eval_type: str
+    timestamp: datetime
+    params: dict[str, str] = field(default_factory=dict)
+    metrics: dict[str, float] = field(default_factory=dict)
+    cases: list[RunCaseResult] = field(default_factory=list)

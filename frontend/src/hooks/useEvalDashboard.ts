@@ -14,6 +14,7 @@ import type {
   AuditRecord,
   EvalRunStatus,
   RollbackInfo,
+  RunDetail,
 } from "@/types/eval-dashboard";
 
 // ---------------------------------------------------------------------------
@@ -251,6 +252,46 @@ export function useEvalRun() {
   }, []);
 
   return { status, isLoading, error, startRun, refreshStatus };
+}
+
+// ---------------------------------------------------------------------------
+// useRunDetail
+// ---------------------------------------------------------------------------
+
+export function useRunDetail() {
+  const [detail, setDetail] = useState<RunDetail | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchDetail = useCallback(
+    async (runId: string, evalType: string) => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const data = await apiClient.get<RunDetail>(
+          `/admin/evals/runs/${runId}/detail`,
+          { eval_type: evalType }
+        );
+        setDetail(data);
+        return data;
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Failed to load run detail"
+        );
+        return null;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
+
+  const clear = useCallback(() => {
+    setDetail(null);
+    setError(null);
+  }, []);
+
+  return { detail, isLoading, error, fetchDetail, clear };
 }
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,8 @@ import { useState, useMemo } from "react";
 import { Card, Button } from "@/components/ui";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { TrendChart } from "./TrendChart";
-import { useTrends, useRegressions } from "@/hooks/useEvalDashboard";
+import { useTrends, useRegressions, useRunDetail } from "@/hooks/useEvalDashboard";
+import { RunDetailPanel } from "./RunDetailPanel";
 import type { TrendSummary, RegressionReport } from "@/types/eval-dashboard";
 
 const DETAIL_LIMIT_OPTIONS = [5, 10, 20, 50, 100];
@@ -216,6 +217,8 @@ function DetailView({
   const [detailLimit, setDetailLimit] = useState(10);
   const [sortKey, setSortKey] = useState<SortKey>("timestamp");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const { detail, isLoading: detailLoading, error: detailError, fetchDetail, clear: clearDetail } = useRunDetail();
 
   // Slice points to the most recent N (points are sorted oldest → newest)
   const visiblePoints = summary.points.slice(-detailLimit);
@@ -372,7 +375,18 @@ function DetailView({
             {sortedPoints.map((p) => (
               <tr
                 key={p.run_id}
-                className="border-b border-gray-100 dark:border-gray-800"
+                className={`cursor-pointer border-b border-gray-100 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-700/50 ${
+                  selectedRunId === p.run_id ? "bg-blue-50/50 dark:bg-blue-900/10" : ""
+                }`}
+                onClick={() => {
+                  if (selectedRunId === p.run_id) {
+                    setSelectedRunId(null);
+                    clearDetail();
+                  } else {
+                    setSelectedRunId(p.run_id);
+                    fetchDetail(p.run_id, summary.eval_type);
+                  }
+                }}
               >
                 <td className="px-2 py-1.5 font-mono text-gray-700 dark:text-gray-300">
                   {p.run_id.slice(0, 8)}
@@ -414,6 +428,29 @@ function DetailView({
           </tbody>
         </table>
       </div>
+
+      {/* Run detail panel */}
+      {selectedRunId && detailLoading && (
+        <div className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+          Loading run detail...
+        </div>
+      )}
+      {selectedRunId && detailError && (
+        <div className="mt-4 text-sm text-red-600 dark:text-red-400">
+          {detailError}
+        </div>
+      )}
+      {selectedRunId && detail && detail.run_id === selectedRunId && (
+        <div className="mt-4">
+          <RunDetailPanel
+            detail={detail}
+            onClose={() => {
+              setSelectedRunId(null);
+              clearDetail();
+            }}
+          />
+        </div>
+      )}
     </Card>
   );
 }

@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 import mlflow
 import structlog
 
-from eval.pipeline.models import PromptChange, TrendPoint, TrendSummary
-from eval.pipeline_config import EXPERIMENT_SUFFIXES, get_base_experiment_name
+from eval.pipeline.models import PromptChange, RunCaseResult, RunDetail, TrendPoint, TrendSummary
+from eval.pipeline_config import EXPERIMENT_SUFFIXES, get_artifact_filename, get_base_experiment_name
 
 logger = structlog.get_logger(__name__)
 
@@ -205,6 +205,135 @@ def _detect_prompt_changes(points: list[TrendPoint]) -> list[PromptChange]:
                 )
 
     return changes
+
+
+def get_run_detail(run_id: str, eval_type: str) -> RunDetail:
+    """Fetch full detail for a single MLflow run including per-case artifact.
+
+    Args:
+        run_id: MLflow run ID.
+        eval_type: Eval type name (used to determine artifact filename).
+
+    Returns:
+        RunDetail with params, metrics, and parsed case results.
+
+    Raises:
+        FileNotFoundError: If the run or artifact cannot be found.
+    """
+    import json
+    import tempfile
+    from pathlib import Path
+
+    try:
+        run = mlflow.get_run(run_id)
+    except Exception as exc:
+        logger.warning("mlflow_get_run_failed", run_id=run_id, error=str(exc))
+        raise FileNotFoundError(f"Run {run_id} not found") from exc
+
+    # Extract params and metrics
+    params: dict[str, str] = dict(run.data.params)
+    metrics: dict[str, float] = {}
+    for k, v in run.data.metrics.items():
+        try:
+            metrics[k] = float(v)
+        except (ValueError, TypeError):
+            pass
+
+    # Determine timestamp
+    start_time = run.info.start_time
+    if start_time is not None:
+        timestamp = datetime.fromtimestamp(start_time / 1000, tz=timezone.utc)
+    else:
+        timestamp = datetime.now(timezone.utc)
+
+    # Download and parse artifact
+    cases: list[RunCaseResult] = []
+    artifact_filename = get_artifact_filename(eval_type)
+    if artifact_filename:
+        try:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                local_path = mlflow.artifacts.download_artifacts(
+                    run_id=run_id,
+                    artifact_path=artifact_filename,
+                    dst_path=tmp_dir,
+                )
+                artifact_file = Path(local_path)
+                if artifact_file.is_file():
+                    raw_cases = json.loads(artifact_file.read_text(encoding="utf-8"))
+                    cases = _parse_case_results(raw_cases)
+        except Exception as exc:
+            logger.warning(
+                "mlflow_artifact_download_failed",
+                run_id=run_id,
+                artifact=artifact_filename,
+                error=str(exc),
+            )
+
+    return RunDetail(
+        run_id=run_id,
+        eval_type=eval_type,
+        timestamp=timestamp,
+        params=params,
+        metrics=metrics,
+        cases=cases,
+    )
+
+
+# Well-known fields extracted explicitly from per-case result dicts.
+_COMMON_CASE_FIELDS = frozenset({
+    "case_id", "score", "passed", "duration_ms", "error",
+    "user_prompt", "assistant_response", "justification",
+    # Also skip these common keys that aren't useful in extra
+    "question", "expected_answer", "rubric",
+})
+
+
+def _parse_case_results(raw_cases: list[dict]) -> list[RunCaseResult]:
+    """Parse a list of raw case dicts into RunCaseResult objects."""
+    results: list[RunCaseResult] = []
+    for i, raw in enumerate(raw_cases):
+        extra = {k: v for k, v in raw.items() if k not in _COMMON_CASE_FIELDS}
+        results.append(
+            RunCaseResult(
+                case_id=str(raw.get("case_id", f"case_{i}")),
+                score=_opt_float(raw.get("score")),
+                passed=_opt_bool(raw.get("passed")),
+                duration_ms=_opt_int(raw.get("duration_ms")),
+                error=raw.get("error"),
+                user_prompt=str(raw.get("user_prompt", raw.get("question", ""))),
+                assistant_response=str(raw.get("assistant_response", raw.get("expected_answer", ""))),
+                justification=raw.get("justification"),
+                extra=extra,
+            )
+        )
+    return results
+
+
+def _opt_float(val: object) -> float | None:
+    if val is None:
+        return None
+    try:
+        result = float(val)  # type: ignore[arg-type]
+        return None if result != result else result  # NaN → None
+    except (ValueError, TypeError):
+        return None
+
+
+def _opt_bool(val: object) -> bool | None:
+    if val is None:
+        return None
+    if isinstance(val, bool):
+        return val
+    return None
+
+
+def _opt_int(val: object) -> int | None:
+    if val is None:
+        return None
+    try:
+        return int(val)  # type: ignore[arg-type]
+    except (ValueError, TypeError):
+        return None
 
 
 def _safe_float(row: object, key: str, default: float) -> float:

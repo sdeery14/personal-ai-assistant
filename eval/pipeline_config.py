@@ -79,3 +79,33 @@ def get_threshold(eval_type: str) -> float:
 def get_base_experiment_name() -> str:
     """Return the configured base MLflow experiment name."""
     return get_eval_settings().mlflow_experiment_name
+
+
+# ---------------------------------------------------------------------------
+# Per-eval-type artifact filenames (logged by eval runners)
+# ---------------------------------------------------------------------------
+
+ARTIFACT_FILENAMES: dict[str, str] = {
+    "quality": "eval_results.json",
+    "memory": "memory_eval_results.json",
+    "memory-write": "memory_write_eval_results.json",
+    "weather": "weather_eval_results.json",
+    "graph-extraction": "graph_extraction_eval_results.json",
+    "onboarding": "onboarding_eval_results.json",
+    "tone": "tone_eval_results.json",
+    "greeting": "greeting_eval_results.json",
+    "routing": "routing_eval_results.json",
+    "memory-informed": "memory_informed_eval_results.json",
+    "multi-cap": "multi_cap_eval_results.json",
+    "notification-judgment": "notification_judgment_eval_results.json",
+    "error-recovery": "error_recovery_eval_results.json",
+    "schedule-cron": "schedule_cron_eval_results.json",
+    "knowledge-connections": "knowledge_connections_eval_results.json",
+    "contradiction": "contradiction_handling_eval_results.json",
+    "long-conversation": "long_conversation_eval_results.json",
+}
+
+
+def get_artifact_filename(eval_type: str) -> str | None:
+    """Return the artifact filename for a given eval type, or None if unknown."""
+    return ARTIFACT_FILENAMES.get(eval_type)

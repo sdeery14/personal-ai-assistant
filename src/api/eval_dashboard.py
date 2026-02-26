@@ -31,6 +31,8 @@ from src.models.eval_dashboard import (
     RegressionReportResponse,
     RollbackExecuteRequest,
     RollbackInfoResponse,
+    RunCaseResultResponse,
+    RunDetailResponse,
     TrendPointResponse,
     TrendsListResponse,
     TrendSummaryResponse,
@@ -148,6 +150,55 @@ async def get_trends(
 
     logger.info("eval_dashboard_trends", eval_type=eval_type, count=len(summaries))
     return TrendsListResponse(summaries=summaries)
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/evals/runs/{run_id}/detail
+# ---------------------------------------------------------------------------
+
+
+@router.get("/runs/{run_id}/detail")
+async def get_run_detail(
+    run_id: str,
+    eval_type: str = Query(...),
+    admin: User = Depends(require_admin),
+) -> RunDetailResponse:
+    """Get full detail for a single eval run including per-case results."""
+    from eval.pipeline.aggregator import get_run_detail as _get_run_detail
+
+    loop = asyncio.get_event_loop()
+    try:
+        detail = await loop.run_in_executor(
+            None, lambda: _get_run_detail(run_id, eval_type)
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Run {run_id} not found",
+        )
+
+    logger.info("eval_dashboard_run_detail", run_id=run_id, eval_type=eval_type)
+    return RunDetailResponse(
+        run_id=detail.run_id,
+        eval_type=detail.eval_type,
+        timestamp=detail.timestamp,
+        params=detail.params,
+        metrics=detail.metrics,
+        cases=[
+            RunCaseResultResponse(
+                case_id=c.case_id,
+                score=c.score,
+                passed=c.passed,
+                duration_ms=c.duration_ms,
+                error=c.error,
+                user_prompt=c.user_prompt,
+                assistant_response=c.assistant_response,
+                justification=c.justification,
+                extra=c.extra,
+            )
+            for c in detail.cases
+        ],
+    )
 
 
 # ---------------------------------------------------------------------------

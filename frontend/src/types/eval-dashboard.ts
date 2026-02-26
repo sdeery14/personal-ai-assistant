@@ -115,3 +115,24 @@ export interface RollbackInfo {
   previous_version: number | null;
   alias: string;
 }
+
+export interface RunCaseResult {
+  case_id: string;
+  score: number | null;
+  passed: boolean | null;
+  duration_ms: number | null;
+  error: string | null;
+  user_prompt: string;
+  assistant_response: string;
+  justification: string | null;
+  extra: Record<string, unknown>;
+}
+
+export interface RunDetail {
+  run_id: string;
+  eval_type: string;
+  timestamp: string;
+  params: Record<string, string>;
+  metrics: Record<string, number>;
+  cases: RunCaseResult[];
+}
