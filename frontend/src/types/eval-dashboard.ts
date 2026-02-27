@@ -119,7 +119,6 @@ export interface RollbackInfo {
 export interface RunCaseResult {
   case_id: string;
   score: number | null;
-  passed: boolean | null;
   duration_ms: number | null;
   error: string | null;
   user_prompt: string;

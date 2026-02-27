@@ -433,77 +433,68 @@ class TestBuildTrendSummary:
 
 
 class TestExtractPrimaryAssessment:
-    """Tests for extracting rating/score/passed/justification from assessments."""
+    """Tests for extracting rating/score/justification from assessments."""
 
     def test_string_value_excellent(self):
         assessments = [_make_assessment("quality", "excellent", "Great response")]
-        rating, score, passed, justification = _extract_primary_assessment(assessments, "quality")
+        rating, score, justification = _extract_primary_assessment(assessments, "quality")
         assert rating == "excellent"
         assert score == 5.0
-        assert passed is True
         assert justification == "Great response"
 
     def test_string_value_poor(self):
         assessments = [_make_assessment("quality", "poor", "Bad response")]
-        rating, score, passed, justification = _extract_primary_assessment(assessments, "quality")
+        rating, score, justification = _extract_primary_assessment(assessments, "quality")
         assert rating == "poor"
         assert score == 1.0
-        assert passed is False
 
     def test_string_value_adequate(self):
         assessments = [_make_assessment("quality", "adequate")]
-        rating, score, passed, justification = _extract_primary_assessment(assessments, "quality")
+        rating, score, justification = _extract_primary_assessment(assessments, "quality")
         assert rating == "adequate"
         assert score == 3.0
-        assert passed is True
 
     def test_string_value_case_insensitive(self):
         assessments = [_make_assessment("quality", " Good ")]
-        rating, score, passed, justification = _extract_primary_assessment(assessments, "quality")
+        rating, score, justification = _extract_primary_assessment(assessments, "quality")
         assert rating == "good"
         assert score == 4.0
 
     def test_boolean_value_true(self):
         assessments = [_make_assessment("weather_behavior_scorer", True, "Correct tool call")]
-        rating, score, passed, justification = _extract_primary_assessment(assessments, "weather_behavior_scorer")
+        rating, score, justification = _extract_primary_assessment(assessments, "weather_behavior_scorer")
         assert rating is None
         assert score == 1.0
-        assert passed is True
         assert justification == "Correct tool call"
 
     def test_boolean_value_false(self):
         assessments = [_make_assessment("weather_behavior_scorer", False)]
-        rating, score, passed, justification = _extract_primary_assessment(assessments, "weather_behavior_scorer")
+        rating, score, justification = _extract_primary_assessment(assessments, "weather_behavior_scorer")
         assert score == 0.0
-        assert passed is False
 
     def test_numeric_value(self):
         assessments = [_make_assessment("memory_retrieval", 0.85, "recall=0.85")]
-        rating, score, passed, justification = _extract_primary_assessment(assessments, "memory_retrieval")
+        rating, score, justification = _extract_primary_assessment(assessments, "memory_retrieval")
         assert score == 0.85
-        assert passed is False  # 0.85 < 3.0 threshold
         assert justification == "recall=0.85"
 
     def test_numeric_value_matching_rating_threshold(self):
         assessments = [_make_assessment("quality", 5.0)]
-        rating, score, passed, justification = _extract_primary_assessment(assessments, "quality")
+        rating, score, justification = _extract_primary_assessment(assessments, "quality")
         assert rating == "excellent"
         assert score == 5.0
-        assert passed is True
 
     def test_no_matching_assessment(self):
         assessments = [_make_assessment("rubric", "some value")]
-        rating, score, passed, justification = _extract_primary_assessment(assessments, "quality")
+        rating, score, justification = _extract_primary_assessment(assessments, "quality")
         assert rating is None
         assert score is None
-        assert passed is None
         assert justification is None
 
     def test_empty_assessments(self):
-        rating, score, passed, justification = _extract_primary_assessment([], "quality")
+        rating, score, justification = _extract_primary_assessment([], "quality")
         assert rating is None
         assert score is None
-        assert passed is None
         assert justification is None
 
     def test_skips_non_primary_assessments(self):
@@ -511,7 +502,7 @@ class TestExtractPrimaryAssessment:
             _make_assessment("rubric", "test rubric"),
             _make_assessment("tone_quality", "excellent", "Warm and friendly"),
         ]
-        rating, score, passed, justification = _extract_primary_assessment(assessments, "tone_quality")
+        rating, score, justification = _extract_primary_assessment(assessments, "tone_quality")
         assert rating == "excellent"
         assert justification == "Warm and friendly"
 
@@ -598,7 +589,6 @@ class TestParseSingleTurnTraces:
         assert r.assistant_response == "4"
         assert r.rating == "excellent"
         assert r.score == 5.0
-        assert r.passed is True
         assert r.justification == "Perfect answer"
         assert r.duration_ms == 200
 
@@ -647,7 +637,6 @@ class TestParseSingleTurnTraces:
         r = results[0]
         assert r.rating is None
         assert r.score is None
-        assert r.passed is None
         assert r.justification is None
 
     def test_extra_from_non_primary_assessments(self):

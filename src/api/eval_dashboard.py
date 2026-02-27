@@ -188,7 +188,6 @@ async def get_run_detail(
             RunCaseResultResponse(
                 case_id=c.case_id,
                 score=c.score,
-                passed=c.passed,
                 duration_ms=c.duration_ms,
                 error=c.error,
                 user_prompt=c.user_prompt,

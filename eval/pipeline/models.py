@@ -144,7 +144,6 @@ class RunCaseResult:
 
     case_id: str
     score: float | None
-    passed: bool | None
     duration_ms: int | None
     error: str | None
     user_prompt: str

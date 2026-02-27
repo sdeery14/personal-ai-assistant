@@ -343,7 +343,7 @@ def _parse_single_turn_traces(traces: list, primary_scorer: str) -> list[RunCase
             pass
 
         # Extract primary assessment
-        rating, score, passed, justification = _extract_primary_assessment(assessments, primary_scorer)
+        rating, score, justification = _extract_primary_assessment(assessments, primary_scorer)
 
         # Duration from trace execution time
         duration_ms: int | None = None
@@ -361,7 +361,6 @@ def _parse_single_turn_traces(traces: list, primary_scorer: str) -> list[RunCase
             RunCaseResult(
                 case_id=f"case_{i}",
                 score=score,
-                passed=passed,
                 duration_ms=duration_ms,
                 error=None,
                 user_prompt=user_prompt,
@@ -447,7 +446,7 @@ def _parse_session_traces(traces: list, run_id: str, primary_scorer: str) -> lis
         case_id = _extract_case_id_from_session(session_id)
 
         # Extract primary assessment from the trace that had assessments
-        rating, score, passed, justification = _extract_primary_assessment(assessments_found, primary_scorer)
+        rating, score, justification = _extract_primary_assessment(assessments_found, primary_scorer)
         extra = _build_extra(assessments_found, primary_scorer)
 
         # Add conversation transcript to extra for frontend rendering
@@ -467,7 +466,6 @@ def _parse_session_traces(traces: list, run_id: str, primary_scorer: str) -> lis
             RunCaseResult(
                 case_id=case_id,
                 score=score,
-                passed=passed,
                 duration_ms=total_duration_ms if total_duration_ms > 0 else None,
                 error=None,
                 user_prompt=user_prompt,
@@ -502,11 +500,11 @@ def _extract_case_id_from_session(session_id: str) -> str:
 
 def _extract_primary_assessment(
     assessments: list, primary_scorer: str
-) -> tuple[str | None, float | None, bool | None, str | None]:
-    """Extract rating, score, passed, and justification from the primary assessment.
+) -> tuple[str | None, float | None, str | None]:
+    """Extract rating, score, and justification from the primary assessment.
 
     Returns:
-        Tuple of (rating, score, passed, justification).
+        Tuple of (rating, score, justification).
     """
     for assessment in assessments:
         name = getattr(assessment, "name", "")
@@ -526,11 +524,10 @@ def _extract_primary_assessment(
         if isinstance(value, str):
             rating = value.strip().lower()
             score = _RATING_SCORES.get(rating)
-            passed = rating in ("excellent", "good", "adequate")
-            return rating, score, passed, rationale
+            return rating, score, rationale
 
         if isinstance(value, bool):
-            return None, (1.0 if value else 0.0), value, rationale
+            return None, (1.0 if value else 0.0), rationale
 
         if isinstance(value, (int, float)):
             score_val = float(value)
@@ -540,10 +537,9 @@ def _extract_primary_assessment(
                 if abs(score_val - threshold) < 0.01:
                     rating = label
                     break
-            passed = score_val >= 3.0
-            return rating, score_val, passed, rationale
+            return rating, score_val, rationale
 
-    return None, None, None, None
+    return None, None, None
 
 
 def _build_extra(assessments: list, primary_scorer: str) -> dict:

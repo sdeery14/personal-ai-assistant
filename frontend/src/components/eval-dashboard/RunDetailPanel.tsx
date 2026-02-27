@@ -4,33 +4,12 @@ import { Fragment, useState, useMemo } from "react";
 import { Card, Button } from "@/components/ui";
 import type { RunDetail, RunCaseResult } from "@/types/eval-dashboard";
 
-type CaseSortKey = "case_id" | "score" | "passed" | "duration_ms" | "error";
+type CaseSortKey = "case_id" | "score" | "duration_ms" | "error";
 type SortDir = "asc" | "desc";
 
 function SortArrow({ active, dir }: { active: boolean; dir: SortDir }) {
   if (!active) return null;
   return <span className="ml-1">{dir === "asc" ? "\u25B2" : "\u25BC"}</span>;
-}
-
-function PassedBadge({ passed }: { passed: boolean | null }) {
-  if (passed === null) {
-    return (
-      <span className="inline-block rounded px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
-        N/A
-      </span>
-    );
-  }
-  return (
-    <span
-      className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${
-        passed
-          ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-          : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-      }`}
-    >
-      {passed ? "Pass" : "Fail"}
-    </span>
-  );
 }
 
 const RATING_STYLES: Record<string, string> = {
@@ -138,7 +117,7 @@ function CaseExpandedRow({ c }: { c: RunCaseResult }) {
 
   return (
     <tr>
-      <td colSpan={6} className="px-2 py-3">
+      <td colSpan={5} className="px-2 py-3">
         <div className="space-y-3 rounded border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
           {/* Persona label */}
           {persona && (
@@ -206,7 +185,6 @@ function CaseExpandedRow({ c }: { c: RunCaseResult }) {
                 <div className="mb-2 flex items-center gap-2">
                   <span className="text-xs text-gray-600 dark:text-gray-400">Rating:</span>
                   <RatingBadge rating={c.rating} />
-                  <PassedBadge passed={c.passed} />
                 </div>
               )}
               {c.justification && (
@@ -279,8 +257,6 @@ export function RunDetailPanel({
     .map(([k, v]) => [k.replace("prompt.", ""), v] as const);
 
   // Computed case counts
-  const passedCount = detail.cases.filter((c) => c.passed === true).length;
-  const failedCount = detail.cases.filter((c) => c.passed === false).length;
   const errorCount = detail.cases.filter((c) => c.error != null).length;
 
   const sortedCases = useMemo(() => {
@@ -290,10 +266,6 @@ export function RunDetailPanel({
         cmp = a.case_id.localeCompare(b.case_id);
       } else if (sortKey === "score") {
         cmp = (a.score ?? -1) - (b.score ?? -1);
-      } else if (sortKey === "passed") {
-        const av = a.passed === null ? -1 : a.passed ? 1 : 0;
-        const bv = b.passed === null ? -1 : b.passed ? 1 : 0;
-        cmp = av - bv;
       } else if (sortKey === "duration_ms") {
         cmp = (a.duration_ms ?? 0) - (b.duration_ms ?? 0);
       } else if (sortKey === "error") {
@@ -381,28 +353,12 @@ export function RunDetailPanel({
         </div>
         <div>
           <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-            Passed / Failed / Errors
+            Errors
           </span>
           <p className="text-gray-800 dark:text-gray-200">
-            <span className="text-green-600 dark:text-green-400">
-              {passedCount}
-            </span>{" "}
-            /{" "}
-            <span className="text-red-600 dark:text-red-400">
-              {failedCount}
-            </span>{" "}
-            /{" "}
             <span className="text-yellow-600 dark:text-yellow-400">
-              {errorCount}
+              {errorCases != null ? errorCases : errorCount}
             </span>
-          </p>
-        </div>
-        <div>
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-            Error Cases (metric)
-          </span>
-          <p className="text-gray-800 dark:text-gray-200">
-            {errorCases != null ? errorCases : "-"}
           </p>
         </div>
       </div>
@@ -447,13 +403,6 @@ export function RunDetailPanel({
                   <SortArrow active={sortKey === "score"} dir={sortDir} />
                 </th>
                 <th
-                  className="cursor-pointer select-none px-2 py-1.5 text-center font-medium text-gray-600 dark:text-gray-400"
-                  onClick={() => handleSort("passed")}
-                >
-                  Result
-                  <SortArrow active={sortKey === "passed"} dir={sortDir} />
-                </th>
-                <th
                   className="cursor-pointer select-none px-2 py-1.5 text-right font-medium text-gray-600 dark:text-gray-400"
                   onClick={() => handleSort("duration_ms")}
                 >
@@ -492,9 +441,6 @@ export function RunDetailPanel({
                     </td>
                     <td className="px-2 py-1.5 text-center">
                       <RatingBadge rating={c.rating} />
-                    </td>
-                    <td className="px-2 py-1.5 text-center">
-                      <PassedBadge passed={c.passed} />
                     </td>
                     <td className="px-2 py-1.5 text-right text-gray-700 dark:text-gray-300">
                       {c.duration_ms != null ? `${c.duration_ms}ms` : "-"}
