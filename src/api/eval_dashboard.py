@@ -194,6 +194,7 @@ async def get_run_detail(
                 user_prompt=c.user_prompt,
                 assistant_response=c.assistant_response,
                 justification=c.justification,
+                rating=c.rating,
                 extra=c.extra,
             )
             for c in detail.cases

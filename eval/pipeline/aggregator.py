@@ -345,12 +345,17 @@ def _parse_case_results(raw_cases: list[dict]) -> list[RunCaseResult]:
         # --- passed ---
         passed = _opt_bool(_first(raw, "passed", "quality_passed", "judge_passed", "behavior_match"))
 
-        # --- score (numeric) ---
+        # --- rating (text) ---
+        rating = raw.get("quality_rating")
+        if isinstance(rating, str):
+            rating = rating.strip().lower()
+        else:
+            rating = None
+
+        # --- score (numeric, derived from rating for sorting) ---
         score = _opt_float(raw.get("score"))
-        if score is None:
-            rating = raw.get("quality_rating")
-            if isinstance(rating, str):
-                score = _RATING_SCORES.get(rating.lower())
+        if score is None and rating:
+            score = _RATING_SCORES.get(rating)
 
         # --- duration ---
         duration_ms = _opt_int(_first(raw, "duration_ms", "latency_ms", "total_latency_ms"))
@@ -382,6 +387,7 @@ def _parse_case_results(raw_cases: list[dict]) -> list[RunCaseResult]:
                 user_prompt=user_prompt,
                 assistant_response=assistant_response,
                 justification=justification,
+                rating=rating,
                 extra=extra,
             )
         )

@@ -177,6 +177,7 @@ class RunCaseResultResponse(BaseModel):
     user_prompt: str
     assistant_response: str
     justification: str | None
+    rating: str | None = None
     extra: dict[str, Any]
 
 

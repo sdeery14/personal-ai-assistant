@@ -33,6 +33,29 @@ function PassedBadge({ passed }: { passed: boolean | null }) {
   );
 }
 
+const RATING_STYLES: Record<string, string> = {
+  excellent:
+    "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+  good: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  adequate:
+    "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
+  poor: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+};
+
+function RatingBadge({ rating }: { rating: string | null }) {
+  if (!rating) {
+    return <span className="text-gray-400 dark:text-gray-500">-</span>;
+  }
+  const style = RATING_STYLES[rating] ?? "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400";
+  return (
+    <span
+      className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium capitalize ${style}`}
+    >
+      {rating}
+    </span>
+  );
+}
+
 /** Parse a conversation transcript string into user/assistant turn pairs. */
 function parseTranscript(
   text: string
@@ -174,14 +197,23 @@ function CaseExpandedRow({ c }: { c: RunCaseResult }) {
             </p>
           )}
 
-          {c.justification && (
-            <div>
-              <p className="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+          {(c.rating || c.justification) && (
+            <div className="rounded border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
+              <p className="mb-2 text-xs font-semibold text-amber-700 dark:text-amber-400">
                 Judge Feedback
               </p>
-              <p className="whitespace-pre-wrap text-xs text-gray-800 dark:text-gray-200">
-                {c.justification}
-              </p>
+              {c.rating && (
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="text-xs text-gray-600 dark:text-gray-400">Rating:</span>
+                  <RatingBadge rating={c.rating} />
+                  <PassedBadge passed={c.passed} />
+                </div>
+              )}
+              {c.justification && (
+                <p className="whitespace-pre-wrap text-xs text-gray-800 dark:text-gray-200">
+                  {c.justification}
+                </p>
+              )}
             </div>
           )}
           {c.error && (
@@ -408,10 +440,10 @@ export function RunDetailPanel({
                   <SortArrow active={sortKey === "case_id"} dir={sortDir} />
                 </th>
                 <th
-                  className="cursor-pointer select-none px-2 py-1.5 text-right font-medium text-gray-600 dark:text-gray-400"
+                  className="cursor-pointer select-none px-2 py-1.5 text-center font-medium text-gray-600 dark:text-gray-400"
                   onClick={() => handleSort("score")}
                 >
-                  Score
+                  Rating
                   <SortArrow active={sortKey === "score"} dir={sortDir} />
                 </th>
                 <th
@@ -458,8 +490,8 @@ export function RunDetailPanel({
                     <td className="px-2 py-1.5 font-mono text-gray-700 dark:text-gray-300">
                       {c.case_id}
                     </td>
-                    <td className="px-2 py-1.5 text-right text-gray-700 dark:text-gray-300">
-                      {c.score != null ? c.score.toFixed(2) : "-"}
+                    <td className="px-2 py-1.5 text-center">
+                      <RatingBadge rating={c.rating} />
                     </td>
                     <td className="px-2 py-1.5 text-center">
                       <PassedBadge passed={c.passed} />

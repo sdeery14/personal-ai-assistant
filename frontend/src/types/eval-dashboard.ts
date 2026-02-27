@@ -125,6 +125,7 @@ export interface RunCaseResult {
   user_prompt: string;
   assistant_response: string;
   justification: string | null;
+  rating: string | null;
   extra: Record<string, unknown>;
 }
 

@@ -396,6 +396,18 @@ class TestParseCaseResults:
         results = _parse_case_results(raw)
         assert results[0].score == 3.0
 
+    def test_quality_rating_populates_rating_field(self):
+        raw = [{"case_id": "c1", "quality_rating": "Excellent"}]
+        results = _parse_case_results(raw)
+        assert results[0].rating == "excellent"
+        assert results[0].score == 5.0
+
+    def test_no_rating_returns_none(self):
+        raw = [{"case_id": "c1", "score": 4.0}]
+        results = _parse_case_results(raw)
+        assert results[0].rating is None
+        assert results[0].score == 4.0
+
     def test_passed_fallback_chain(self):
         raw = [{"case_id": "c1", "quality_passed": True}]
         results = _parse_case_results(raw)
