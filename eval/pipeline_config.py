@@ -82,33 +82,46 @@ def get_base_experiment_name() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Per-eval-type artifact filenames (logged by eval runners)
+# Per-eval-type primary scorer name (assessment name on traces)
 # ---------------------------------------------------------------------------
 
-ARTIFACT_FILENAMES: dict[str, str] = {
-    "quality": "eval_results.json",
-    "memory": "memory_eval_results.json",
-    "memory-write": "memory_write_eval_results.json",
-    "weather": "weather_eval_results.json",
-    "graph-extraction": "graph_extraction_eval_results.json",
-    "onboarding": "onboarding_eval_results.json",
-    "tone": "tone_eval_results.json",
-    "greeting": "greeting_eval_results.json",
-    "routing": "routing_eval_results.json",
-    "memory-informed": "memory_informed_eval_results.json",
-    "multi-cap": "multi_cap_eval_results.json",
-    "notification-judgment": "notification_judgment_eval_results.json",
-    "error-recovery": "error_recovery_eval_results.json",
-    "schedule-cron": "schedule_cron_eval_results.json",
-    "knowledge-connections": "knowledge_connections_eval_results.json",
-    "contradiction": "contradiction_handling_eval_results.json",
-    "long-conversation": "long_conversation_eval_results.json",
+EVAL_PRIMARY_SCORER: dict[str, str] = {
+    "quality": "quality",
+    "tone": "tone_quality",
+    "greeting": "greeting_quality",
+    "routing": "routing_quality",
+    "notification-judgment": "notification_quality",
+    "error-recovery": "error_recovery_quality",
+    "schedule-cron": "schedule_quality",
+    "knowledge-connections": "knowledge_connections_quality",
+    "contradiction": "contradiction_quality",
+    "memory-informed": "memory_informed_quality",
+    "multi-cap": "multi_cap_quality",
+    "long-conversation": "long_conversation_quality",
+    "onboarding": "onboarding_quality",
+    "weather": "weather_behavior_scorer",
+    "graph-extraction": "entity_recall_scorer",
+    "memory-write": "memory_write_quality",
+    "memory": "memory_retrieval",
 }
 
 
-def get_artifact_filename(eval_type: str) -> str | None:
-    """Return the artifact filename for a given eval type, or None if unknown."""
-    return ARTIFACT_FILENAMES.get(eval_type)
+def get_primary_scorer(eval_type: str) -> str | None:
+    """Return the primary assessment name for a given eval type, or None if unknown."""
+    return EVAL_PRIMARY_SCORER.get(eval_type)
+
+
+# ---------------------------------------------------------------------------
+# Session-trace eval types (multi-turn conversations grouped by session)
+# ---------------------------------------------------------------------------
+
+EVAL_SESSION_TYPES: frozenset[str] = frozenset({
+    "onboarding",
+    "contradiction",
+    "memory-informed",
+    "multi-cap",
+    "long-conversation",
+})
 
 
 # ---------------------------------------------------------------------------

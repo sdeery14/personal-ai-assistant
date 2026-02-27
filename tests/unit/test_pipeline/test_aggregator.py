@@ -1,5 +1,6 @@
 """Unit tests for eval pipeline aggregator."""
 
+import json
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
@@ -7,7 +8,11 @@ import pandas as pd
 import pytest
 
 from eval.pipeline.aggregator import (
-    _parse_case_results,
+    _build_extra,
+    _extract_case_id_from_session,
+    _extract_primary_assessment,
+    _parse_session_traces,
+    _parse_single_turn_traces,
     build_trend_summary,
     get_eval_experiments,
     get_trend_points,
@@ -46,6 +51,51 @@ def _make_point(
 def _make_runs_df(rows: list[dict]) -> pd.DataFrame:
     """Create a DataFrame mimicking mlflow.search_runs output."""
     return pd.DataFrame(rows)
+
+
+def _make_assessment(name: str, value, rationale: str | None = None, source_type: str = "LLM_JUDGE"):
+    """Create a mock assessment object."""
+    assessment = MagicMock()
+    assessment.name = name
+    assessment.value = value
+    assessment.rationale = rationale
+    assessment.feedback = None
+    assessment.expectation = None
+    source = MagicMock()
+    source.source_type = source_type
+    assessment.source = source
+    return assessment
+
+
+def _make_trace(
+    request: dict | str | None = None,
+    response: dict | str | None = None,
+    assessments: list | None = None,
+    execution_time_ms: int | None = 150,
+    trace_metadata: dict | None = None,
+    request_time: int = 1708776000000,
+):
+    """Create a mock trace object."""
+    trace = MagicMock()
+    trace.info.assessments = assessments or []
+    trace.info.execution_time_ms = execution_time_ms
+    trace.info.execution_duration = execution_time_ms
+    trace.info.trace_metadata = trace_metadata or {}
+    trace.info.request_metadata = trace_metadata or {}
+    trace.info.request_time = request_time
+    trace.info.timestamp_ms = request_time
+
+    if request is not None:
+        trace.data.request = json.dumps(request) if isinstance(request, dict) else request
+    else:
+        trace.data.request = None
+
+    if response is not None:
+        trace.data.response = json.dumps(response) if isinstance(response, dict) else response
+    else:
+        trace.data.response = None
+
+    return trace
 
 
 # ---------------------------------------------------------------------------
@@ -377,54 +427,441 @@ class TestBuildTrendSummary:
         assert summary.trend_direction == "stable"
 
 
-class TestParseCaseResults:
-    """Tests for _parse_case_results field-name normalization."""
+# ---------------------------------------------------------------------------
+# _extract_primary_assessment
+# ---------------------------------------------------------------------------
 
-    def test_quality_rationale_maps_to_justification(self):
-        raw = [{"case_id": "c1", "quality_passed": True, "quality_rating": "good", "quality_rationale": "The response was helpful and warm."}]
-        results = _parse_case_results(raw)
+
+class TestExtractPrimaryAssessment:
+    """Tests for extracting rating/score/passed/justification from assessments."""
+
+    def test_string_value_excellent(self):
+        assessments = [_make_assessment("quality", "excellent", "Great response")]
+        rating, score, passed, justification = _extract_primary_assessment(assessments, "quality")
+        assert rating == "excellent"
+        assert score == 5.0
+        assert passed is True
+        assert justification == "Great response"
+
+    def test_string_value_poor(self):
+        assessments = [_make_assessment("quality", "poor", "Bad response")]
+        rating, score, passed, justification = _extract_primary_assessment(assessments, "quality")
+        assert rating == "poor"
+        assert score == 1.0
+        assert passed is False
+
+    def test_string_value_adequate(self):
+        assessments = [_make_assessment("quality", "adequate")]
+        rating, score, passed, justification = _extract_primary_assessment(assessments, "quality")
+        assert rating == "adequate"
+        assert score == 3.0
+        assert passed is True
+
+    def test_string_value_case_insensitive(self):
+        assessments = [_make_assessment("quality", " Good ")]
+        rating, score, passed, justification = _extract_primary_assessment(assessments, "quality")
+        assert rating == "good"
+        assert score == 4.0
+
+    def test_boolean_value_true(self):
+        assessments = [_make_assessment("weather_behavior_scorer", True, "Correct tool call")]
+        rating, score, passed, justification = _extract_primary_assessment(assessments, "weather_behavior_scorer")
+        assert rating is None
+        assert score == 1.0
+        assert passed is True
+        assert justification == "Correct tool call"
+
+    def test_boolean_value_false(self):
+        assessments = [_make_assessment("weather_behavior_scorer", False)]
+        rating, score, passed, justification = _extract_primary_assessment(assessments, "weather_behavior_scorer")
+        assert score == 0.0
+        assert passed is False
+
+    def test_numeric_value(self):
+        assessments = [_make_assessment("memory_retrieval", 0.85, "recall=0.85")]
+        rating, score, passed, justification = _extract_primary_assessment(assessments, "memory_retrieval")
+        assert score == 0.85
+        assert passed is False  # 0.85 < 3.0 threshold
+        assert justification == "recall=0.85"
+
+    def test_numeric_value_matching_rating_threshold(self):
+        assessments = [_make_assessment("quality", 5.0)]
+        rating, score, passed, justification = _extract_primary_assessment(assessments, "quality")
+        assert rating == "excellent"
+        assert score == 5.0
+        assert passed is True
+
+    def test_no_matching_assessment(self):
+        assessments = [_make_assessment("rubric", "some value")]
+        rating, score, passed, justification = _extract_primary_assessment(assessments, "quality")
+        assert rating is None
+        assert score is None
+        assert passed is None
+        assert justification is None
+
+    def test_empty_assessments(self):
+        rating, score, passed, justification = _extract_primary_assessment([], "quality")
+        assert rating is None
+        assert score is None
+        assert passed is None
+        assert justification is None
+
+    def test_skips_non_primary_assessments(self):
+        assessments = [
+            _make_assessment("rubric", "test rubric"),
+            _make_assessment("tone_quality", "excellent", "Warm and friendly"),
+        ]
+        rating, score, passed, justification = _extract_primary_assessment(assessments, "tone_quality")
+        assert rating == "excellent"
+        assert justification == "Warm and friendly"
+
+
+# ---------------------------------------------------------------------------
+# _build_extra
+# ---------------------------------------------------------------------------
+
+
+class TestBuildExtra:
+    """Tests for building the extra dict from non-primary assessments."""
+
+    def test_excludes_primary_scorer(self):
+        assessments = [
+            _make_assessment("quality", "excellent", "Great"),
+            _make_assessment("rubric", "test rubric", "Human annotation"),
+        ]
+        extra = _build_extra(assessments, "quality")
+        assert "quality" not in extra
+        assert "rubric" in extra
+
+    def test_includes_rationale_when_present(self):
+        assessments = [_make_assessment("rubric", "test rubric", "Human annotation")]
+        extra = _build_extra(assessments, "quality")
+        assert extra["rubric"] == {"value": "test rubric", "rationale": "Human annotation"}
+
+    def test_value_only_when_no_rationale(self):
+        assessments = [_make_assessment("rubric", "test rubric", None)]
+        extra = _build_extra(assessments, "quality")
+        assert extra["rubric"] == "test rubric"
+
+    def test_empty_assessments(self):
+        extra = _build_extra([], "quality")
+        assert extra == {}
+
+    def test_multiple_non_primary(self):
+        assessments = [
+            _make_assessment("quality", "good"),  # primary — excluded
+            _make_assessment("rubric", "criteria text"),
+            _make_assessment("entity_recall_scorer", 0.9, "High recall"),
+        ]
+        extra = _build_extra(assessments, "quality")
+        assert len(extra) == 2
+        assert extra["rubric"] == "criteria text"
+        assert extra["entity_recall_scorer"] == {"value": 0.9, "rationale": "High recall"}
+
+    def test_assessment_with_expectation_value(self):
+        """Expectation assessments store value in .expectation.value."""
+        assessment = MagicMock()
+        assessment.name = "expected_answer"
+        assessment.value = None
+        assessment.feedback = None
+        exp = MagicMock()
+        exp.value = "The capital of France is Paris."
+        assessment.expectation = exp
+        assessment.rationale = None
+
+        extra = _build_extra([assessment], "quality")
+        assert extra["expected_answer"] == "The capital of France is Paris."
+
+
+# ---------------------------------------------------------------------------
+# _parse_single_turn_traces
+# ---------------------------------------------------------------------------
+
+
+class TestParseSingleTurnTraces:
+    """Tests for parsing single-turn traces into RunCaseResult objects."""
+
+    def test_basic_trace_parsing(self):
+        traces = [
+            _make_trace(
+                request={"question": "What is 2+2?"},
+                response={"response": "4"},
+                assessments=[_make_assessment("quality", "excellent", "Perfect answer")],
+                execution_time_ms=200,
+            ),
+        ]
+        results = _parse_single_turn_traces(traces, "quality")
         assert len(results) == 1
-        assert results[0].justification == "The response was helpful and warm."
+        r = results[0]
+        assert r.case_id == "case_0"
+        assert r.user_prompt == "What is 2+2?"
+        assert r.assistant_response == "4"
+        assert r.rating == "excellent"
+        assert r.score == 5.0
+        assert r.passed is True
+        assert r.justification == "Perfect answer"
+        assert r.duration_ms == 200
 
-    def test_justification_takes_precedence_over_quality_rationale(self):
-        raw = [{"case_id": "c1", "justification": "Direct justification", "quality_rationale": "Should not appear"}]
-        results = _parse_case_results(raw)
-        assert results[0].justification == "Direct justification"
+    def test_query_key_in_request(self):
+        traces = [
+            _make_trace(
+                request={"query": "search term"},
+                response={"response": "result"},
+                assessments=[],
+            ),
+        ]
+        results = _parse_single_turn_traces(traces, "quality")
+        assert results[0].user_prompt == "search term"
 
-    def test_quality_rating_maps_to_score(self):
-        raw = [{"case_id": "c1", "quality_rating": "adequate"}]
-        results = _parse_case_results(raw)
-        assert results[0].score == 3.0
+    def test_user_message_key_in_request(self):
+        traces = [
+            _make_trace(
+                request={"user_message": "hello"},
+                response={"response": "hi"},
+                assessments=[],
+            ),
+        ]
+        results = _parse_single_turn_traces(traces, "quality")
+        assert results[0].user_prompt == "hello"
 
-    def test_quality_rating_populates_rating_field(self):
-        raw = [{"case_id": "c1", "quality_rating": "Excellent"}]
-        results = _parse_case_results(raw)
-        assert results[0].rating == "excellent"
-        assert results[0].score == 5.0
+    def test_plain_string_response(self):
+        traces = [
+            _make_trace(
+                request={"question": "test"},
+                response='"just a string"',
+                assessments=[],
+            ),
+        ]
+        results = _parse_single_turn_traces(traces, "quality")
+        assert results[0].assistant_response == "just a string"
 
-    def test_no_rating_returns_none(self):
-        raw = [{"case_id": "c1", "score": 4.0}]
-        results = _parse_case_results(raw)
-        assert results[0].rating is None
-        assert results[0].score == 4.0
+    def test_no_assessments(self):
+        traces = [
+            _make_trace(
+                request={"question": "test"},
+                response={"response": "answer"},
+                assessments=[],
+            ),
+        ]
+        results = _parse_single_turn_traces(traces, "quality")
+        r = results[0]
+        assert r.rating is None
+        assert r.score is None
+        assert r.passed is None
+        assert r.justification is None
 
-    def test_passed_fallback_chain(self):
-        raw = [{"case_id": "c1", "quality_passed": True}]
-        results = _parse_case_results(raw)
-        assert results[0].passed is True
+    def test_extra_from_non_primary_assessments(self):
+        traces = [
+            _make_trace(
+                request={"question": "test"},
+                response={"response": "answer"},
+                assessments=[
+                    _make_assessment("quality", "good", "Nice"),
+                    _make_assessment("rubric", "Be helpful", "Human label"),
+                ],
+            ),
+        ]
+        results = _parse_single_turn_traces(traces, "quality")
+        assert "rubric" in results[0].extra
+        assert results[0].extra["rubric"] == {"value": "Be helpful", "rationale": "Human label"}
 
-    def test_duration_fallback_chain(self):
-        raw = [{"case_id": "c1", "total_latency_ms": 1234}]
-        results = _parse_case_results(raw)
-        assert results[0].duration_ms == 1234
+    def test_multiple_traces(self):
+        traces = [
+            _make_trace(
+                request={"question": "Q1"},
+                response={"response": "A1"},
+                assessments=[_make_assessment("quality", "good")],
+            ),
+            _make_trace(
+                request={"question": "Q2"},
+                response={"response": "A2"},
+                assessments=[_make_assessment("quality", "poor")],
+            ),
+        ]
+        results = _parse_single_turn_traces(traces, "quality")
+        assert len(results) == 2
+        assert results[0].case_id == "case_0"
+        assert results[1].case_id == "case_1"
+        assert results[0].user_prompt == "Q1"
+        assert results[1].user_prompt == "Q2"
 
-    def test_conversation_transcript_goes_to_extra(self):
-        raw = [{"case_id": "c1", "conversation_transcript": "hello"}]
-        results = _parse_case_results(raw)
-        assert "conversation_transcript" in results[0].extra
+    def test_null_request_response(self):
+        traces = [
+            _make_trace(request=None, response=None, assessments=[]),
+        ]
+        results = _parse_single_turn_traces(traces, "quality")
+        assert results[0].user_prompt == ""
         assert results[0].assistant_response == ""
 
-    def test_no_rationale_returns_none_justification(self):
-        raw = [{"case_id": "c1", "quality_passed": False}]
-        results = _parse_case_results(raw)
-        assert results[0].justification is None
+    def test_null_execution_time(self):
+        traces = [
+            _make_trace(
+                request={"question": "test"},
+                response={"response": "answer"},
+                assessments=[],
+                execution_time_ms=None,
+            ),
+        ]
+        results = _parse_single_turn_traces(traces, "quality")
+        assert results[0].duration_ms is None
+
+
+# ---------------------------------------------------------------------------
+# _parse_session_traces
+# ---------------------------------------------------------------------------
+
+
+class TestParseSessionTraces:
+    """Tests for parsing session-grouped traces into RunCaseResult objects."""
+
+    def test_groups_by_session(self):
+        traces = [
+            _make_trace(
+                request={"user_message": "Hello"},
+                response='"Hi there!"',
+                assessments=[],
+                trace_metadata={"mlflow.trace.session": "sess-abc123-greeting"},
+                request_time=1000,
+            ),
+            _make_trace(
+                request={"user_message": "How are you?"},
+                response='"I am fine"',
+                assessments=[_make_assessment("quality", "good", "Friendly")],
+                trace_metadata={"mlflow.trace.session": "sess-abc123-greeting"},
+                request_time=2000,
+            ),
+        ]
+        results = _parse_session_traces(traces, "run1", "quality")
+        assert len(results) == 1
+        r = results[0]
+        assert r.rating == "good"
+        assert r.justification == "Friendly"
+        assert "conversation_transcript" in r.extra
+        assert len(r.extra["conversation_transcript"]) == 4  # 2 user + 2 assistant
+
+    def test_multiple_sessions(self):
+        traces = [
+            _make_trace(
+                request={"user_message": "Msg A"},
+                response='"Reply A"',
+                assessments=[_make_assessment("quality", "excellent")],
+                trace_metadata={"mlflow.trace.session": "sess-aaa-case1"},
+                request_time=1000,
+            ),
+            _make_trace(
+                request={"user_message": "Msg B"},
+                response='"Reply B"',
+                assessments=[_make_assessment("quality", "poor")],
+                trace_metadata={"mlflow.trace.session": "sess-bbb-case2"},
+                request_time=1000,
+            ),
+        ]
+        results = _parse_session_traces(traces, "run1", "quality")
+        assert len(results) == 2
+
+    def test_accumulates_duration(self):
+        traces = [
+            _make_trace(
+                request={"user_message": "T1"},
+                response='"R1"',
+                assessments=[],
+                execution_time_ms=100,
+                trace_metadata={"mlflow.trace.session": "sess-abc-test"},
+                request_time=1000,
+            ),
+            _make_trace(
+                request={"user_message": "T2"},
+                response='"R2"',
+                assessments=[],
+                execution_time_ms=200,
+                trace_metadata={"mlflow.trace.session": "sess-abc-test"},
+                request_time=2000,
+            ),
+        ]
+        results = _parse_session_traces(traces, "run1", "quality")
+        assert results[0].duration_ms == 300
+
+    def test_user_prompt_is_first_assistant_response_is_last(self):
+        traces = [
+            _make_trace(
+                request={"user_message": "First question"},
+                response='"First answer"',
+                assessments=[],
+                trace_metadata={"mlflow.trace.session": "sess-abc-test"},
+                request_time=1000,
+            ),
+            _make_trace(
+                request={"user_message": "Follow up"},
+                response='"Final answer"',
+                assessments=[],
+                trace_metadata={"mlflow.trace.session": "sess-abc-test"},
+                request_time=2000,
+            ),
+        ]
+        results = _parse_session_traces(traces, "run1", "quality")
+        assert results[0].user_prompt == "First question"
+        assert results[0].assistant_response == "Final answer"
+
+    def test_skips_traces_without_session(self):
+        traces = [
+            _make_trace(
+                request={"user_message": "Orphan"},
+                response='"Reply"',
+                assessments=[],
+                trace_metadata={},  # No session
+            ),
+        ]
+        results = _parse_session_traces(traces, "run1", "quality")
+        assert len(results) == 0
+
+    def test_assessment_from_any_trace_in_session(self):
+        """Assessments can be on any trace in the session, not just the last."""
+        traces = [
+            _make_trace(
+                request={"user_message": "T1"},
+                response='"R1"',
+                assessments=[_make_assessment("quality", "excellent", "Great conversation")],
+                trace_metadata={"mlflow.trace.session": "sess-abc-test"},
+                request_time=1000,
+            ),
+            _make_trace(
+                request={"user_message": "T2"},
+                response='"R2"',
+                assessments=[],  # No assessments on this trace
+                trace_metadata={"mlflow.trace.session": "sess-abc-test"},
+                request_time=2000,
+            ),
+        ]
+        results = _parse_session_traces(traces, "run1", "quality")
+        assert results[0].rating == "excellent"
+        assert results[0].justification == "Great conversation"
+
+
+# ---------------------------------------------------------------------------
+# _extract_case_id_from_session
+# ---------------------------------------------------------------------------
+
+
+class TestExtractCaseIdFromSession:
+    """Tests for extracting readable case IDs from session IDs."""
+
+    def test_typical_session_id(self):
+        result = _extract_case_id_from_session("contra-abc12345-contra-subtle-mismatch")
+        assert result == "contra-subtle-mismatch"
+
+    def test_short_session_id_passthrough(self):
+        result = _extract_case_id_from_session("simple")
+        assert result == "simple"
+
+    def test_no_uuid_segment(self):
+        result = _extract_case_id_from_session("onb-short-case")
+        assert result == "onb-short-case"
+
+    def test_uuid_at_start(self):
+        result = _extract_case_id_from_session("prefix-abcdef01-meaningful-suffix")
+        assert result == "meaningful-suffix"
+
+    def test_empty_after_uuid(self):
+        """If nothing follows the UUID-like segment, return the full ID."""
+        result = _extract_case_id_from_session("contra-abcdef01")
+        assert result == "contra-abcdef01"

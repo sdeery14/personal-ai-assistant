@@ -140,7 +140,7 @@ class AuditRecord:
 
 @dataclass
 class RunCaseResult:
-    """Per-case result from an eval run artifact."""
+    """Per-case result from an eval run's trace assessments."""
 
     case_id: str
     score: float | None

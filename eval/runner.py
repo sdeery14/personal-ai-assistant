@@ -16,7 +16,6 @@ import json
 import os
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 import mlflow
@@ -423,14 +422,6 @@ def run_evaluation(
                     "security_gate_passed": (1 if metrics.security_gate_passed else 0),
                 }
             )
-
-        # Log per-case results as artifact
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()  # Clean up temp file
 
     return EvaluationResult(
         metrics=metrics,
@@ -862,16 +853,28 @@ def run_memory_evaluation(
         )
         _log_prompt_versions()
 
+        # Suppress autolog embedding traces during memory queries
+        mlflow.openai.autolog(disable=True)
+
         for case in dataset.cases:
             try:
+                @mlflow.trace(name="memory_retrieval")
+                def _run_memory_case(query: str, user_id: str) -> dict:
+                    """Traced wrapper for a single memory retrieval case."""
+                    contents, user_ids, tokens = _query_memory(
+                        query=query,
+                        user_id=user_id,
+                        settings=settings,
+                    )
+                    return {"retrieved_contents": contents, "retrieved_user_ids": user_ids, "token_count": tokens}
+
                 start_time = time.perf_counter()
 
-                # Call the memory service directly
-                retrieved_contents, retrieved_user_ids, token_count = _query_memory(
-                    query=case.query,
-                    user_id=case.user_id,
-                    settings=settings,
-                )
+                # Call the traced memory query
+                trace_result = _run_memory_case(query=case.query, user_id=case.user_id)
+                retrieved_contents = trace_result["retrieved_contents"]
+                retrieved_user_ids = trace_result["retrieved_user_ids"]
+                token_count = trace_result["token_count"]
 
                 latency_ms = int((time.perf_counter() - start_time) * 1000)
                 latencies.append(latency_ms)
@@ -910,6 +913,21 @@ def run_memory_evaluation(
                 )
                 results.append(result)
 
+                # Log feedback assessment on the trace for dashboard visibility
+                from mlflow.entities import AssessmentSource, AssessmentSourceType
+                active_trace = mlflow.get_last_active_trace()
+                if active_trace:
+                    mlflow.log_feedback(
+                        trace_id=active_trace.info.trace_id,
+                        name="memory_retrieval",
+                        value=recall,
+                        source=AssessmentSource(
+                            source_type=AssessmentSourceType.CODE,
+                            source_id="memory_eval",
+                        ),
+                        rationale=f"recall={recall:.2f}, precision={precision:.2f}, expected_found={expected_found}/{len(case.expected_retrievals)}, cross_user_violation={cross_user_violation}",
+                    )
+
                 if verbose:
                     status = "✅" if recall >= 0.8 and not cross_user_violation else "❌"
                     print(f"  {case.id}: {status} R={recall:.2f} P={precision:.2f} {latency_ms}ms")
@@ -934,6 +952,9 @@ def run_memory_evaluation(
                 )
                 if verbose:
                     print(f"  {case.id}: ⚠️ ERROR - {str(e)}")
+
+        # Re-enable autolog after memory eval
+        mlflow.openai.autolog(disable=False)
 
         # Compute aggregate metrics
         valid_results = [r for r in results if r.error is None]
@@ -991,14 +1012,6 @@ def run_memory_evaluation(
                 "memory_overall_passed": 1 if overall_passed else 0,
             }
         )
-
-        # Log per-case results as artifact
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("memory_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
 
     return MemoryEvaluationResult(
         metrics=metrics,
@@ -1493,14 +1506,6 @@ def run_memory_write_evaluation(
         if judge_pass_rate is not None:
             mlflow.log_metrics({"memory_write_judge_pass_rate": judge_pass_rate})
 
-        # Log per-case results as artifact
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("memory_write_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
-
     return MemoryWriteEvaluationResult(
         metrics=metrics,
         results=results,
@@ -1895,14 +1900,6 @@ def run_weather_evaluation(
                 "weather_overall_passed": 1 if overall_passed else 0,
             }
         )
-
-        # Log per-case results as artifact
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("weather_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
 
     return WeatherEvaluationResult(
         metrics=metrics,
@@ -2386,14 +2383,6 @@ def run_graph_evaluation(
             "graph_error_cases": error_count,
             "graph_overall_passed": 1 if overall_passed else 0,
         })
-
-        # Log per-case results as artifact
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("graph_extraction_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
 
     return GraphExtractionEvaluationResult(
         metrics=metrics,
@@ -2919,14 +2908,6 @@ def run_onboarding_evaluation(
             "onboarding_overall_passed": 1 if overall_passed else 0,
         })
 
-        # Log per-case results as artifact
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("onboarding_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
-
     return OnboardingEvaluationResult(
         metrics=metrics,
         results=results,
@@ -3153,13 +3134,6 @@ def run_tone_evaluation(
         metrics = ToneMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
         mlflow.log_metrics({"tone_quality_pass_rate": quality_pass_rate, "tone_error_cases": error_count, "tone_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
 
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("tone_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
-
     return ToneEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
 
@@ -3275,13 +3249,6 @@ def run_returning_greeting_evaluation(
         overall_passed = quality_pass_rate >= 0.80
         metrics = ReturningGreetingMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
         mlflow.log_metrics({"greeting_quality_pass_rate": quality_pass_rate, "greeting_error_cases": error_count, "greeting_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("greeting_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
 
     return ReturningGreetingEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -3406,13 +3373,6 @@ def run_routing_evaluation(
         overall_passed = routing_accuracy >= 0.80 and quality_pass_rate >= 0.80
         metrics = RoutingMetrics(total_cases=len(dataset.cases), routing_accuracy=routing_accuracy, quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
         mlflow.log_metrics({"routing_accuracy": routing_accuracy, "routing_quality_pass_rate": quality_pass_rate, "routing_error_cases": error_count, "routing_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("routing_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
 
     return RoutingEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -3584,13 +3544,6 @@ def run_memory_informed_evaluation(
         metrics = MemoryInformedMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
         mlflow.log_metrics({"meminf_quality_pass_rate": quality_pass_rate, "meminf_error_cases": error_count, "meminf_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
 
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("memory_informed_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
-
     return MemoryInformedEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
 
@@ -3755,13 +3708,6 @@ def run_multi_cap_evaluation(
         overall_passed = quality_pass_rate >= 0.80
         metrics = MultiCapMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
         mlflow.log_metrics({"mcap_quality_pass_rate": quality_pass_rate, "mcap_error_cases": error_count, "mcap_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("multi_cap_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
 
     return MultiCapEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -3989,13 +3935,6 @@ def run_notification_judgment_evaluation(
         metrics = NotificationJudgmentMetrics(total_cases=len(dataset.cases), notification_accuracy=notification_accuracy, quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
         mlflow.log_metrics({"notif_accuracy": notification_accuracy, "notif_quality_pass_rate": quality_pass_rate, "notif_error_cases": error_count, "notif_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
 
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("notification_judgment_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
-
     return NotificationJudgmentEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
 
@@ -4116,13 +4055,6 @@ def run_error_recovery_evaluation(
         overall_passed = quality_pass_rate >= 0.80
         metrics = ErrorRecoveryMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
         mlflow.log_metrics({"errrecov_quality_pass_rate": quality_pass_rate, "errrecov_error_cases": error_count, "errrecov_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("error_recovery_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
 
     return ErrorRecoveryEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -4262,13 +4194,6 @@ def run_schedule_cron_evaluation(
         metrics = ScheduleCronMetrics(total_cases=len(dataset.cases), cron_accuracy=cron_accuracy, quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
         mlflow.log_metrics({"cron_accuracy": cron_accuracy, "cron_quality_pass_rate": quality_pass_rate, "cron_error_cases": error_count, "cron_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
 
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("schedule_cron_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
-
     return ScheduleCronEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
 
@@ -4395,13 +4320,6 @@ def run_knowledge_connections_evaluation(
         overall_passed = quality_pass_rate >= 0.80
         metrics = KnowledgeConnectionsMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
         mlflow.log_metrics({"kg_quality_pass_rate": quality_pass_rate, "kg_error_cases": error_count, "kg_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("knowledge_connections_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
 
     return KnowledgeConnectionsEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -4563,13 +4481,6 @@ def run_contradiction_handling_evaluation(
         overall_passed = quality_pass_rate >= 0.80
         metrics = ContradictionHandlingMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
         mlflow.log_metrics({"contra_quality_pass_rate": quality_pass_rate, "contra_error_cases": error_count, "contra_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("contradiction_handling_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
 
     return ContradictionHandlingEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -4737,13 +4648,6 @@ def run_long_conversation_evaluation(
         overall_passed = quality_pass_rate >= 0.80
         metrics = LongConversationMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
         mlflow.log_metrics({"longconv_quality_pass_rate": quality_pass_rate, "longconv_error_cases": error_count, "longconv_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("long_conversation_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
 
     return LongConversationEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 

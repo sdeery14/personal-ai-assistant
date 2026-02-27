@@ -8,7 +8,7 @@ import mlflow
 import structlog
 
 from eval.pipeline.models import PromptChange, RunCaseResult, RunDetail, TrendPoint, TrendSummary
-from eval.pipeline_config import EXPERIMENT_SUFFIXES, get_artifact_filename, get_base_experiment_name, get_metric_names
+from eval.pipeline_config import EVAL_SESSION_TYPES, EXPERIMENT_SUFFIXES, get_base_experiment_name, get_metric_names, get_primary_scorer
 
 logger = structlog.get_logger(__name__)
 
@@ -213,21 +213,19 @@ def _detect_prompt_changes(points: list[TrendPoint]) -> list[PromptChange]:
 
 
 def get_run_detail(run_id: str, eval_type: str) -> RunDetail:
-    """Fetch full detail for a single MLflow run including per-case artifact.
+    """Fetch full detail for a single MLflow run including per-case trace assessments.
 
     Args:
         run_id: MLflow run ID.
-        eval_type: Eval type name (used to determine artifact filename).
+        eval_type: Eval type name (used to determine primary scorer and parse strategy).
 
     Returns:
         RunDetail with params, metrics, and parsed case results.
 
     Raises:
-        FileNotFoundError: If the run or artifact cannot be found.
+        FileNotFoundError: If the run cannot be found.
     """
     import json
-    import tempfile
-    from pathlib import Path
 
     try:
         run = mlflow.get_run(run_id)
@@ -268,26 +266,25 @@ def get_run_detail(run_id: str, eval_type: str) -> RunDetail:
     else:
         timestamp = datetime.now(timezone.utc)
 
-    # Download and parse artifact
+    # Search traces for this run and parse into case results
     cases: list[RunCaseResult] = []
-    artifact_filename = get_artifact_filename(eval_type)
-    if artifact_filename:
+    primary_scorer = get_primary_scorer(eval_type)
+    if primary_scorer:
         try:
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                local_path = mlflow.artifacts.download_artifacts(
-                    run_id=run_id,
-                    artifact_path=artifact_filename,
-                    dst_path=tmp_dir,
-                )
-                artifact_file = Path(local_path)
-                if artifact_file.is_file():
-                    raw_cases = json.loads(artifact_file.read_text(encoding="utf-8"))
-                    cases = _parse_case_results(raw_cases)
+            experiment_id = run.info.experiment_id
+            traces = mlflow.search_traces(
+                run_id=run_id,
+                locations=[experiment_id],
+                return_type="list",
+            )
+            if eval_type in EVAL_SESSION_TYPES:
+                cases = _parse_session_traces(traces, run_id, primary_scorer)
+            else:
+                cases = _parse_single_turn_traces(traces, primary_scorer)
         except Exception as exc:
             logger.warning(
-                "mlflow_artifact_download_failed",
+                "mlflow_search_traces_failed",
                 run_id=run_id,
-                artifact=artifact_filename,
                 error=str(exc),
             )
 
@@ -309,81 +306,64 @@ _RATING_SCORES: dict[str, float] = {
     "poor": 1.0,
 }
 
-# Fields consumed by _parse_case_results; anything else lands in `extra`.
-# Note: conversation_transcript and persona are intentionally NOT listed here
-# so they flow into `extra` for the frontend to render as a conversation view.
-_COMMON_CASE_FIELDS = frozenset({
-    "case_id", "score", "passed", "duration_ms", "error",
-    "user_prompt", "assistant_response", "justification",
-    "question", "expected_answer", "rubric",
-    # Alternate names consumed via fallback chains below:
-    "quality_passed", "judge_passed", "behavior_match",
-    "quality_rating", "quality_rationale",
-    "latency_ms", "total_latency_ms",
-    "query", "response",
-})
 
+def _parse_single_turn_traces(traces: list, primary_scorer: str) -> list[RunCaseResult]:
+    """Parse single-turn traces into RunCaseResult objects.
 
-def _first(raw: dict, *keys: str) -> object:
-    """Return the value of the first key found in *raw*, or None."""
-    for k in keys:
-        if k in raw:
-            return raw[k]
-    return None
-
-
-def _parse_case_results(raw_cases: list[dict]) -> list[RunCaseResult]:
-    """Parse a list of raw case dicts into RunCaseResult objects.
-
-    Handles field-name variations across eval types by trying fallback
-    chains for each canonical field.
+    Each trace maps to one case. Assessment data is read from trace.info.assessments.
     """
+    import json
+
     results: list[RunCaseResult] = []
-    for i, raw in enumerate(raw_cases):
-        extra = {k: v for k, v in raw.items() if k not in _COMMON_CASE_FIELDS}
+    for i, trace in enumerate(traces):
+        info = trace.info
+        assessments = info.assessments or []
 
-        # --- passed ---
-        passed = _opt_bool(_first(raw, "passed", "quality_passed", "judge_passed", "behavior_match"))
+        # Extract request/response from trace data
+        user_prompt = ""
+        assistant_response = ""
+        try:
+            request_json = trace.data.request
+            if request_json:
+                req = json.loads(request_json) if isinstance(request_json, str) else request_json
+                if isinstance(req, dict):
+                    user_prompt = str(req.get("question") or req.get("query") or req.get("user_message") or "")
+        except (json.JSONDecodeError, TypeError):
+            pass
 
-        # --- rating (text) ---
-        rating = raw.get("quality_rating")
-        if isinstance(rating, str):
-            rating = rating.strip().lower()
-        else:
-            rating = None
+        try:
+            response_json = trace.data.response
+            if response_json:
+                resp = json.loads(response_json) if isinstance(response_json, str) else response_json
+                if isinstance(resp, dict):
+                    assistant_response = str(resp.get("response") or "")
+                elif isinstance(resp, str):
+                    assistant_response = resp
+        except (json.JSONDecodeError, TypeError):
+            pass
 
-        # --- score (numeric, derived from rating for sorting) ---
-        score = _opt_float(raw.get("score"))
-        if score is None and rating:
-            score = _RATING_SCORES.get(rating)
+        # Extract primary assessment
+        rating, score, passed, justification = _extract_primary_assessment(assessments, primary_scorer)
 
-        # --- duration ---
-        duration_ms = _opt_int(_first(raw, "duration_ms", "latency_ms", "total_latency_ms"))
+        # Duration from trace execution time
+        duration_ms: int | None = None
+        exec_time = getattr(info, "execution_time_ms", None) or getattr(info, "execution_duration", None)
+        if exec_time is not None:
+            try:
+                duration_ms = int(exec_time)
+            except (ValueError, TypeError):
+                pass
 
-        # --- user prompt ---
-        user_prompt = str(
-            _first(raw, "user_prompt", "question", "query") or ""
-        )
-
-        # --- assistant response ---
-        # Note: conversation_transcript is NOT included here; it goes to extra
-        # so the frontend can render it as a multi-turn conversation view.
-        assistant_response = str(
-            _first(raw, "assistant_response", "response") or ""
-        )
-
-        # --- justification / rationale ---
-        justification = str(
-            _first(raw, "justification", "quality_rationale") or ""
-        ) or None
+        # Build extra dict from non-primary assessments
+        extra = _build_extra(assessments, primary_scorer)
 
         results.append(
             RunCaseResult(
-                case_id=str(raw.get("case_id", f"case_{i}")),
+                case_id=f"case_{i}",
                 score=score,
                 passed=passed,
                 duration_ms=duration_ms,
-                error=raw.get("error"),
+                error=None,
                 user_prompt=user_prompt,
                 assistant_response=assistant_response,
                 justification=justification,
@@ -394,31 +374,203 @@ def _parse_case_results(raw_cases: list[dict]) -> list[RunCaseResult]:
     return results
 
 
-def _opt_float(val: object) -> float | None:
-    if val is None:
-        return None
-    try:
-        result = float(val)  # type: ignore[arg-type]
-        return None if result != result else result  # NaN → None
-    except (ValueError, TypeError):
-        return None
+def _parse_session_traces(traces: list, run_id: str, primary_scorer: str) -> list[RunCaseResult]:
+    """Parse session-grouped traces into RunCaseResult objects.
+
+    Traces are grouped by mlflow.trace.session metadata. Each session produces
+    one RunCaseResult with conversation transcript in extra.
+    """
+    import json
+    from collections import defaultdict
+
+    # Group traces by session
+    by_session: dict[str, list] = defaultdict(list)
+    for trace in traces:
+        metadata = getattr(trace.info, "trace_metadata", None) or getattr(trace.info, "request_metadata", {})
+        session_id = metadata.get("mlflow.trace.session", "")
+        if session_id:
+            by_session[session_id].append(trace)
+
+    results: list[RunCaseResult] = []
+    for session_id in sorted(by_session.keys()):
+        session_traces = by_session[session_id]
+        # Sort by timestamp within session
+        session_traces.sort(key=lambda t: getattr(t.info, "request_time", 0) or getattr(t.info, "timestamp_ms", 0))
+
+        # Reconstruct conversation transcript from all turns
+        conversation: list[dict[str, str]] = []
+        total_duration_ms = 0
+        assessments_found: list = []
+
+        for trace in session_traces:
+            # Extract turn request/response
+            try:
+                request_json = trace.data.request
+                if request_json:
+                    req = json.loads(request_json) if isinstance(request_json, str) else request_json
+                    if isinstance(req, dict):
+                        user_msg = str(req.get("user_message") or req.get("question") or req.get("query") or "")
+                        if user_msg:
+                            conversation.append({"role": "user", "content": user_msg})
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+            try:
+                response_json = trace.data.response
+                if response_json:
+                    resp = json.loads(response_json) if isinstance(response_json, str) else response_json
+                    if isinstance(resp, dict):
+                        assistant_msg = str(resp.get("response") or "")
+                    elif isinstance(resp, str):
+                        assistant_msg = resp
+                    else:
+                        assistant_msg = ""
+                    if assistant_msg:
+                        conversation.append({"role": "assistant", "content": assistant_msg})
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+            # Accumulate duration
+            exec_time = getattr(trace.info, "execution_time_ms", None) or getattr(trace.info, "execution_duration", None)
+            if exec_time is not None:
+                try:
+                    total_duration_ms += int(exec_time)
+                except (ValueError, TypeError):
+                    pass
+
+            # Collect assessments from whichever trace has them
+            trace_assessments = trace.info.assessments or []
+            if trace_assessments:
+                assessments_found = trace_assessments
+
+        # Extract case_id from session ID
+        case_id = _extract_case_id_from_session(session_id)
+
+        # Extract primary assessment from the trace that had assessments
+        rating, score, passed, justification = _extract_primary_assessment(assessments_found, primary_scorer)
+        extra = _build_extra(assessments_found, primary_scorer)
+
+        # Add conversation transcript to extra for frontend rendering
+        if conversation:
+            extra["conversation_transcript"] = conversation
+
+        # User prompt = first user message, assistant response = last assistant message
+        user_prompt = ""
+        assistant_response = ""
+        for msg in conversation:
+            if msg["role"] == "user" and not user_prompt:
+                user_prompt = msg["content"]
+            if msg["role"] == "assistant":
+                assistant_response = msg["content"]
+
+        results.append(
+            RunCaseResult(
+                case_id=case_id,
+                score=score,
+                passed=passed,
+                duration_ms=total_duration_ms if total_duration_ms > 0 else None,
+                error=None,
+                user_prompt=user_prompt,
+                assistant_response=assistant_response,
+                justification=justification,
+                rating=rating,
+                extra=extra,
+            )
+        )
+    return results
 
 
-def _opt_bool(val: object) -> bool | None:
-    if val is None:
-        return None
-    if isinstance(val, bool):
-        return val
-    return None
+def _extract_case_id_from_session(session_id: str) -> str:
+    """Extract a readable case_id from a session ID.
+
+    Session IDs typically have a format like 'contra-{uuid_prefix}-contra-subtle-mismatch'.
+    This extracts the meaningful suffix after the UUID-like prefix.
+    """
+    parts = session_id.split("-")
+    # Find the second occurrence of the eval prefix (e.g., 'contra', 'onb', 'meminf')
+    # and take everything from there onwards
+    if len(parts) >= 3:
+        # Try to find a UUID-like segment (8+ hex chars) and skip past it
+        for i, part in enumerate(parts[1:], start=1):
+            if len(part) >= 8 and all(c in "0123456789abcdef" for c in part.lower()):
+                # Found UUID-like prefix — return everything after it
+                remainder = "-".join(parts[i + 1:])
+                if remainder:
+                    return remainder
+    return session_id
 
 
-def _opt_int(val: object) -> int | None:
-    if val is None:
-        return None
-    try:
-        return int(val)  # type: ignore[arg-type]
-    except (ValueError, TypeError):
-        return None
+def _extract_primary_assessment(
+    assessments: list, primary_scorer: str
+) -> tuple[str | None, float | None, bool | None, str | None]:
+    """Extract rating, score, passed, and justification from the primary assessment.
+
+    Returns:
+        Tuple of (rating, score, passed, justification).
+    """
+    for assessment in assessments:
+        name = getattr(assessment, "name", "")
+        if name != primary_scorer:
+            continue
+
+        # Get value — could be on .value (Feedback) or .feedback.value
+        value = getattr(assessment, "value", None)
+        if value is None:
+            fb = getattr(assessment, "feedback", None)
+            if fb is not None:
+                value = getattr(fb, "value", None)
+
+        rationale = getattr(assessment, "rationale", None)
+
+        # Classify value type and derive canonical fields
+        if isinstance(value, str):
+            rating = value.strip().lower()
+            score = _RATING_SCORES.get(rating)
+            passed = rating in ("excellent", "good", "adequate")
+            return rating, score, passed, rationale
+
+        if isinstance(value, bool):
+            return None, (1.0 if value else 0.0), value, rationale
+
+        if isinstance(value, (int, float)):
+            score_val = float(value)
+            # Numeric scores: derive rating if on 1-5 scale
+            rating = None
+            for label, threshold in _RATING_SCORES.items():
+                if abs(score_val - threshold) < 0.01:
+                    rating = label
+                    break
+            passed = score_val >= 3.0
+            return rating, score_val, passed, rationale
+
+    return None, None, None, None
+
+
+def _build_extra(assessments: list, primary_scorer: str) -> dict:
+    """Build an extra dict from all non-primary assessments."""
+    extra: dict = {}
+    for assessment in assessments:
+        name = getattr(assessment, "name", "")
+        if name == primary_scorer or not name:
+            continue
+
+        value = getattr(assessment, "value", None)
+        if value is None:
+            fb = getattr(assessment, "feedback", None)
+            if fb is not None:
+                value = getattr(fb, "value", None)
+            ex = getattr(assessment, "expectation", None)
+            if ex is not None:
+                value = getattr(ex, "value", None)
+
+        rationale = getattr(assessment, "rationale", None)
+
+        if rationale:
+            extra[name] = {"value": value, "rationale": rationale}
+        else:
+            extra[name] = value
+
+    return extra
 
 
 def _safe_float(row: object, key: str, default: float) -> float:
