@@ -106,6 +106,24 @@ from eval.onboarding_models import (
 )
 
 
+def _get_git_sha() -> str | None:
+    """Return the current git HEAD SHA (short), or None if unavailable."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
 def _log_prompt_versions():
     """Log currently active prompt versions as MLflow run params (best-effort)."""
     try:
@@ -117,6 +135,13 @@ def _log_prompt_versions():
             )
     except Exception:
         pass
+
+
+def _log_git_sha():
+    """Log the current git commit SHA as an MLflow run param (best-effort)."""
+    sha = _get_git_sha()
+    if sha:
+        mlflow.log_param("git_sha", sha)
 
 
 def _extract_rationale(row: Any, scorer_name: str) -> str | None:
@@ -330,6 +355,7 @@ def run_evaluation(
             }
         )
         _log_prompt_versions()
+        _log_git_sha()
 
         # ============================================================
         # PHASE 1: Manual prediction loop (autolog disabled)
@@ -853,6 +879,7 @@ def run_memory_evaluation(
             }
         )
         _log_prompt_versions()
+        _log_git_sha()
 
         # Suppress autolog embedding traces during memory queries
         mlflow.openai.autolog(disable=True)
@@ -1227,6 +1254,7 @@ def run_memory_write_evaluation(
             "mlflow_dataset_id": mlflow_dataset.dataset_id,
         })
         _log_prompt_versions()
+        _log_git_sha()
 
         # ============================================================
         # PHASE 1: Manual prediction loop (autolog disabled)
@@ -1693,6 +1721,7 @@ def run_weather_evaluation(
             }
         )
         _log_prompt_versions()
+        _log_git_sha()
 
         # ============================================================
         # PHASE 1: Manual prediction loop (autolog disabled)
@@ -2112,6 +2141,7 @@ def run_graph_evaluation(
             "mlflow_dataset_id": mlflow_dataset.dataset_id,
         })
         _log_prompt_versions()
+        _log_git_sha()
 
         # ============================================================
         # PHASE 1: Manual prediction loop (autolog disabled)
@@ -2539,6 +2569,7 @@ def run_onboarding_evaluation(
             "mlflow_dataset_id": mlflow_dataset.dataset_id,
         })
         _log_prompt_versions()
+        _log_git_sha()
 
         # ============================================================
         # PHASE 1: Multi-turn conversation loop (autolog disabled)
@@ -3078,6 +3109,7 @@ def run_tone_evaluation(
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "tone", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3190,6 +3222,7 @@ def run_returning_greeting_evaluation(
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "returning_greeting", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3306,6 +3339,7 @@ def run_routing_evaluation(
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "routing", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "routing_accuracy_threshold": 0.80, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3436,6 +3470,7 @@ def run_memory_informed_evaluation(
         run_prefix = run_id[:8]
         mlflow.log_params({"dataset_type": "memory_informed", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3601,6 +3636,7 @@ def run_multi_cap_evaluation(
         run_prefix = run_id[:8]
         mlflow.log_params({"dataset_type": "multi_cap", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3854,6 +3890,7 @@ def run_notification_judgment_evaluation(
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "notification_judgment", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "notification_accuracy_threshold": 0.80, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3996,6 +4033,7 @@ def run_error_recovery_evaluation(
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "error_recovery", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -4112,6 +4150,7 @@ def run_schedule_cron_evaluation(
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "schedule_cron", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "cron_accuracy_threshold": 0.80, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -4255,6 +4294,7 @@ def run_knowledge_connections_evaluation(
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "knowledge_connections", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -4378,6 +4418,7 @@ def run_contradiction_handling_evaluation(
         run_prefix = run_id[:8]
         mlflow.log_params({"dataset_type": "contradiction_handling", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -4539,6 +4580,7 @@ def run_long_conversation_evaluation(
         run_prefix = run_id[:8]
         mlflow.log_params({"dataset_type": "long_conversation", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)

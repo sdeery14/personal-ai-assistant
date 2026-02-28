@@ -241,9 +241,17 @@ export function RunDetailPanel({
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   // Extract key params
-  const model = detail.params["model"] || detail.params["openai_model"] || "-";
+  const model =
+    detail.params["assistant_model"] ||
+    detail.params["model"] ||
+    detail.params["openai_model"] ||
+    "-";
   const judgeModel = detail.params["judge_model"] || "-";
-  const datasetVersion = detail.params["dataset_version"] || detail.params["dataset"] || "-";
+  const datasetVersion =
+    detail.params["dataset_version"] || detail.params["dataset"] || "-";
+  const temperature = detail.params["temperature"] ?? null;
+  const maxTokens = detail.params["max_tokens"] ?? null;
+  const gitSha = detail.params["git_sha"] ?? null;
 
   // Extract key metrics
   const passRate = detail.metrics["pass_rate"];
@@ -321,6 +329,22 @@ export function RunDetailPanel({
           </span>
           <p className="text-gray-800 dark:text-gray-200">{judgeModel}</p>
         </div>
+        {temperature !== null && (
+          <div>
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+              Temperature
+            </span>
+            <p className="text-gray-800 dark:text-gray-200">{temperature}</p>
+          </div>
+        )}
+        {maxTokens !== null && (
+          <div>
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+              Max Tokens
+            </span>
+            <p className="text-gray-800 dark:text-gray-200">{maxTokens}</p>
+          </div>
+        )}
         <div>
           <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
             Dataset
@@ -361,6 +385,16 @@ export function RunDetailPanel({
             </span>
           </p>
         </div>
+        {gitSha !== null && (
+          <div>
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+              Git SHA
+            </span>
+            <p className="font-mono text-gray-800 dark:text-gray-200">
+              {gitSha}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Prompt versions */}

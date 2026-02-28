@@ -29,6 +29,14 @@ class PromptVersionInfo:
     is_fallback: bool = False
 
 
+def _default_model_config() -> dict:
+    """Build the default model_config dict from application settings."""
+    return {
+        "model": settings.openai_model,
+        "max_tokens": settings.max_tokens,
+    }
+
+
 def seed_prompts() -> dict[str, int]:
     """Seed missing prompts into the MLflow registry from bundled defaults.
 
@@ -38,6 +46,7 @@ def seed_prompts() -> dict[str, int]:
     """
     seeded: dict[str, int] = {}
     skipped = 0
+    default_config = _default_model_config()
 
     try:
         for name, template in PROMPT_DEFAULTS.items():
@@ -48,6 +57,7 @@ def seed_prompts() -> dict[str, int]:
             version = mlflow.genai.register_prompt(
                 name=name,
                 template=template,
+                model_config=default_config,
             )
             mlflow.genai.set_prompt_alias(
                 name=name,
