@@ -2761,16 +2761,17 @@ def run_onboarding_evaluation(
                     "(e.g., reminders, scheduling, prep assistance)?\n"
                     "5. MEMORY: Did the conversation show the assistant "
                     "remembering and building on earlier details?\n\n"
-                    "Rating guide:\n"
-                    "- excellent: All 5 criteria strongly met\n"
-                    "- good: 4 criteria met, minor gaps\n"
-                    "- adequate: 2-3 criteria met\n"
-                    "- poor: Fewer than 2 criteria met\n\n"
-                    "Answer with ONLY one word: excellent, good, "
-                    "adequate, or poor."
+                    "Scoring Scale:\n"
+                    "- 5 (Excellent): All 5 criteria strongly met\n"
+                    "- 4 (Good): 4 criteria met, minor gaps\n"
+                    "- 3 (Adequate): 2-3 criteria met\n"
+                    "- 2 (Poor): Fewer than 2 criteria met\n"
+                    "- 1 (Unacceptable): Fails most criteria or "
+                    "fundamentally wrong\n\n"
+                    "Return ONLY the numeric score (1, 2, 3, 4, or 5)."
                 ),
                 feedback_value_type=Literal[
-                    "excellent", "good", "adequate", "poor"
+                    "1", "2", "3", "4", "5"
                 ],
                 model=f"openai:/{judge_model}",
             )
@@ -2834,9 +2835,10 @@ def run_onboarding_evaluation(
                                 {
                                     "role": "system",
                                     "content": (
-                                        "Rate this onboarding conversation "
-                                        "as: excellent, good, adequate, or "
-                                        "poor. Answer ONLY one word."
+                                        "Rate this onboarding conversation on "
+                                        "a 1-5 scale (5=Excellent, 4=Good, "
+                                        "3=Adequate, 2=Poor, 1=Unacceptable). "
+                                        "Return ONLY the number."
                                     ),
                                 },
                                 {
@@ -2856,21 +2858,19 @@ def run_onboarding_evaluation(
                     answer = resp.json()["choices"][0]["message"][
                         "content"
                     ].strip().lower()
-                    for valid in (
-                        "excellent", "good", "adequate", "poor"
-                    ):
-                        if valid in answer:
+                    for valid in ("5", "4", "3", "2", "1"):
+                        if answer.strip() == valid:
                             quality_by_case[case.id] = valid
                             break
                     else:
-                        quality_by_case[case.id] = "poor"
+                        quality_by_case[case.id] = "1"
                 except Exception:
-                    quality_by_case[case.id] = "poor"
+                    quality_by_case[case.id] = "1"
 
         # Build final per-case results from quality + extraction metrics
         for case, transcript, memory_writes, entity_creates, tool_calls, turn_count, latency_ms, error in case_data:
-            quality_rating = quality_by_case.get(case.id, "poor")
-            quality_passed = quality_rating in ("excellent", "good")
+            quality_rating = quality_by_case.get(case.id, "1")
+            quality_passed = quality_rating.isdigit() and int(quality_rating) >= 4
             extraction = extraction_by_case.get(case.id, {})
             mem_recall = extraction.get("memory_recall", 0.0)
             ent_recall = extraction.get("entity_recall", 0.0)
@@ -3148,14 +3148,14 @@ def run_tone_evaluation(
                 results_df = pd.DataFrame()
 
         for idx, (case, question, response, latency_ms) in enumerate(case_predictions):
-            rating = "poor"
+            rating = "1"
             if idx < len(results_df):
                 row = results_df.iloc[idx]
                 value = row.get("tone_quality/value")
                 if pd.notna(value):
                     rating = str(value).strip().lower()
                 rationale = _extract_rationale(row, "tone_quality")
-            passed = rating in ("excellent", "good")
+            passed = rating.isdigit() and int(rating) >= 4
             results.append(ToneCaseResult(case_id=case.id, response=response, quality_passed=passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if passed else 'FAIL'}) {latency_ms}ms")
@@ -3265,14 +3265,14 @@ def run_returning_greeting_evaluation(
                 results_df = pd.DataFrame()
 
         for idx, (case, response, latency_ms) in enumerate(case_predictions):
-            rating = "poor"
+            rating = "1"
             if idx < len(results_df):
                 row = results_df.iloc[idx]
                 value = row.get("greeting_quality/value")
                 if pd.notna(value):
                     rating = str(value).strip().lower()
                 rationale = _extract_rationale(row, "greeting_quality")
-            passed = rating in ("excellent", "good")
+            passed = rating.isdigit() and int(rating) >= 4
             results.append(ReturningGreetingCaseResult(case_id=case.id, persona=case.persona, response=response, quality_passed=passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if passed else 'FAIL'}) {latency_ms}ms")
@@ -3388,7 +3388,7 @@ def run_routing_evaluation(
                 results_df = pd.DataFrame()
 
         for idx, (case, response, actual_delegations, routing_correct, latency_ms) in enumerate(case_predictions):
-            rating = "poor"
+            rating = "1"
             rationale = None
             if idx < len(results_df):
                 row = results_df.iloc[idx]
@@ -3396,7 +3396,7 @@ def run_routing_evaluation(
                 if pd.notna(value):
                     rating = str(value).strip().lower()
                 rationale = _extract_rationale(row, "routing_quality")
-            quality_passed = rating in ("excellent", "good")
+            quality_passed = rating.isdigit() and int(rating) >= 4
             results.append(RoutingCaseResult(case_id=case.id, response=response, actual_delegations=actual_delegations, routing_correct=routing_correct, quality_passed=quality_passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if quality_passed else 'FAIL'}) {latency_ms}ms")
@@ -3553,21 +3553,21 @@ def run_memory_informed_evaluation(
                 if error:
                     continue
                 try:
-                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this conversation on memory application: excellent, good, adequate, or poor. Answer ONLY one word."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
+                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this conversation on memory application on a 1-5 scale (5=Excellent, 4=Good, 3=Adequate, 2=Poor, 1=Unacceptable). Return ONLY the number."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
                     resp.raise_for_status()
                     answer = resp.json()["choices"][0]["message"]["content"].strip().lower()
-                    for vr in ("excellent", "good", "adequate", "poor"):
-                        if vr in answer:
+                    for vr in ("5", "4", "3", "2", "1"):
+                        if answer.strip() == vr:
                             quality_by_case[case.id] = vr
                             break
                     else:
-                        quality_by_case[case.id] = "poor"
+                        quality_by_case[case.id] = "1"
                 except Exception:
-                    quality_by_case[case.id] = "poor"
+                    quality_by_case[case.id] = "1"
 
         for case, transcript, latency_ms, error in case_data:
-            qr = quality_by_case.get(case.id, "poor")
-            qp = qr in ("excellent", "good")
+            qr = quality_by_case.get(case.id, "1")
+            qp = qr.isdigit() and int(qr) >= 4
             results.append(MemoryInformedCaseResult(case_id=case.id, persona=case.persona, conversation_transcript=transcript, quality_passed=qp, quality_rating=qr, quality_rationale=rationale_by_case.get(case.id), latency_ms=latency_ms, error=error))
             if verbose:
                 print(f"  {case.id}: {qr} ({'PASS' if qp else 'FAIL'}) {latency_ms}ms")
@@ -3719,21 +3719,21 @@ def run_multi_cap_evaluation(
                 if error:
                     continue
                 try:
-                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this multi-capability conversation: excellent, good, adequate, or poor. Answer ONLY one word."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
+                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this multi-capability conversation on a 1-5 scale (5=Excellent, 4=Good, 3=Adequate, 2=Poor, 1=Unacceptable). Return ONLY the number."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
                     resp.raise_for_status()
                     answer = resp.json()["choices"][0]["message"]["content"].strip().lower()
-                    for vr in ("excellent", "good", "adequate", "poor"):
-                        if vr in answer:
+                    for vr in ("5", "4", "3", "2", "1"):
+                        if answer.strip() == vr:
                             quality_by_case[case.id] = vr
                             break
                     else:
-                        quality_by_case[case.id] = "poor"
+                        quality_by_case[case.id] = "1"
                 except Exception:
-                    quality_by_case[case.id] = "poor"
+                    quality_by_case[case.id] = "1"
 
         for case, transcript, tool_calls, latency_ms, error in case_data:
-            qr = quality_by_case.get(case.id, "poor")
-            qp = qr in ("excellent", "good")
+            qr = quality_by_case.get(case.id, "1")
+            qp = qr.isdigit() and int(qr) >= 4
             results.append(MultiCapCaseResult(case_id=case.id, persona=case.persona, scenario=case.scenario, conversation_transcript=transcript, tool_calls=tool_calls, quality_passed=qp, quality_rating=qr, quality_rationale=rationale_by_case.get(case.id), latency_ms=latency_ms, error=error))
             if verbose:
                 print(f"  {case.id}: {qr} ({'PASS' if qp else 'FAIL'}) {latency_ms}ms")
@@ -3950,7 +3950,7 @@ def run_notification_judgment_evaluation(
                 results_df = pd.DataFrame()
 
         for idx, (case, response, notification_created, notification_correct, latency_ms) in enumerate(case_predictions):
-            rating = "poor"
+            rating = "1"
             rationale = None
             if idx < len(results_df):
                 row = results_df.iloc[idx]
@@ -3958,7 +3958,7 @@ def run_notification_judgment_evaluation(
                 if pd.notna(value):
                     rating = str(value).strip().lower()
                 rationale = _extract_rationale(row, "notification_quality")
-            quality_passed = rating in ("excellent", "good")
+            quality_passed = rating.isdigit() and int(rating) >= 4
             results.append(NotificationJudgmentCaseResult(case_id=case.id, response=response, notification_created=notification_created, notification_correct=notification_correct, quality_passed=quality_passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if quality_passed else 'FAIL'}) {latency_ms}ms")
@@ -4075,7 +4075,7 @@ def run_error_recovery_evaluation(
                 results_df = pd.DataFrame()
 
         for idx, (case, response, latency_ms) in enumerate(case_predictions):
-            rating = "poor"
+            rating = "1"
             rationale = None
             if idx < len(results_df):
                 row = results_df.iloc[idx]
@@ -4083,7 +4083,7 @@ def run_error_recovery_evaluation(
                 if pd.notna(value):
                     rating = str(value).strip().lower()
                 rationale = _extract_rationale(row, "error_recovery_quality")
-            passed = rating in ("excellent", "good")
+            passed = rating.isdigit() and int(rating) >= 4
             results.append(ErrorRecoveryCaseResult(case_id=case.id, response=response, quality_passed=passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if passed else 'FAIL'}) {latency_ms}ms")
@@ -4213,7 +4213,7 @@ def run_schedule_cron_evaluation(
                 results_df = pd.DataFrame()
 
         for idx, (case, response, actual_cron, actual_task_type, cron_correct, latency_ms) in enumerate(case_predictions):
-            rating = "poor"
+            rating = "1"
             rationale = None
             if idx < len(results_df):
                 row = results_df.iloc[idx]
@@ -4221,7 +4221,7 @@ def run_schedule_cron_evaluation(
                 if pd.notna(value):
                     rating = str(value).strip().lower()
                 rationale = _extract_rationale(row, "schedule_quality")
-            quality_passed = rating in ("excellent", "good")
+            quality_passed = rating.isdigit() and int(rating) >= 4
             results.append(ScheduleCronCaseResult(case_id=case.id, response=response, actual_cron=actual_cron, actual_task_type=actual_task_type, cron_correct=cron_correct, quality_passed=quality_passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if quality_passed else 'FAIL'}) {latency_ms}ms")
@@ -4342,7 +4342,7 @@ def run_knowledge_connections_evaluation(
                 results_df = pd.DataFrame()
 
         for idx, (case, response, latency_ms) in enumerate(case_predictions):
-            rating = "poor"
+            rating = "1"
             rationale = None
             if idx < len(results_df):
                 row = results_df.iloc[idx]
@@ -4350,7 +4350,7 @@ def run_knowledge_connections_evaluation(
                 if pd.notna(value):
                     rating = str(value).strip().lower()
                 rationale = _extract_rationale(row, "knowledge_connections_quality")
-            passed = rating in ("excellent", "good")
+            passed = rating.isdigit() and int(rating) >= 4
             results.append(KnowledgeConnectionsCaseResult(case_id=case.id, response=response, quality_passed=passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if passed else 'FAIL'}) {latency_ms}ms")
@@ -4497,21 +4497,21 @@ def run_contradiction_handling_evaluation(
                 if error:
                     continue
                 try:
-                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this conversation on contradiction handling: excellent, good, adequate, or poor. Answer ONLY one word."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
+                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this conversation on contradiction handling on a 1-5 scale (5=Excellent, 4=Good, 3=Adequate, 2=Poor, 1=Unacceptable). Return ONLY the number."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
                     resp.raise_for_status()
                     answer = resp.json()["choices"][0]["message"]["content"].strip().lower()
-                    for vr in ("excellent", "good", "adequate", "poor"):
-                        if vr in answer:
+                    for vr in ("5", "4", "3", "2", "1"):
+                        if answer.strip() == vr:
                             quality_by_case[case.id] = vr
                             break
                     else:
-                        quality_by_case[case.id] = "poor"
+                        quality_by_case[case.id] = "1"
                 except Exception:
-                    quality_by_case[case.id] = "poor"
+                    quality_by_case[case.id] = "1"
 
         for case, transcript, latency_ms, error in case_data:
-            qr = quality_by_case.get(case.id, "poor")
-            qp = qr in ("excellent", "good")
+            qr = quality_by_case.get(case.id, "1")
+            qp = qr.isdigit() and int(qr) >= 4
             results.append(ContradictionHandlingCaseResult(case_id=case.id, persona=case.persona, conversation_transcript=transcript, quality_passed=qp, quality_rating=qr, quality_rationale=rationale_by_case.get(case.id), latency_ms=latency_ms, error=error))
             if verbose:
                 print(f"  {case.id}: {qr} ({'PASS' if qp else 'FAIL'}) {latency_ms}ms")
@@ -4665,21 +4665,21 @@ def run_long_conversation_evaluation(
                 if error:
                     continue
                 try:
-                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this long conversation on coherence and context retention: excellent, good, adequate, or poor. Answer ONLY one word."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
+                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this long conversation on coherence and context retention on a 1-5 scale (5=Excellent, 4=Good, 3=Adequate, 2=Poor, 1=Unacceptable). Return ONLY the number."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
                     resp.raise_for_status()
                     answer = resp.json()["choices"][0]["message"]["content"].strip().lower()
-                    for vr in ("excellent", "good", "adequate", "poor"):
-                        if vr in answer:
+                    for vr in ("5", "4", "3", "2", "1"):
+                        if answer.strip() == vr:
                             quality_by_case[case.id] = vr
                             break
                     else:
-                        quality_by_case[case.id] = "poor"
+                        quality_by_case[case.id] = "1"
                 except Exception:
-                    quality_by_case[case.id] = "poor"
+                    quality_by_case[case.id] = "1"
 
         for case, transcript, latency_ms, error in case_data:
-            qr = quality_by_case.get(case.id, "poor")
-            qp = qr in ("excellent", "good")
+            qr = quality_by_case.get(case.id, "1")
+            qp = qr.isdigit() and int(qr) >= 4
             results.append(LongConversationCaseResult(case_id=case.id, persona=case.persona, scenario=case.scenario, conversation_transcript=transcript, quality_passed=qp, quality_rating=qr, quality_rationale=rationale_by_case.get(case.id), latency_ms=latency_ms, error=error))
             if verbose:
                 print(f"  {case.id}: {qr} ({'PASS' if qp else 'FAIL'}) {latency_ms}ms")

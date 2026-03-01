@@ -40,14 +40,15 @@ def create_tone_judge(judge_model: str) -> object:
             "4. COMPETENCE: Response is substantive and directly useful\n"
             "5. ADAPTS: Matches the emotional register of the user's message "
             "(serious for crisis, celebratory for wins, efficient for busy)\n\n"
-            "Rating guide:\n"
-            "- excellent: All 5 criteria strongly met\n"
-            "- good: 4+ criteria met, minor gaps\n"
-            "- adequate: 2-3 criteria met\n"
-            "- poor: Fewer than 2 criteria met, or uses filler phrases\n\n"
-            "Answer with ONLY one word: excellent, good, adequate, or poor."
+            "Scoring Scale:\n"
+            "- 5 (Excellent): All 5 criteria strongly met\n"
+            "- 4 (Good): 4+ criteria met, minor gaps\n"
+            "- 3 (Adequate): 2-3 criteria met\n"
+            "- 2 (Poor): Fewer than 2 criteria met, or uses filler phrases\n"
+            "- 1 (Unacceptable): Fails most criteria or fundamentally wrong\n\n"
+            "Return ONLY the numeric score (1, 2, 3, 4, or 5)."
         ),
-        feedback_value_type=Literal["excellent", "good", "adequate", "poor"],
+        feedback_value_type=Literal["1", "2", "3", "4", "5"],
         model=f"openai:/{judge_model}",
     )
 
@@ -79,14 +80,15 @@ def create_greeting_judge(judge_model: str) -> object:
             "'Welcome back!' or chatbot-style greeting\n"
             "4. NO HALLUCINATION: Only references things that could plausibly "
             "come from stored memories, never invents details\n\n"
-            "Rating guide:\n"
-            "- excellent: All 4 criteria strongly met, greeting feels personal\n"
-            "- good: 3+ criteria met, minor gaps in specificity\n"
-            "- adequate: 2 criteria met, somewhat generic\n"
-            "- poor: Generic greeting, no personalization, or hallucinated details\n\n"
-            "Answer with ONLY one word: excellent, good, adequate, or poor."
+            "Scoring Scale:\n"
+            "- 5 (Excellent): All 4 criteria strongly met, greeting feels personal\n"
+            "- 4 (Good): 3+ criteria met, minor gaps in specificity\n"
+            "- 3 (Adequate): 2 criteria met, somewhat generic\n"
+            "- 2 (Poor): Generic greeting, no personalization, or hallucinated details\n"
+            "- 1 (Unacceptable): Fails most criteria or fundamentally wrong\n\n"
+            "Return ONLY the numeric score (1, 2, 3, 4, or 5)."
         ),
-        feedback_value_type=Literal["excellent", "good", "adequate", "poor"],
+        feedback_value_type=Literal["1", "2", "3", "4", "5"],
         model=f"openai:/{judge_model}",
     )
 
@@ -119,14 +121,15 @@ def create_memory_informed_judge(judge_model: str) -> object:
             "the user's actual need\n"
             "4. BUTLER TONE: Composed, warm, professional throughout\n"
             "5. COHERENCE: Conversation flows naturally across turns\n\n"
-            "Rating guide:\n"
-            "- excellent: All 5 criteria strongly met\n"
-            "- good: 4+ criteria met, minor gaps\n"
-            "- adequate: 2-3 criteria met\n"
-            "- poor: Memory not applied, or responses generic/unhelpful\n\n"
-            "Answer with ONLY one word: excellent, good, adequate, or poor."
+            "Scoring Scale:\n"
+            "- 5 (Excellent): All 5 criteria strongly met\n"
+            "- 4 (Good): 4+ criteria met, minor gaps\n"
+            "- 3 (Adequate): 2-3 criteria met\n"
+            "- 2 (Poor): Memory not applied, or responses generic/unhelpful\n"
+            "- 1 (Unacceptable): Fails most criteria or fundamentally wrong\n\n"
+            "Return ONLY the numeric score (1, 2, 3, 4, or 5)."
         ),
-        feedback_value_type=Literal["excellent", "good", "adequate", "poor"],
+        feedback_value_type=Literal["1", "2", "3", "4", "5"],
         model=f"openai:/{judge_model}",
     )
 
@@ -159,14 +162,15 @@ def create_multi_cap_judge(judge_model: str) -> object:
             "(not over-using or under-using tools)\n"
             "4. BUTLER TONE: Composed, warm, professional throughout\n"
             "5. COHERENCE: Multi-turn conversation flows naturally\n\n"
-            "Rating guide:\n"
-            "- excellent: All 5 criteria strongly met\n"
-            "- good: 4+ criteria met, minor gaps\n"
-            "- adequate: 2-3 criteria met\n"
-            "- poor: Failed to synthesize, or conversation disjointed\n\n"
-            "Answer with ONLY one word: excellent, good, adequate, or poor."
+            "Scoring Scale:\n"
+            "- 5 (Excellent): All 5 criteria strongly met\n"
+            "- 4 (Good): 4+ criteria met, minor gaps\n"
+            "- 3 (Adequate): 2-3 criteria met\n"
+            "- 2 (Poor): Failed to synthesize, or conversation disjointed\n"
+            "- 1 (Unacceptable): Fails most criteria or fundamentally wrong\n\n"
+            "Return ONLY the numeric score (1, 2, 3, 4, or 5)."
         ),
-        feedback_value_type=Literal["excellent", "good", "adequate", "poor"],
+        feedback_value_type=Literal["1", "2", "3", "4", "5"],
         model=f"openai:/{judge_model}",
     )
 
@@ -196,14 +200,15 @@ def create_routing_quality_judge(judge_model: str) -> object:
             "2. HELPFULNESS: Response provides useful, actionable information\n"
             "3. NATURALNESS: Response reads naturally, not robotic or overly verbose\n"
             "4. APPROPRIATENESS: Response matches the tone and depth the query warrants\n\n"
-            "Rating guide:\n"
-            "- excellent: All 4 criteria strongly met\n"
-            "- good: 3+ criteria met, minor gaps\n"
-            "- adequate: 2 criteria met\n"
-            "- poor: Response is irrelevant, unhelpful, or badly structured\n\n"
-            "Answer with ONLY one word: excellent, good, adequate, or poor."
+            "Scoring Scale:\n"
+            "- 5 (Excellent): All 4 criteria strongly met\n"
+            "- 4 (Good): 3+ criteria met, minor gaps\n"
+            "- 3 (Adequate): 2 criteria met\n"
+            "- 2 (Poor): Response is irrelevant, unhelpful, or badly structured\n"
+            "- 1 (Unacceptable): Fails most criteria or fundamentally wrong\n\n"
+            "Return ONLY the numeric score (1, 2, 3, 4, or 5)."
         ),
-        feedback_value_type=Literal["excellent", "good", "adequate", "poor"],
+        feedback_value_type=Literal["1", "2", "3", "4", "5"],
         model=f"openai:/{judge_model}",
     )
 
@@ -240,14 +245,15 @@ def create_schedule_quality_judge(judge_model: str) -> object:
             "IMPORTANT: A short, clear confirmation like 'Done — I'll check the "
             "weather every morning at 8am' is EXCELLENT. Brevity is a virtue "
             "for schedule confirmations.\n\n"
-            "Rating guide:\n"
-            "- excellent: Schedule created and confirmed clearly and concisely\n"
-            "- good: Schedule created, confirmation has minor gaps\n"
-            "- adequate: Schedule likely created but confirmation unclear\n"
-            "- poor: No schedule created, or response is confusing/irrelevant\n\n"
-            "Answer with ONLY one word: excellent, good, adequate, or poor."
+            "Scoring Scale:\n"
+            "- 5 (Excellent): Schedule created and confirmed clearly and concisely\n"
+            "- 4 (Good): Schedule created, confirmation has minor gaps\n"
+            "- 3 (Adequate): Schedule likely created but confirmation unclear\n"
+            "- 2 (Poor): No schedule created, or response is confusing/irrelevant\n"
+            "- 1 (Unacceptable): Fails most criteria or fundamentally wrong\n\n"
+            "Return ONLY the numeric score (1, 2, 3, 4, or 5)."
         ),
-        feedback_value_type=Literal["excellent", "good", "adequate", "poor"],
+        feedback_value_type=Literal["1", "2", "3", "4", "5"],
         model=f"openai:/{judge_model}",
     )
 
@@ -283,14 +289,15 @@ def create_notification_quality_judge(judge_model: str) -> object:
             "IMPORTANT: A short, direct response is perfectly fine. Greetings, "
             "factual answers, and brief confirmations should all be rated "
             "highly if they address the user's need naturally.\n\n"
-            "Rating guide:\n"
-            "- excellent: Addresses the need perfectly with appropriate tone\n"
-            "- good: Addresses the need with minor issues in tone or phrasing\n"
-            "- adequate: Addresses the need but feels awkward or overly verbose\n"
-            "- poor: Misses the point, creates confusion, or wrong action taken\n\n"
-            "Answer with ONLY one word: excellent, good, adequate, or poor."
+            "Scoring Scale:\n"
+            "- 5 (Excellent): Addresses the need perfectly with appropriate tone\n"
+            "- 4 (Good): Addresses the need with minor issues in tone or phrasing\n"
+            "- 3 (Adequate): Addresses the need but feels awkward or overly verbose\n"
+            "- 2 (Poor): Misses the point, creates confusion, or wrong action taken\n"
+            "- 1 (Unacceptable): Fails most criteria or fundamentally wrong\n\n"
+            "Return ONLY the numeric score (1, 2, 3, 4, or 5)."
         ),
-        feedback_value_type=Literal["excellent", "good", "adequate", "poor"],
+        feedback_value_type=Literal["1", "2", "3", "4", "5"],
         model=f"openai:/{judge_model}",
     )
 
@@ -324,14 +331,15 @@ def create_error_recovery_judge(judge_model: str) -> object:
             "suggests next steps when possible\n"
             "4. COMPOSED: Maintains butler tone even when things go wrong — "
             "no panic, no excessive apologies\n\n"
-            "Rating guide:\n"
-            "- excellent: All 4 criteria strongly met\n"
-            "- good: 3+ criteria met, minor gaps\n"
-            "- adequate: 2 criteria met\n"
-            "- poor: Raw errors shown, hallucinated data, or lost composure\n\n"
-            "Answer with ONLY one word: excellent, good, adequate, or poor."
+            "Scoring Scale:\n"
+            "- 5 (Excellent): All 4 criteria strongly met\n"
+            "- 4 (Good): 3+ criteria met, minor gaps\n"
+            "- 3 (Adequate): 2 criteria met\n"
+            "- 2 (Poor): Raw errors shown, hallucinated data, or lost composure\n"
+            "- 1 (Unacceptable): Fails most criteria or fundamentally wrong\n\n"
+            "Return ONLY the numeric score (1, 2, 3, 4, or 5)."
         ),
-        feedback_value_type=Literal["excellent", "good", "adequate", "poor"],
+        feedback_value_type=Literal["1", "2", "3", "4", "5"],
         model=f"openai:/{judge_model}",
     )
 
@@ -366,14 +374,15 @@ def create_knowledge_connections_judge(judge_model: str) -> object:
             "that weren't in the knowledge graph\n"
             "4. SYNTHESIS: Combines knowledge from multiple entities/relationships "
             "into a coherent, useful answer\n\n"
-            "Rating guide:\n"
-            "- excellent: All 4 criteria strongly met, synthesizes connections well\n"
-            "- good: 3+ criteria met, minor gaps in synthesis\n"
-            "- adequate: 2 criteria met, some relevant entities referenced\n"
-            "- poor: Ignored knowledge graph, hallucinated, or irrelevant answer\n\n"
-            "Answer with ONLY one word: excellent, good, adequate, or poor."
+            "Scoring Scale:\n"
+            "- 5 (Excellent): All 4 criteria strongly met, synthesizes connections well\n"
+            "- 4 (Good): 3+ criteria met, minor gaps in synthesis\n"
+            "- 3 (Adequate): 2 criteria met, some relevant entities referenced\n"
+            "- 2 (Poor): Ignored knowledge graph, hallucinated, or irrelevant answer\n"
+            "- 1 (Unacceptable): Fails most criteria or fundamentally wrong\n\n"
+            "Return ONLY the numeric score (1, 2, 3, 4, or 5)."
         ),
-        feedback_value_type=Literal["excellent", "good", "adequate", "poor"],
+        feedback_value_type=Literal["1", "2", "3", "4", "5"],
         model=f"openai:/{judge_model}",
     )
 
@@ -409,14 +418,15 @@ def create_contradiction_judge(judge_model: str) -> object:
             "4. COHERENCE: Uses the corrected information consistently in "
             "subsequent turns, not the outdated data\n"
             "5. BUTLER TONE: Maintains composure and professionalism throughout\n\n"
-            "Rating guide:\n"
-            "- excellent: All 5 criteria strongly met\n"
-            "- good: 4+ criteria met, minor gaps\n"
-            "- adequate: 2-3 criteria met\n"
-            "- poor: Missed contradictions, used outdated info, or was accusatory\n\n"
-            "Answer with ONLY one word: excellent, good, adequate, or poor."
+            "Scoring Scale:\n"
+            "- 5 (Excellent): All 5 criteria strongly met\n"
+            "- 4 (Good): 4+ criteria met, minor gaps\n"
+            "- 3 (Adequate): 2-3 criteria met\n"
+            "- 2 (Poor): Missed contradictions, used outdated info, or was accusatory\n"
+            "- 1 (Unacceptable): Fails most criteria or fundamentally wrong\n\n"
+            "Return ONLY the numeric score (1, 2, 3, 4, or 5)."
         ),
-        feedback_value_type=Literal["excellent", "good", "adequate", "poor"],
+        feedback_value_type=Literal["1", "2", "3", "4", "5"],
         model=f"openai:/{judge_model}",
     )
 
@@ -452,14 +462,15 @@ def create_long_conversation_judge(judge_model: str) -> object:
             "throughout the entire conversation\n"
             "5. SUMMARY ACCURACY: If asked to summarize or reference earlier "
             "discussion, does so accurately\n\n"
-            "Rating guide:\n"
-            "- excellent: All 5 criteria strongly met across all turns\n"
-            "- good: 4+ criteria met, minor lapses in later turns\n"
-            "- adequate: 2-3 criteria met, some context loss\n"
-            "- poor: Significant context loss, contradictions, or incoherence\n\n"
-            "Answer with ONLY one word: excellent, good, adequate, or poor."
+            "Scoring Scale:\n"
+            "- 5 (Excellent): All 5 criteria strongly met across all turns\n"
+            "- 4 (Good): 4+ criteria met, minor lapses in later turns\n"
+            "- 3 (Adequate): 2-3 criteria met, some context loss\n"
+            "- 2 (Poor): Significant context loss, contradictions, or incoherence\n"
+            "- 1 (Unacceptable): Fails most criteria or fundamentally wrong\n\n"
+            "Return ONLY the numeric score (1, 2, 3, 4, or 5)."
         ),
-        feedback_value_type=Literal["excellent", "good", "adequate", "poor"],
+        feedback_value_type=Literal["1", "2", "3", "4", "5"],
         model=f"openai:/{judge_model}",
     )
 

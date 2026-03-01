@@ -506,6 +506,43 @@ class TestExtractPrimaryAssessment:
         assert rating == "excellent"
         assert justification == "Warm and friendly"
 
+    def test_numeric_string_5(self):
+        assessments = [_make_assessment("quality", "5", "Perfect")]
+        rating, score, justification = _extract_primary_assessment(assessments, "quality")
+        assert rating == "excellent"
+        assert score == 5.0
+        assert justification == "Perfect"
+
+    def test_numeric_string_4(self):
+        assessments = [_make_assessment("quality", "4")]
+        rating, score, justification = _extract_primary_assessment(assessments, "quality")
+        assert rating == "good"
+        assert score == 4.0
+
+    def test_numeric_string_3(self):
+        assessments = [_make_assessment("quality", "3")]
+        rating, score, justification = _extract_primary_assessment(assessments, "quality")
+        assert rating == "adequate"
+        assert score == 3.0
+
+    def test_numeric_string_2(self):
+        assessments = [_make_assessment("quality", "2")]
+        rating, score, justification = _extract_primary_assessment(assessments, "quality")
+        assert rating == "poor"
+        assert score == 2.0
+
+    def test_numeric_string_1(self):
+        assessments = [_make_assessment("quality", "1")]
+        rating, score, justification = _extract_primary_assessment(assessments, "quality")
+        assert rating == "unacceptable"
+        assert score == 1.0
+
+    def test_numeric_value_2_maps_to_poor(self):
+        assessments = [_make_assessment("quality", 2.0)]
+        rating, score, justification = _extract_primary_assessment(assessments, "quality")
+        assert rating == "poor"
+        assert score == 2.0
+
 
 # ---------------------------------------------------------------------------
 # _build_extra

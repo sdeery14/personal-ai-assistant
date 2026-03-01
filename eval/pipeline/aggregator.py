@@ -298,12 +298,30 @@ def get_run_detail(run_id: str, eval_type: str) -> RunDetail:
     )
 
 
-# Quality-rating string → numeric score mapping.
-_RATING_SCORES: dict[str, float] = {
+# Numeric string → (score, label) for new judges using 1-5 scale.
+_NUMERIC_SCORE_LABELS: dict[str, tuple[float, str]] = {
+    "5": (5.0, "excellent"),
+    "4": (4.0, "good"),
+    "3": (3.0, "adequate"),
+    "2": (2.0, "poor"),
+    "1": (1.0, "unacceptable"),
+}
+
+# Legacy word label → score for old runs (backward compat).
+_LEGACY_RATING_SCORES: dict[str, float] = {
     "excellent": 5.0,
     "good": 4.0,
     "adequate": 3.0,
     "poor": 1.0,
+}
+
+# Numeric score → label for float/int assessment values.
+_SCORE_TO_LABEL: dict[float, str] = {
+    5.0: "excellent",
+    4.0: "good",
+    3.0: "adequate",
+    2.0: "poor",
+    1.0: "unacceptable",
 }
 
 
@@ -522,21 +540,28 @@ def _extract_primary_assessment(
 
         # Classify value type and derive canonical fields
         if isinstance(value, str):
-            rating = value.strip().lower()
-            score = _RATING_SCORES.get(rating)
-            return rating, score, rationale
+            cleaned = value.strip().lower()
+            # New numeric string: "1"-"5"
+            if cleaned in _NUMERIC_SCORE_LABELS:
+                score, label = _NUMERIC_SCORE_LABELS[cleaned]
+                return label, score, rationale
+            # Legacy word label: backward compat
+            if cleaned in _LEGACY_RATING_SCORES:
+                return cleaned, _LEGACY_RATING_SCORES[cleaned], rationale
+            return cleaned, None, rationale
 
         if isinstance(value, bool):
             return None, (1.0 if value else 0.0), rationale
 
         if isinstance(value, (int, float)):
             score_val = float(value)
-            # Numeric scores: derive rating if on 1-5 scale
-            rating = None
-            for label, threshold in _RATING_SCORES.items():
-                if abs(score_val - threshold) < 0.01:
-                    rating = label
-                    break
+            # Numeric scores: derive rating from 5-level mapping
+            rating = _SCORE_TO_LABEL.get(score_val)
+            if rating is None:
+                for threshold, label in _SCORE_TO_LABEL.items():
+                    if abs(score_val - threshold) < 0.01:
+                        rating = label
+                        break
             return rating, score_val, rationale
 
     return None, None, None
