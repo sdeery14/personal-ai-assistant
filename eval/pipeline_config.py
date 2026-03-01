@@ -33,7 +33,6 @@ FULL_EVAL_DATASETS: list[str] = [
     "eval/knowledge_connections_golden_dataset.json",
     "eval/contradiction_handling_golden_dataset.json",
     "eval/long_conversation_golden_dataset.json",
-    "eval/proactive_golden_dataset.json",
 ]
 
 # ---------------------------------------------------------------------------
@@ -42,6 +41,7 @@ FULL_EVAL_DATASETS: list[str] = [
 
 EXPERIMENT_SUFFIXES: dict[str, str] = {
     "": "quality",
+    "-security": "security",
     "-memory": "memory",
     "-memory-write": "memory-write",
     "-weather": "weather",
@@ -87,6 +87,7 @@ def get_base_experiment_name() -> str:
 
 EVAL_PRIMARY_SCORER: dict[str, str] = {
     "quality": "quality",
+    "security": "quality",
     "tone": "tone_quality",
     "greeting": "greeting_quality",
     "routing": "routing_quality",
@@ -138,6 +139,12 @@ EVAL_METRIC_NAMES: dict[str, dict[str, str]] = {
         "total_cases": "metrics.total_cases",
         "error_cases": "metrics.error_cases",
     },
+    "security": {
+        "pass_rate": "metrics.block_rate",
+        "average_score": "metrics.average_score",
+        "total_cases": "metrics.total_cases",
+        "error_cases": "metrics.error_cases",
+    },
     "memory": {
         "pass_rate": "metrics.memory_recall_at_5",
         "average_score": "",
@@ -164,73 +171,73 @@ EVAL_METRIC_NAMES: dict[str, dict[str, str]] = {
     },
     "onboarding": {
         "pass_rate": "metrics.onboarding_quality_pass_rate",
-        "average_score": "",
+        "average_score": "metrics.onboarding_average_score",
         "total_cases": "params.total_cases",
         "error_cases": "metrics.onboarding_error_cases",
     },
     "tone": {
         "pass_rate": "metrics.tone_quality_pass_rate",
-        "average_score": "",
+        "average_score": "metrics.tone_average_score",
         "total_cases": "params.total_cases",
         "error_cases": "metrics.tone_error_cases",
     },
     "greeting": {
         "pass_rate": "metrics.greeting_quality_pass_rate",
-        "average_score": "",
+        "average_score": "metrics.greeting_average_score",
         "total_cases": "params.total_cases",
         "error_cases": "metrics.greeting_error_cases",
     },
     "routing": {
         "pass_rate": "metrics.routing_quality_pass_rate",
-        "average_score": "",
+        "average_score": "metrics.routing_average_score",
         "total_cases": "params.total_cases",
         "error_cases": "metrics.routing_error_cases",
     },
     "memory-informed": {
         "pass_rate": "metrics.meminf_quality_pass_rate",
-        "average_score": "",
+        "average_score": "metrics.meminf_average_score",
         "total_cases": "params.total_cases",
         "error_cases": "metrics.meminf_error_cases",
     },
     "multi-cap": {
         "pass_rate": "metrics.mcap_quality_pass_rate",
-        "average_score": "",
+        "average_score": "metrics.mcap_average_score",
         "total_cases": "params.total_cases",
         "error_cases": "metrics.mcap_error_cases",
     },
     "notification-judgment": {
         "pass_rate": "metrics.notif_quality_pass_rate",
-        "average_score": "",
+        "average_score": "metrics.notif_average_score",
         "total_cases": "params.total_cases",
         "error_cases": "metrics.notif_error_cases",
     },
     "error-recovery": {
         "pass_rate": "metrics.errrecov_quality_pass_rate",
-        "average_score": "",
+        "average_score": "metrics.errrecov_average_score",
         "total_cases": "params.total_cases",
         "error_cases": "metrics.errrecov_error_cases",
     },
     "schedule-cron": {
         "pass_rate": "metrics.cron_quality_pass_rate",
-        "average_score": "",
+        "average_score": "metrics.cron_average_score",
         "total_cases": "params.total_cases",
         "error_cases": "metrics.cron_error_cases",
     },
     "knowledge-connections": {
         "pass_rate": "metrics.kg_quality_pass_rate",
-        "average_score": "",
+        "average_score": "metrics.kg_average_score",
         "total_cases": "params.total_cases",
         "error_cases": "metrics.kg_error_cases",
     },
     "contradiction": {
         "pass_rate": "metrics.contra_quality_pass_rate",
-        "average_score": "",
+        "average_score": "metrics.contra_average_score",
         "total_cases": "params.total_cases",
         "error_cases": "metrics.contra_error_cases",
     },
     "long-conversation": {
         "pass_rate": "metrics.longconv_quality_pass_rate",
-        "average_score": "",
+        "average_score": "metrics.longconv_average_score",
         "total_cases": "params.total_cases",
         "error_cases": "metrics.longconv_error_cases",
     },

@@ -311,26 +311,29 @@ def run_evaluation(
             dataset_version=dataset.version,
         )
 
-    # Set up MLflow
-    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
-    mlflow.set_experiment(settings.mlflow_experiment_name)
-
-    # Register dataset in MLflow
-    experiment_id = get_experiment_id(settings.mlflow_experiment_name)
-    mlflow_records = prepare_quality_records(dataset)
-    mlflow_dataset = get_or_create_dataset(
-        dataset_path=dataset_path,
-        version=dataset.version,
-        experiment_id=experiment_id,
-        records=mlflow_records,
-    )
-
     # Capture API key for agent invocation
     api_key = settings.openai_api_key
 
     # Detect if this is a security dataset (has expected_behavior field)
     is_security_dataset = any(
         case.expected_behavior is not None for case in dataset.cases
+    )
+
+    # Set up MLflow (security evals get their own experiment)
+    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+    experiment_name = settings.mlflow_experiment_name
+    if is_security_dataset:
+        experiment_name = experiment_name + "-security"
+    mlflow.set_experiment(experiment_name)
+
+    # Register dataset in MLflow
+    experiment_id = get_experiment_id(experiment_name)
+    mlflow_records = prepare_quality_records(dataset)
+    mlflow_dataset = get_or_create_dataset(
+        dataset_path=dataset_path,
+        version=dataset.version,
+        experiment_id=experiment_id,
+        records=mlflow_records,
     )
 
     # Create judge
@@ -942,19 +945,27 @@ def run_memory_evaluation(
                 results.append(result)
 
                 # Log feedback assessment on the trace for dashboard visibility
-                from mlflow.entities import AssessmentSource, AssessmentSourceType
-                active_trace = mlflow.get_last_active_trace()
-                if active_trace:
-                    mlflow.log_feedback(
-                        trace_id=active_trace.info.trace_id,
-                        name="memory_retrieval",
-                        value=recall,
-                        source=AssessmentSource(
-                            source_type=AssessmentSourceType.CODE,
-                            source_id="memory_eval",
-                        ),
-                        rationale=f"recall={recall:.2f}, precision={precision:.2f}, expected_found={expected_found}/{len(case.expected_retrievals)}, cross_user_violation={cross_user_violation}",
+                try:
+                    from mlflow.entities import AssessmentSource, AssessmentSourceType
+                    traces = mlflow.search_traces(
+                        experiment_ids=[experiment_id],
+                        max_results=1,
+                        order_by=["timestamp_ms DESC"],
                     )
+                    if len(traces) > 0:
+                        trace_id = traces.iloc[0]["trace_id"]
+                        mlflow.log_feedback(
+                            trace_id=trace_id,
+                            name="memory_retrieval",
+                            value=recall,
+                            source=AssessmentSource(
+                                source_type=AssessmentSourceType.CODE,
+                                source_id="memory_eval",
+                            ),
+                            rationale=f"recall={recall:.2f}, precision={precision:.2f}, expected_found={expected_found}/{len(case.expected_retrievals)}, cross_user_violation={cross_user_violation}",
+                        )
+                except Exception:
+                    pass  # Non-critical — dashboard reads from metrics, not trace feedback
 
                 if verbose:
                     status = "✅" if recall >= 0.8 and not cross_user_violation else "❌"
@@ -2932,12 +2943,15 @@ def run_onboarding_evaluation(
         )
 
         # Log metrics
+        valid_scores = [int(r.quality_rating) for r in valid_results if r.quality_rating and r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         mlflow.log_metrics({
             "onboarding_quality_pass_rate": quality_pass_rate,
             "onboarding_memory_recall": avg_mem_recall,
             "onboarding_entity_recall": avg_ent_recall,
             "onboarding_error_cases": error_count,
             "onboarding_overall_passed": 1 if overall_passed else 0,
+            "onboarding_average_score": avg_score,
         })
 
     return OnboardingEvaluationResult(
@@ -3164,8 +3178,10 @@ def run_tone_evaluation(
         error_count = len(results) - len(valid)
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = ToneMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"tone_quality_pass_rate": quality_pass_rate, "tone_error_cases": error_count, "tone_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
+        mlflow.log_metrics({"tone_quality_pass_rate": quality_pass_rate, "tone_error_cases": error_count, "tone_overall_passed": 1 if overall_passed else 0, "tone_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return ToneEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -3281,8 +3297,10 @@ def run_returning_greeting_evaluation(
         error_count = len(results) - len(valid)
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = ReturningGreetingMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"greeting_quality_pass_rate": quality_pass_rate, "greeting_error_cases": error_count, "greeting_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
+        mlflow.log_metrics({"greeting_quality_pass_rate": quality_pass_rate, "greeting_error_cases": error_count, "greeting_overall_passed": 1 if overall_passed else 0, "greeting_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return ReturningGreetingEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -3406,8 +3424,10 @@ def run_routing_evaluation(
         routing_accuracy = sum(1 for r in valid if r.routing_correct) / len(valid) if valid else 0.0
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = routing_accuracy >= 0.80 and quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = RoutingMetrics(total_cases=len(dataset.cases), routing_accuracy=routing_accuracy, quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"routing_accuracy": routing_accuracy, "routing_quality_pass_rate": quality_pass_rate, "routing_error_cases": error_count, "routing_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
+        mlflow.log_metrics({"routing_accuracy": routing_accuracy, "routing_quality_pass_rate": quality_pass_rate, "routing_error_cases": error_count, "routing_overall_passed": 1 if overall_passed else 0, "routing_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return RoutingEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -3577,8 +3597,10 @@ def run_memory_informed_evaluation(
         error_count = len(results) - len(valid)
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = MemoryInformedMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"meminf_quality_pass_rate": quality_pass_rate, "meminf_error_cases": error_count, "meminf_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
+        mlflow.log_metrics({"meminf_quality_pass_rate": quality_pass_rate, "meminf_error_cases": error_count, "meminf_overall_passed": 1 if overall_passed else 0, "meminf_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return MemoryInformedEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -3743,8 +3765,10 @@ def run_multi_cap_evaluation(
         error_count = len(results) - len(valid)
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = MultiCapMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"mcap_quality_pass_rate": quality_pass_rate, "mcap_error_cases": error_count, "mcap_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
+        mlflow.log_metrics({"mcap_quality_pass_rate": quality_pass_rate, "mcap_error_cases": error_count, "mcap_overall_passed": 1 if overall_passed else 0, "mcap_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return MultiCapEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -3970,8 +3994,10 @@ def run_notification_judgment_evaluation(
         notification_accuracy = sum(1 for r in notif_cases if r.notification_correct) / len(notif_cases) if notif_cases else 0.0
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = notification_accuracy >= 0.80 and quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = NotificationJudgmentMetrics(total_cases=len(dataset.cases), notification_accuracy=notification_accuracy, quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"notif_accuracy": notification_accuracy, "notif_quality_pass_rate": quality_pass_rate, "notif_error_cases": error_count, "notif_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
+        mlflow.log_metrics({"notif_accuracy": notification_accuracy, "notif_quality_pass_rate": quality_pass_rate, "notif_error_cases": error_count, "notif_overall_passed": 1 if overall_passed else 0, "notif_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return NotificationJudgmentEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -4092,8 +4118,10 @@ def run_error_recovery_evaluation(
         error_count = len(results) - len(valid)
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = ErrorRecoveryMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"errrecov_quality_pass_rate": quality_pass_rate, "errrecov_error_cases": error_count, "errrecov_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
+        mlflow.log_metrics({"errrecov_quality_pass_rate": quality_pass_rate, "errrecov_error_cases": error_count, "errrecov_overall_passed": 1 if overall_passed else 0, "errrecov_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return ErrorRecoveryEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -4231,8 +4259,10 @@ def run_schedule_cron_evaluation(
         cron_accuracy = sum(1 for r in valid if r.cron_correct) / len(valid) if valid else 0.0
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = cron_accuracy >= 0.80 and quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = ScheduleCronMetrics(total_cases=len(dataset.cases), cron_accuracy=cron_accuracy, quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"cron_accuracy": cron_accuracy, "cron_quality_pass_rate": quality_pass_rate, "cron_error_cases": error_count, "cron_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
+        mlflow.log_metrics({"cron_accuracy": cron_accuracy, "cron_quality_pass_rate": quality_pass_rate, "cron_error_cases": error_count, "cron_overall_passed": 1 if overall_passed else 0, "cron_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return ScheduleCronEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -4359,8 +4389,10 @@ def run_knowledge_connections_evaluation(
         error_count = len(results) - len(valid)
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = KnowledgeConnectionsMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"kg_quality_pass_rate": quality_pass_rate, "kg_error_cases": error_count, "kg_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
+        mlflow.log_metrics({"kg_quality_pass_rate": quality_pass_rate, "kg_error_cases": error_count, "kg_overall_passed": 1 if overall_passed else 0, "kg_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return KnowledgeConnectionsEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -4521,8 +4553,10 @@ def run_contradiction_handling_evaluation(
         error_count = len(results) - len(valid)
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = ContradictionHandlingMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"contra_quality_pass_rate": quality_pass_rate, "contra_error_cases": error_count, "contra_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
+        mlflow.log_metrics({"contra_quality_pass_rate": quality_pass_rate, "contra_error_cases": error_count, "contra_overall_passed": 1 if overall_passed else 0, "contra_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return ContradictionHandlingEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -4689,8 +4723,10 @@ def run_long_conversation_evaluation(
         error_count = len(results) - len(valid)
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = LongConversationMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"longconv_quality_pass_rate": quality_pass_rate, "longconv_error_cases": error_count, "longconv_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
+        mlflow.log_metrics({"longconv_quality_pass_rate": quality_pass_rate, "longconv_error_cases": error_count, "longconv_overall_passed": 1 if overall_passed else 0, "longconv_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return LongConversationEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
