@@ -37,36 +37,9 @@ function RatingBadge({ rating }: { rating: string | null }) {
   );
 }
 
-/** Parse a conversation transcript string into user/assistant turn pairs. */
-function parseTranscript(
-  text: string
-): { role: "user" | "assistant"; content: string }[] {
-  const turns: { role: "user" | "assistant"; content: string }[] = [];
-  // Match patterns like "[turn-1] User:" or "[turn-1] Assistant:"
-  const regex = /\[turn-\d+]\s*(User|Assistant):\s*/gi;
-  let lastIndex = 0;
-  let lastRole: "user" | "assistant" | null = null;
-  let match: RegExpExecArray | null;
+type Turn = { role: "user" | "assistant"; content: string };
 
-  while ((match = regex.exec(text)) !== null) {
-    if (lastRole !== null) {
-      turns.push({ role: lastRole, content: text.slice(lastIndex, match.index).trim() });
-    }
-    lastRole = match[1].toLowerCase() as "user" | "assistant";
-    lastIndex = regex.lastIndex;
-  }
-  if (lastRole !== null) {
-    turns.push({ role: lastRole, content: text.slice(lastIndex).trim() });
-  }
-  // If no turn markers found, return the whole thing as a single assistant entry
-  if (turns.length === 0 && text) {
-    turns.push({ role: "assistant", content: text });
-  }
-  return turns;
-}
-
-function ConversationView({ transcript }: { transcript: string }) {
-  const turns = parseTranscript(transcript);
+function ConversationView({ turns }: { turns: Turn[] }) {
   return (
     <div className="space-y-2">
       {turns.map((t, i) => (
@@ -97,10 +70,9 @@ function ConversationView({ transcript }: { transcript: string }) {
 }
 
 function CaseExpandedRow({ c }: { c: RunCaseResult }) {
-  const transcript =
-    typeof c.extra.conversation_transcript === "string"
-      ? c.extra.conversation_transcript
-      : null;
+  const rawTranscript = c.extra.conversation_transcript;
+  const transcript: Turn[] | null =
+    Array.isArray(rawTranscript) ? rawTranscript as Turn[] : null;
 
   // Separate conversation_transcript and persona from other extra fields
   const extraEntries = Object.entries(c.extra).filter(
@@ -131,17 +103,17 @@ function CaseExpandedRow({ c }: { c: RunCaseResult }) {
           )}
 
           {/* Multi-turn conversation view */}
-          {transcript && (
+          {transcript && transcript.length > 0 && (
             <div>
               <p className="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
                 Conversation
               </p>
-              <ConversationView transcript={transcript} />
+              <ConversationView turns={transcript} />
             </div>
           )}
 
-          {/* Single-turn prompt/response view (same styling as multi-turn) */}
-          {hasPromptResponse && (
+          {/* Single-turn prompt/response view (only when no multi-turn transcript) */}
+          {!transcript && hasPromptResponse && (
             <div>
               <p className="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
                 Conversation
@@ -171,7 +143,7 @@ function CaseExpandedRow({ c }: { c: RunCaseResult }) {
             </div>
           )}
 
-          {/* Nothing to show */}
+          {/* No conversation data */}
           {!transcript && !hasPromptResponse && (
             <p className="text-xs text-gray-400 dark:text-gray-500">
               No conversation data available.
@@ -243,14 +215,9 @@ export function RunDetailPanel({
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   // Extract key params
-  const model =
-    detail.params["assistant_model"] ||
-    detail.params["model"] ||
-    detail.params["openai_model"] ||
-    "-";
+  const model = detail.params["assistant_model"] || "-";
   const judgeModel = detail.params["judge_model"] || "-";
-  const datasetVersion =
-    detail.params["dataset_version"] || detail.params["dataset"] || "-";
+  const datasetVersion = detail.params["dataset_version"] || "-";
   const temperature = detail.params["temperature"] ?? null;
   const maxTokens = detail.params["max_tokens"] ?? null;
   const gitSha = detail.params["git_sha"] ?? null;

@@ -169,6 +169,19 @@ tests/
 
 Never mock the entire SDK/Runner in pytest. If you need to test SDK integration behavior, that belongs in MLflow eval.
 
+### Manual UI Testing with Playwright
+
+Use the Playwright MCP tool (`mcp__playwright__*`) for manual frontend verification. This is preferred over screenshot-based testing because Playwright's accessibility snapshots give structured DOM state.
+
+**Workflow:**
+1. Ensure Docker API (`localhost:8000`) and Next.js dev server (`localhost:3000`) are running
+2. Navigate to login page, sign in (admin user: `sdeery` / `password123`)
+3. Use `browser_snapshot` (not screenshots) to inspect page state — it returns structured accessibility trees
+4. Use `browser_click` with element refs from snapshots to interact with the UI
+5. Verify data flows end-to-end: backend API → frontend rendering
+
+**When to use Playwright:** After changing API response shapes, frontend components that display backend data, or eval dashboard data flow. Not needed for pure logic/utility changes.
+
 ## Environment Variables
 
 Required: `OPENAI_API_KEY`

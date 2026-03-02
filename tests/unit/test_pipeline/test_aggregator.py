@@ -78,12 +78,9 @@ def _make_trace(
     """Create a mock trace object."""
     trace = MagicMock()
     trace.info.assessments = assessments or []
-    trace.info.execution_time_ms = execution_time_ms
     trace.info.execution_duration = execution_time_ms
     trace.info.trace_metadata = trace_metadata or {}
-    trace.info.request_metadata = trace_metadata or {}
     trace.info.request_time = request_time
-    trace.info.timestamp_ms = request_time
 
     if request is not None:
         trace.data.request = json.dumps(request) if isinstance(request, dict) else request
@@ -446,7 +443,7 @@ class TestExtractPrimaryAssessment:
         assessments = [_make_assessment("quality", "poor", "Bad response")]
         rating, score, justification = _extract_primary_assessment(assessments, "quality")
         assert rating == "poor"
-        assert score == 1.0
+        assert score == 2.0
 
     def test_string_value_adequate(self):
         assessments = [_make_assessment("quality", "adequate")]

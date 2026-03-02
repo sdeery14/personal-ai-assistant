@@ -31,7 +31,7 @@ def get_eval_experiments() -> list[tuple[str, str]]:
     for exp in experiments:
         name = exp.name
         if name == base_name:
-            # Base experiment (quality/security)
+            # Base experiment (quality)
             eval_type = EXPERIMENT_SUFFIXES.get("", "quality")
             results.append((name, eval_type))
         elif name.startswith(base_name + "-"):
@@ -312,7 +312,8 @@ _LEGACY_RATING_SCORES: dict[str, float] = {
     "excellent": 5.0,
     "good": 4.0,
     "adequate": 3.0,
-    "poor": 1.0,
+    "poor": 2.0,
+    "unacceptable": 1.0,
 }
 
 # Numeric score → label for float/int assessment values.
@@ -365,7 +366,7 @@ def _parse_single_turn_traces(traces: list, primary_scorer: str) -> list[RunCase
 
         # Duration from trace execution time
         duration_ms: int | None = None
-        exec_time = getattr(info, "execution_time_ms", None) or getattr(info, "execution_duration", None)
+        exec_time = info.execution_duration
         if exec_time is not None:
             try:
                 duration_ms = int(exec_time)
@@ -403,7 +404,7 @@ def _parse_session_traces(traces: list, run_id: str, primary_scorer: str) -> lis
     # Group traces by session
     by_session: dict[str, list] = defaultdict(list)
     for trace in traces:
-        metadata = getattr(trace.info, "trace_metadata", None) or getattr(trace.info, "request_metadata", {})
+        metadata = trace.info.trace_metadata
         session_id = metadata.get("mlflow.trace.session", "")
         if session_id:
             by_session[session_id].append(trace)
@@ -412,7 +413,7 @@ def _parse_session_traces(traces: list, run_id: str, primary_scorer: str) -> lis
     for session_id in sorted(by_session.keys()):
         session_traces = by_session[session_id]
         # Sort by timestamp within session
-        session_traces.sort(key=lambda t: getattr(t.info, "request_time", 0) or getattr(t.info, "timestamp_ms", 0))
+        session_traces.sort(key=lambda t: t.info.request_time)
 
         # Reconstruct conversation transcript from all turns
         conversation: list[dict[str, str]] = []
@@ -448,7 +449,7 @@ def _parse_session_traces(traces: list, run_id: str, primary_scorer: str) -> lis
                 pass
 
             # Accumulate duration
-            exec_time = getattr(trace.info, "execution_time_ms", None) or getattr(trace.info, "execution_duration", None)
+            exec_time = trace.info.execution_duration
             if exec_time is not None:
                 try:
                     total_duration_ms += int(exec_time)
