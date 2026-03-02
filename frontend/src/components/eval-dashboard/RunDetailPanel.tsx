@@ -349,7 +349,13 @@ export function RunDetailPanel({
             Errors
           </span>
           <p className="text-gray-800 dark:text-gray-200">
-            <span className="text-yellow-600 dark:text-yellow-400">
+            <span
+              className={
+                (errorCases ?? errorCount ?? 0) === 0
+                  ? "text-green-600 dark:text-green-400"
+                  : "text-yellow-600 dark:text-yellow-400"
+              }
+            >
               {errorCases != null ? errorCases : errorCount}
             </span>
           </p>
