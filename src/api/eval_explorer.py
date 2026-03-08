@@ -16,6 +16,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from src.api.dependencies import require_admin
 from src.models.eval_explorer import (
+    AgentConfigResponse,
+    AgentGraph,
+    AgentGraphEdge,
+    AgentGraphNode,
     AgentVersionDetailResponse,
     AgentVersionSummaryResponse,
     AgentVersionsResponse,
@@ -26,11 +30,13 @@ from src.models.eval_explorer import (
     ExperimentResultResponse,
     ExperimentSummaryResponse,
     ExperimentsResponse,
+    GuardrailInfo,
     QualityTrendPointResponse,
     QualityTrendResponse,
     RunSummaryResponse,
     RunsResponse,
     SessionGroupResponse,
+    SpecialistInfo,
     TraceDetailResponse,
     TracesResponse,
 )
@@ -719,6 +725,70 @@ async def list_agent_versions(
 # ---------------------------------------------------------------------------
 
 
+def _parse_agent_config(tags: dict) -> AgentConfigResponse:
+    """Parse agent configuration metadata from LoggedModel tags."""
+    # Parse JSON fields safely
+    def _json_list(key: str) -> list:
+        raw = tags.get(key, "")
+        if not raw:
+            return []
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    def _json_dict(key: str) -> dict:
+        raw = tags.get(key, "")
+        if not raw:
+            return {}
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    def _int_or_none(key: str):
+        raw = tags.get(key, "")
+        if not raw:
+            return None
+        try:
+            return int(raw)
+        except (ValueError, TypeError):
+            return None
+
+    guardrails = [GuardrailInfo(**g) for g in _json_list("agent.guardrails")]
+    specialists = [SpecialistInfo(**s) for s in _json_list("agent.specialists")]
+
+    # Parse graph
+    graph_data = _json_dict("agent.graph")
+    graph_nodes = []
+    for n in graph_data.get("nodes", []):
+        graph_nodes.append(AgentGraphNode(
+            id=n.get("id", ""),
+            label=n.get("label", ""),
+            type=n.get("type", ""),
+            tools=n.get("tools", []),
+        ))
+    graph_edges = []
+    for e in graph_data.get("edges", []):
+        graph_edges.append(AgentGraphEdge(
+            source=e.get("from", ""),
+            target=e.get("to", ""),
+            label=e.get("label", ""),
+        ))
+
+    return AgentConfigResponse(
+        model=tags.get("agent.model", ""),
+        name=tags.get("agent.name", ""),
+        framework=tags.get("agent.framework", ""),
+        max_tokens=_int_or_none("agent.max_tokens"),
+        timeout_seconds=_int_or_none("agent.timeout_seconds"),
+        system_prompt=tags.get("agent.system_prompt", ""),
+        guardrails=guardrails,
+        specialists=specialists,
+        graph=AgentGraph(nodes=graph_nodes, edges=graph_edges),
+    )
+
+
 @router.get("/agents/{model_id}")
 async def get_agent_version_detail(
     model_id: str,
@@ -830,6 +900,9 @@ async def get_agent_version_detail(
         all_quality = [er.average_quality for er in experiment_results if er.average_quality is not None]
         aggregate_quality = round(sum(all_quality) / len(all_quality), 2) if all_quality else None
 
+        # Extract agent config metadata from tags
+        config = _parse_agent_config(tags)
+
         return AgentVersionDetailResponse(
             model_id=model.model_id,
             name=model.name or "",
@@ -841,6 +914,7 @@ async def get_agent_version_detail(
             aggregate_quality=aggregate_quality,
             experiment_results=experiment_results,
             total_traces=total_traces,
+            config=config,
         )
 
     try:

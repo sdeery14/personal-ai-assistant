@@ -127,6 +127,49 @@ export interface ExperimentResult {
   latest_run_id: string | null;
 }
 
+export interface GuardrailInfo {
+  name: string;
+  type: string;
+}
+
+export interface SpecialistInfo {
+  name: string;
+  type: string;
+  model?: string;
+  tools: string[];
+  description: string;
+}
+
+export interface AgentGraphNode {
+  id: string;
+  label: string;
+  type: string;
+  tools?: string[];
+}
+
+export interface AgentGraphEdge {
+  source: string;
+  target: string;
+  label: string;
+}
+
+export interface AgentGraph {
+  nodes: AgentGraphNode[];
+  edges: AgentGraphEdge[];
+}
+
+export interface AgentConfig {
+  model: string;
+  name: string;
+  framework: string;
+  max_tokens: number | null;
+  timeout_seconds: number | null;
+  system_prompt: string;
+  guardrails: GuardrailInfo[];
+  specialists: SpecialistInfo[];
+  graph: AgentGraph;
+}
+
 export interface AgentVersionSummary {
   model_id: string;
   name: string;
@@ -142,6 +185,7 @@ export interface AgentVersionSummary {
 export interface AgentVersionDetail extends AgentVersionSummary {
   git_repo_url: string;
   experiment_results: ExperimentResult[];
+  config: AgentConfig;
 }
 
 export interface AgentVersionsResponse {

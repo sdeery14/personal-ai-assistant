@@ -141,6 +141,50 @@ class ExperimentResultResponse(BaseModel):
     latest_run_id: Optional[str] = None
 
 
+class GuardrailInfo(BaseModel):
+    name: str
+    type: str  # "input" or "output"
+
+
+class SpecialistInfo(BaseModel):
+    name: str
+    type: str  # "agent" or "function"
+    model: Optional[str] = None
+    tools: list[str] = []
+    description: str = ""
+
+
+class AgentGraphNode(BaseModel):
+    id: str
+    label: str
+    type: str  # "orchestrator", "agent", "function"
+    tools: list[str] = []
+
+
+class AgentGraphEdge(BaseModel):
+    source: str  # "from" is reserved in Python
+    target: str  # "to"
+    label: str = ""
+
+
+class AgentGraph(BaseModel):
+    nodes: list[AgentGraphNode] = []
+    edges: list[AgentGraphEdge] = []
+
+
+class AgentConfigResponse(BaseModel):
+    """Rich agent configuration metadata extracted from LoggedModel tags."""
+    model: str = ""
+    name: str = ""
+    framework: str = ""
+    max_tokens: Optional[int] = None
+    timeout_seconds: Optional[int] = None
+    system_prompt: str = ""
+    guardrails: list[GuardrailInfo] = []
+    specialists: list[SpecialistInfo] = []
+    graph: AgentGraph = AgentGraph()
+
+
 class AgentVersionSummaryResponse(BaseModel):
     model_id: str
     name: str
@@ -164,6 +208,7 @@ class AgentVersionDetailResponse(BaseModel):
     aggregate_quality: Optional[float] = None
     experiment_results: list[ExperimentResultResponse]
     total_traces: int
+    config: AgentConfigResponse = AgentConfigResponse()
 
 
 class AgentVersionsResponse(BaseModel):

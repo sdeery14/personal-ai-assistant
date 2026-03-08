@@ -136,11 +136,18 @@ def _log_git_sha():
         mlflow.log_param("git_sha", sha)
 
 
+_metadata_logged_models: set[str] = set()
+
+
 def _enable_git_versioning():
-    """Enable MLflow git-based model versioning (best-effort).
+    """Enable MLflow git-based model versioning and log agent metadata.
 
     Creates or reuses a LoggedModel for the current git commit so that
     all traces and eval runs are linked to a specific code version.
+    Also stores rich agent configuration metadata (system prompt, tools,
+    specialists, guardrails) as LoggedModel tags — but only once per
+    model_id per process to avoid redundant work.
+
     Must be called after ``mlflow.set_experiment()`` and before
     ``mlflow.start_run()``.
     """
@@ -148,6 +155,18 @@ def _enable_git_versioning():
         mlflow.genai.enable_git_model_versioning()
     except Exception:
         # Non-fatal: versioning is nice-to-have, not required for eval runs
+        return
+
+    # Log agent metadata to the LoggedModel (best-effort, once per model)
+    try:
+        from eval.agent_metadata import extract_agent_metadata
+
+        active_model = mlflow.get_active_model()
+        if active_model and active_model.model_id not in _metadata_logged_models:
+            tags = extract_agent_metadata()
+            mlflow.set_logged_model_tags(active_model.model_id, tags)
+            _metadata_logged_models.add(active_model.model_id)
+    except Exception:
         pass
 
 
