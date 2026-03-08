@@ -475,7 +475,7 @@ async def list_datasets(
     eval_dir = Path(__file__).resolve().parent.parent.parent / "eval"
 
     datasets = []
-    for path in sorted(eval_dir.glob("*_golden_dataset.json")):
+    for path in sorted(eval_dir.glob("*golden_dataset.json")):
         try:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
