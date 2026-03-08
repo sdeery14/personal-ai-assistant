@@ -94,7 +94,7 @@ export function UniversalQualityChart({
   if (points.length === 0) {
     return (
       <div className="flex h-64 items-center justify-center text-sm text-gray-500 dark:text-gray-400">
-        No universal quality data available. Run evals with a universal quality scorer to populate this chart.
+        No quality data available yet. Run evals to populate this chart.
       </div>
     );
   }

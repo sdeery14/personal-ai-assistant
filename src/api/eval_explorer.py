@@ -496,8 +496,18 @@ async def get_quality_trend(
                 if runs_df.empty:
                     continue
 
-                uq_col = "metrics.universal_quality"
+                # Find the average_score column — some evals use a prefixed
+                # name (e.g. "tone_average_score", "onboarding_average_score").
+                uq_col = "metrics.average_score"
                 if uq_col not in runs_df.columns:
+                    # Fallback: find any column ending with _average_score
+                    candidates = [
+                        c for c in runs_df.columns
+                        if c.startswith("metrics.") and c.endswith("_average_score")
+                    ]
+                    uq_col = candidates[0] if candidates else None
+
+                if uq_col is None:
                     continue
 
                 for _, row in runs_df.iterrows():
