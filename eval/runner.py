@@ -161,11 +161,11 @@ def _enable_git_versioning():
     try:
         from eval.agent_metadata import extract_agent_metadata
 
-        active_model = mlflow.get_active_model()
-        if active_model and active_model.model_id not in _metadata_logged_models:
+        model_id = mlflow.get_active_model_id()
+        if model_id and model_id not in _metadata_logged_models:
             tags = extract_agent_metadata()
-            mlflow.set_logged_model_tags(active_model.model_id, tags)
-            _metadata_logged_models.add(active_model.model_id)
+            mlflow.set_logged_model_tags(model_id, tags)
+            _metadata_logged_models.add(model_id)
     except Exception:
         pass
 

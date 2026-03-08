@@ -1,16 +1,39 @@
 """Extract agent configuration metadata for storage in MLflow LoggedModel tags.
 
-This module introspects the production agent to capture its full configuration
-(model, system prompt, tools, guardrails, specialist agents) as structured
-metadata. This metadata is stored as tags on the LoggedModel so the eval
-dashboard can display exactly what was evaluated.
+This module captures the full agent configuration (model, system prompt, tools,
+guardrails, specialist agents) as structured metadata by constructing the agent
+hierarchy the same way the production code does. This metadata is stored as tags
+on the LoggedModel so the eval dashboard can display exactly what was evaluated.
 """
 
 import json
 from typing import Any
 
 from src.config import get_settings
-from src.services.chat_service import ChatService
+from src.services.agents import (
+    build_orchestrator_instructions,
+    build_orchestrator_tools,
+    create_knowledge_agent,
+    create_memory_agent,
+    create_notification_agent,
+    create_proactive_agent,
+    create_weather_agent,
+)
+
+
+# Map of specialist factory → (name, tool_name)
+_SPECIALIST_FACTORIES = [
+    ("MemoryAgent", "ask_memory_agent", create_memory_agent,
+     "Delegate to the memory specialist for retrieving, saving, or deleting user memories."),
+    ("KnowledgeAgent", "ask_knowledge_agent", create_knowledge_agent,
+     "Delegate to the knowledge graph specialist for entities and relationships."),
+    ("WeatherAgent", "ask_weather_agent", create_weather_agent,
+     "Delegate to the weather specialist for weather queries and forecasts."),
+    ("ProactiveAgent", "ask_proactive_agent", create_proactive_agent,
+     "Delegate to the proactive assistant for patterns, schedules, and calibration."),
+    ("NotificationAgent", "ask_notification_agent", create_notification_agent,
+     "Delegate to the notification specialist for persistent notifications."),
+]
 
 
 def extract_agent_metadata(model: str | None = None) -> dict[str, str]:
@@ -22,71 +45,53 @@ def extract_agent_metadata(model: str | None = None) -> dict[str, str]:
     settings = get_settings()
     actual_model = model or settings.openai_model
 
-    # Create the agent to introspect it
-    service = ChatService()
-    agent = service.create_agent(model=actual_model, is_onboarded=True)
-
-    # Extract orchestrator config
     metadata: dict[str, str] = {}
 
     # Core model config
-    metadata["agent.model"] = agent.model
-    metadata["agent.name"] = agent.name
+    metadata["agent.model"] = actual_model
+    metadata["agent.name"] = "Assistant"
     metadata["agent.framework"] = "openai-agents-sdk"
     metadata["agent.max_tokens"] = str(settings.max_tokens)
     metadata["agent.timeout_seconds"] = str(settings.timeout_seconds)
 
+    # Build tools and instructions the same way production does
+    _tools, availability = build_orchestrator_tools(actual_model)
+    instructions = build_orchestrator_instructions(True, availability)
+
     # System prompt (truncated if too long for MLflow tags — 5000 char limit)
-    instructions = agent.instructions if isinstance(agent.instructions, str) else ""
     if len(instructions) > 5000:
         metadata["agent.system_prompt"] = instructions[:4990] + "\n[truncated]"
     else:
         metadata["agent.system_prompt"] = instructions
 
-    # Guardrails
-    guardrails = []
-    if agent.input_guardrails:
-        for g in agent.input_guardrails:
-            guardrails.append({
-                "name": getattr(g, "name", str(g)),
-                "type": "input",
-            })
-    if agent.output_guardrails:
-        for g in agent.output_guardrails:
-            guardrails.append({
-                "name": getattr(g, "name", str(g)),
-                "type": "output",
-            })
+    # Guardrails (hardcoded — matches ChatService.create_agent)
+    guardrails = [
+        {"name": "validate_input", "type": "input"},
+        {"name": "validate_output", "type": "output"},
+    ]
     metadata["agent.guardrails"] = json.dumps(guardrails)
 
-    # Extract specialist agents and their tools from the orchestrator's tools
+    # Build specialist info by introspecting the actual agent factories
     specialists: list[dict[str, Any]] = []
-    for tool in agent.tools:
-        spec: dict[str, Any] = {
-            "name": getattr(tool, "name", str(tool)),
-        }
-        # Agent-as-tool wraps an Agent object
-        inner_agent = getattr(tool, "agent", None)
-        if inner_agent is not None:
-            spec["type"] = "agent"
-            spec["model"] = getattr(inner_agent, "model", actual_model)
-            # Extract the specialist's own tools
-            inner_tools = getattr(inner_agent, "tools", [])
-            spec["tools"] = [
-                getattr(t, "name", str(t)) for t in inner_tools
-            ]
-            # Brief description from tool_description
-            spec["description"] = getattr(tool, "description", "")
-        else:
-            spec["type"] = "function"
-            spec["description"] = getattr(tool, "description", "")
+    for agent_name, tool_name, factory, description in _SPECIALIST_FACTORIES:
+        agent = factory(actual_model)
+        if agent is None:
+            continue
 
-        specialists.append(spec)
+        tool_names = [getattr(t, "name", str(t)) for t in (agent.tools or [])]
+        specialists.append({
+            "name": tool_name,
+            "type": "agent",
+            "model": actual_model,
+            "tools": tool_names,
+            "description": description,
+            "agent_name": agent_name,
+        })
 
     metadata["agent.specialists"] = json.dumps(specialists)
 
     # Build the agent graph structure for visualization
-    graph = _build_agent_graph(agent.name, specialists)
+    graph = _build_agent_graph("Assistant", specialists)
     metadata["agent.graph"] = json.dumps(graph)
 
     return metadata
@@ -100,7 +105,7 @@ def _build_agent_graph(
 
     Returns a dict with nodes and edges suitable for frontend visualization.
     """
-    nodes = [
+    nodes: list[dict[str, Any]] = [
         {
             "id": "orchestrator",
             "label": orchestrator_name,
@@ -111,10 +116,10 @@ def _build_agent_graph(
 
     for i, spec in enumerate(specialists):
         node_id = f"specialist-{i}"
-        node = {
+        node: dict[str, Any] = {
             "id": node_id,
-            "label": spec["name"],
-            "type": spec.get("type", "function"),
+            "label": spec.get("agent_name", spec["name"]),
+            "type": "agent",
         }
         if spec.get("tools"):
             node["tools"] = spec["tools"]
