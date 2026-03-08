@@ -111,14 +111,11 @@ export function QualityTrendChart({
   // Build a map: git_commit_short -> per-eval-type scores from quality trend points
   const commitScores = new Map<string, Record<string, number>>();
   for (const p of points) {
-    // Match point to an agent version by finding the closest timestamp
-    const matchedAgent = withQuality.find((a) => {
-      // Points from the same run share approximately the same timestamp
-      const agentTime = new Date(a.creation_timestamp).getTime();
-      const pointTime = new Date(p.timestamp).getTime();
-      // Within 2 hours — same eval session
-      return Math.abs(agentTime - pointTime) < 2 * 60 * 60 * 1000;
-    });
+    if (!p.git_sha) continue;
+    // Match by git SHA prefix (trend points may have short SHA)
+    const matchedAgent = withQuality.find(
+      (a) => a.git_commit.startsWith(p.git_sha) || p.git_sha.startsWith(a.git_commit_short)
+    );
     if (matchedAgent) {
       const key = matchedAgent.git_commit_short;
       if (!commitScores.has(key)) commitScores.set(key, {});

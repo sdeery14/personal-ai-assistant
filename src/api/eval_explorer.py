@@ -510,6 +510,7 @@ async def get_quality_trend(
                 if uq_col is None:
                     continue
 
+                has_git = "params.git_sha" in runs_df.columns
                 for _, row in runs_df.iterrows():
                     val = row.get(uq_col)
                     if val is not None and str(val) != "nan":
@@ -518,6 +519,7 @@ async def get_quality_trend(
                             timestamp=str(row.get("start_time", "")),
                             universal_quality=float(val),
                             run_id=row["run_id"],
+                            git_sha=str(row.get("params.git_sha", "")) if has_git else "",
                         ))
             except Exception as exc:
                 logger.warning("eval_explorer_trend_error", experiment=exp_name, error=str(exc))

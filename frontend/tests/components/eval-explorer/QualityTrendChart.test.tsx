@@ -49,12 +49,14 @@ const mockPoints: QualityTrendPoint[] = [
     timestamp: "2026-03-01T12:30:00Z",
     universal_quality: 4.5,
     run_id: "run-1",
+    git_sha: "abc1234",
   },
   {
     eval_type: "onboarding",
     timestamp: "2026-03-01T12:45:00Z",
     universal_quality: 3.9,
     run_id: "run-2",
+    git_sha: "abc1234",
   },
 ];
 

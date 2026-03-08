@@ -92,6 +92,7 @@ class QualityTrendPointResponse(BaseModel):
     timestamp: datetime
     universal_quality: float
     run_id: str
+    git_sha: str = ""
 
 
 class QualityTrendResponse(BaseModel):

@@ -80,6 +80,7 @@ export interface QualityTrendPoint {
   timestamp: string;
   universal_quality: number;
   run_id: string;
+  git_sha: string;
 }
 
 export interface QualityTrendResponse {
