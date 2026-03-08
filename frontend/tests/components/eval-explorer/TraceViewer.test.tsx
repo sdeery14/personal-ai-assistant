@@ -42,11 +42,11 @@ describe("TraceViewer", () => {
     expect(screen.getByText("Failed to load")).toBeInTheDocument();
   });
 
-  it("renders trace rows with assessments", () => {
+  it("renders trace rows with rating badge", () => {
     const traces = [makeTrace()];
     render(<TraceViewer traces={traces} isLoading={false} error={null} />);
     expect(screen.getByText(/what is the weather/i)).toBeInTheDocument();
-    expect(screen.getByText("quality: 5.0")).toBeInTheDocument();
+    expect(screen.getByText("excellent")).toBeInTheDocument();
   });
 
   it("expands trace to show full details", () => {
@@ -82,6 +82,10 @@ describe("TraceViewer", () => {
       }),
     ];
     render(<TraceViewer traces={traces} isLoading={false} error={null} />);
+    // Condensed row shows rating badge for primary judge score
+    expect(screen.getByText("good")).toBeInTheDocument();
+    // Expand to see detailed assessment badges
+    fireEvent.click(screen.getByText(/what is the weather/i));
     expect(screen.getByText("quality: 4.5")).toBeInTheDocument();
     expect(screen.getByText("behavior: 1.0")).toBeInTheDocument();
   });

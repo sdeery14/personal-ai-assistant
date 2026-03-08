@@ -13,6 +13,39 @@ interface TraceViewerProps {
 
 const PAGE_SIZE = 25;
 
+// ---------------------------------------------------------------------------
+// Rating helpers
+// ---------------------------------------------------------------------------
+
+const RATING_LABELS: Record<number, string> = {
+  5: "excellent",
+  4: "good",
+  3: "adequate",
+  2: "poor",
+  1: "unacceptable",
+};
+
+const RATING_STYLES: Record<string, string> = {
+  excellent: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+  good: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  adequate: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
+  poor: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+  unacceptable: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+};
+
+function getRatingLabel(score: number): string {
+  return RATING_LABELS[Math.floor(score)] || `${score.toFixed(1)}`;
+}
+
+function RatingBadge({ label }: { label: string }) {
+  const style = RATING_STYLES[label] ?? "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400";
+  return (
+    <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium capitalize ${style}`}>
+      {label}
+    </span>
+  );
+}
+
 function ScoreBadge({ assessment }: { assessment: AssessmentDetail }) {
   const passed = assessment.passed;
   const bgColor =
@@ -37,65 +70,130 @@ function ScoreBadge({ assessment }: { assessment: AssessmentDetail }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Assessment categorization
+// ---------------------------------------------------------------------------
+
+function categorizeAssessments(assessments: AssessmentDetail[]) {
+  const rubric = assessments.find(
+    (a) => a.name === "rubric" || (a.source_type === "HUMAN" && typeof a.raw_value === "string" && String(a.raw_value).length > 30)
+  );
+  const judges = assessments.filter(
+    (a) => a !== rubric && (a.source_type === "LLM_JUDGE" || a.normalized_score !== null)
+  );
+  const other = assessments.filter((a) => a !== rubric && !judges.includes(a));
+  return { rubric, judges, other };
+}
+
+// ---------------------------------------------------------------------------
+// Trace row
+// ---------------------------------------------------------------------------
+
 function TraceRow({ trace }: { trace: TraceDetail }) {
   const [expanded, setExpanded] = useState(false);
+  const { rubric, judges, other } = categorizeAssessments(trace.assessments);
+
+  // Primary score for the condensed row rating badge
+  const primaryJudge = judges[0];
+  const ratingLabel = primaryJudge?.normalized_score != null
+    ? getRatingLabel(primaryJudge.normalized_score)
+    : null;
 
   return (
     <div className="border-b border-gray-100 dark:border-gray-800">
+      {/* Condensed row */}
       <div
         className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/50"
         onClick={() => setExpanded(!expanded)}
       >
         <span className="text-xs text-gray-400">{expanded ? "\u25BC" : "\u25B6"}</span>
-        <span className="min-w-[80px] font-mono text-xs text-gray-500 dark:text-gray-500">
+        <span className="min-w-[60px] font-mono text-xs text-gray-500 dark:text-gray-500">
           {trace.case_id || trace.trace_id.substring(0, 8)}
         </span>
+        {ratingLabel && <RatingBadge label={ratingLabel} />}
         <span className="flex-1 truncate text-sm text-gray-700 dark:text-gray-300">
-          {trace.user_prompt.substring(0, 100)}
-          {trace.user_prompt.length > 100 ? "..." : ""}
+          {trace.user_prompt.substring(0, 120)}
+          {trace.user_prompt.length > 120 ? "..." : ""}
         </span>
-        {trace.duration_ms !== null && (
+        {trace.duration_ms != null && trace.duration_ms > 0 && (
           <span className="text-xs text-gray-400">{trace.duration_ms}ms</span>
         )}
-        <div className="flex gap-1">
-          {trace.assessments.map((a, i) => (
-            <ScoreBadge key={i} assessment={a} />
-          ))}
-        </div>
+        {trace.error && (
+          <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
+            error
+          </span>
+        )}
       </div>
+
+      {/* Expanded detail */}
       {expanded && (
-        <div className="bg-gray-50 px-6 py-3 dark:bg-gray-900/50">
-          <div className="mb-3">
-            <h4 className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-              User Prompt
-            </h4>
-            <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">
-              {trace.user_prompt}
-            </p>
+        <div className="space-y-3 bg-gray-50 px-6 py-3 dark:bg-gray-900/50">
+          {/* Conversation */}
+          <div className="space-y-2">
+            <div className="rounded border-l-2 border-blue-400 bg-blue-50/50 px-3 py-2 text-sm dark:border-blue-500 dark:bg-blue-900/20">
+              <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">User</span>
+              <p className="mt-1 whitespace-pre-wrap text-gray-800 dark:text-gray-200">
+                {trace.user_prompt}
+              </p>
+            </div>
+            <div className="rounded border-l-2 border-green-400 bg-green-50/50 px-3 py-2 text-sm dark:border-green-500 dark:bg-green-900/20">
+              <span className="text-xs font-semibold text-green-600 dark:text-green-400">Assistant</span>
+              <p className="mt-1 whitespace-pre-wrap text-gray-800 dark:text-gray-200">
+                {trace.assistant_response}
+              </p>
+            </div>
           </div>
-          <div className="mb-3">
-            <h4 className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-              Assistant Response
-            </h4>
-            <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">
-              {trace.assistant_response}
-            </p>
-          </div>
+
+          {/* Error */}
           {trace.error && (
-            <div className="mb-3">
-              <h4 className="mb-1 text-xs font-medium text-red-500">Error</h4>
-              <p className="text-sm text-red-600 dark:text-red-400">
-                {trace.error}
+            <div className="rounded border border-red-200 bg-red-50/50 p-3 dark:border-red-800 dark:bg-red-900/20">
+              <p className="text-xs font-semibold text-red-600 dark:text-red-400">Error</p>
+              <p className="mt-1 text-sm text-red-700 dark:text-red-300">{trace.error}</p>
+            </div>
+          )}
+
+          {/* Rubric (shown before judge feedback for context) */}
+          {rubric && (
+            <div className="rounded border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-800">
+              <p className="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">Rubric</p>
+              <p className="whitespace-pre-wrap text-xs text-gray-700 dark:text-gray-300">
+                {String(rubric.raw_value)}
               </p>
             </div>
           )}
-          {trace.assessments.length > 0 && (
+
+          {/* Judge assessments */}
+          {judges.length > 0 && (
+            <div className="rounded border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
+              <p className="mb-2 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                Judge Feedback
+              </p>
+              {judges.map((a, i) => (
+                <div key={i} className={i > 0 ? "mt-2 border-t border-amber-200 pt-2 dark:border-amber-800" : ""}>
+                  <div className="mb-1 flex items-center gap-2">
+                    <ScoreBadge assessment={a} />
+                    {a.source_type && (
+                      <span className="text-xs text-gray-400">({a.source_type})</span>
+                    )}
+                  </div>
+                  {a.rationale && (
+                    <p className="whitespace-pre-wrap text-xs text-gray-800 dark:text-gray-200">
+                      {a.rationale}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Other assessments (behavioral scorers, etc.) */}
+          {other.length > 0 && (
             <div>
-              <h4 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">
-                Assessments
-              </h4>
+              <p className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+                Other Assessments
+              </p>
               <div className="space-y-2">
-                {trace.assessments.map((a, i) => (
+                {other.map((a, i) => (
                   <div
                     key={i}
                     className="rounded border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-800"
@@ -103,15 +201,11 @@ function TraceRow({ trace }: { trace: TraceDetail }) {
                     <div className="flex items-center gap-2">
                       <ScoreBadge assessment={a} />
                       {a.source_type && (
-                        <span className="text-xs text-gray-400">
-                          ({a.source_type})
-                        </span>
+                        <span className="text-xs text-gray-400">({a.source_type})</span>
                       )}
                     </div>
                     {a.rationale && (
-                      <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                        {a.rationale}
-                      </p>
+                      <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">{a.rationale}</p>
                     )}
                   </div>
                 ))}
