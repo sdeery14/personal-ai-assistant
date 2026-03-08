@@ -15,7 +15,85 @@ import type {
   QualityTrendPoint,
   DatasetsResponse,
   DatasetDetail,
+  AgentVersionsResponse,
+  AgentVersionSummary,
+  AgentVersionDetail,
 } from "@/types/eval-explorer";
+
+// ---------------------------------------------------------------------------
+// useAgentVersions
+// ---------------------------------------------------------------------------
+
+export function useAgentVersions() {
+  const { data: session } = useSession();
+  const [agents, setAgents] = useState<AgentVersionSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!session?.accessToken) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await apiClient.get<AgentVersionsResponse>(
+        "/admin/evals/explorer/agents"
+      );
+      setAgents(data.agents);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to load agent versions"
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, [session?.accessToken]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  return { agents, isLoading, error, refresh };
+}
+
+// ---------------------------------------------------------------------------
+// useAgentVersionDetail
+// ---------------------------------------------------------------------------
+
+export function useAgentVersionDetail(modelId: string | null) {
+  const { data: session } = useSession();
+  const [agent, setAgent] = useState<AgentVersionDetail | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!session?.accessToken || !modelId) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await apiClient.get<AgentVersionDetail>(
+        `/admin/evals/explorer/agents/${modelId}`
+      );
+      setAgent(data);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to load agent version"
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, [session?.accessToken, modelId]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const clear = useCallback(() => {
+    setAgent(null);
+    setError(null);
+  }, []);
+
+  return { agent, isLoading, error, refresh, clear };
+}
 
 // ---------------------------------------------------------------------------
 // useExperiments

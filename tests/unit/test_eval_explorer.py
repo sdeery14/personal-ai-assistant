@@ -763,3 +763,272 @@ class TestGetDataset:
 
         assert resp.status_code == 200
         assert resp.json()["cases"][0]["user_prompt"] == "Tell me a story"
+
+
+# ---------------------------------------------------------------------------
+# Helpers for agent version tests
+# ---------------------------------------------------------------------------
+
+
+def _make_logged_model(
+    model_id="model-1",
+    name="assistant",
+    tags=None,
+    creation_timestamp=1709300000000,
+    metrics=None,
+):
+    """Create a mock LoggedModel object."""
+    model = MagicMock()
+    model.model_id = model_id
+    model.name = name
+    model.tags = tags or {
+        "mlflow.source.git.branch": "main",
+        "mlflow.source.git.commit": "abc1234def5678",
+        "mlflow.source.git.dirty": "false",
+    }
+    model.creation_timestamp = creation_timestamp
+    model.metrics = metrics or []
+    return model
+
+
+def _make_model_metric(key="universal_quality", value=85.0):
+    """Create a mock model metric."""
+    m = MagicMock()
+    m.key = key
+    m.value = value
+    return m
+
+
+def _make_trace_for_agent(
+    trace_id="trace-1",
+    experiment_id="exp-1",
+    source_run="run-1",
+    assessments=None,
+):
+    """Create a mock trace for agent version detail tests."""
+    trace = MagicMock()
+    info = MagicMock()
+    info.trace_id = trace_id
+    info.experiment_id = experiment_id
+    info.request_metadata = {"mlflow.sourceRun": source_run}
+    info.assessments = assessments or []
+    trace.info = info
+    return trace
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/evals/explorer/agents
+# ---------------------------------------------------------------------------
+
+
+class TestListAgentVersions:
+    def test_returns_agents_with_git_metadata(self, client):
+        model = _make_logged_model()
+
+        with patch("mlflow.search_logged_models", return_value=[model]):
+            resp = client.get("/admin/evals/explorer/agents")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["agents"]) == 1
+        agent = body["agents"][0]
+        assert agent["model_id"] == "model-1"
+        assert agent["name"] == "assistant"
+        assert agent["git_branch"] == "main"
+        assert agent["git_commit"] == "abc1234def5678"
+        assert agent["git_commit_short"] == "abc1234"
+        assert agent["git_dirty"] is False
+
+    def test_skips_models_without_git_commit(self, client):
+        model_no_git = _make_logged_model(
+            model_id="model-no-git",
+            tags={"mlflow.source.git.branch": "main"},  # no commit tag
+        )
+        model_with_git = _make_logged_model(model_id="model-with-git")
+
+        with patch("mlflow.search_logged_models", return_value=[model_no_git, model_with_git]):
+            resp = client.get("/admin/evals/explorer/agents")
+
+        assert resp.status_code == 200
+        agents = resp.json()["agents"]
+        assert len(agents) == 1
+        assert agents[0]["model_id"] == "model-with-git"
+
+    def test_handles_empty_result(self, client):
+        with patch("mlflow.search_logged_models", return_value=[]):
+            resp = client.get("/admin/evals/explorer/agents")
+
+        assert resp.status_code == 200
+        assert resp.json()["agents"] == []
+
+    def test_sorts_by_creation_timestamp_desc(self, client):
+        model_old = _make_logged_model(
+            model_id="model-old",
+            creation_timestamp=1709200000000,
+        )
+        model_new = _make_logged_model(
+            model_id="model-new",
+            creation_timestamp=1709400000000,
+        )
+
+        with patch("mlflow.search_logged_models", return_value=[model_old, model_new]):
+            resp = client.get("/admin/evals/explorer/agents")
+
+        assert resp.status_code == 200
+        agents = resp.json()["agents"]
+        assert len(agents) == 2
+        assert agents[0]["model_id"] == "model-new"
+        assert agents[1]["model_id"] == "model-old"
+
+    def test_extracts_aggregate_quality_from_metrics(self, client):
+        metrics = [
+            _make_model_metric("quality_universal_quality", 80.0),
+            _make_model_metric("security_universal_quality", 90.0),
+        ]
+        model = _make_logged_model(metrics=metrics)
+
+        with patch("mlflow.search_logged_models", return_value=[model]):
+            resp = client.get("/admin/evals/explorer/agents")
+
+        assert resp.status_code == 200
+        agent = resp.json()["agents"][0]
+        assert agent["aggregate_quality"] == 85.0
+
+    def test_handles_search_exception(self, client):
+        with patch("mlflow.search_logged_models", side_effect=Exception("MLflow down")):
+            resp = client.get("/admin/evals/explorer/agents")
+
+        assert resp.status_code == 200
+        assert resp.json()["agents"] == []
+
+    def test_git_dirty_true(self, client):
+        model = _make_logged_model(tags={
+            "mlflow.source.git.branch": "feature",
+            "mlflow.source.git.commit": "deadbeef12345678",
+            "mlflow.source.git.dirty": "True",
+        })
+
+        with patch("mlflow.search_logged_models", return_value=[model]):
+            resp = client.get("/admin/evals/explorer/agents")
+
+        assert resp.status_code == 200
+        assert resp.json()["agents"][0]["git_dirty"] is True
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/evals/explorer/agents/{model_id}
+# ---------------------------------------------------------------------------
+
+
+class TestGetAgentVersionDetail:
+    def test_returns_detail_with_experiment_results(self, client):
+        model = _make_logged_model()
+        assessment = _make_assessment(value=4.5)
+        trace = _make_trace_for_agent(
+            experiment_id="exp-1",
+            source_run="run-1",
+            assessments=[assessment],
+        )
+        exp = _make_experiment("exp-1", "eval-quality")
+
+        with (
+            patch("mlflow.get_logged_model", return_value=model),
+            patch("mlflow.search_traces", return_value=[trace]),
+            patch("eval.pipeline.aggregator.get_eval_experiments",
+                  return_value=[("eval-quality", "quality")]),
+            patch("mlflow.get_experiment_by_name", return_value=exp),
+        ):
+            resp = client.get("/admin/evals/explorer/agents/model-1")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["model_id"] == "model-1"
+        assert body["git_branch"] == "main"
+        assert body["git_commit"] == "abc1234def5678"
+        assert body["git_commit_short"] == "abc1234"
+        assert body["git_dirty"] is False
+        assert body["total_traces"] == 1
+        assert len(body["experiment_results"]) == 1
+        er = body["experiment_results"][0]
+        assert er["experiment_name"] == "eval-quality"
+        assert er["experiment_id"] == "exp-1"
+        assert er["eval_type"] == "quality"
+        assert er["run_count"] == 1
+        assert er["average_quality"] == 4.5
+        assert er["pass_rate"] == 1.0
+        assert er["latest_run_id"] == "run-1"
+
+    def test_returns_404_for_unknown_model(self, client):
+        with patch("mlflow.get_logged_model", side_effect=Exception("Not found")):
+            resp = client.get("/admin/evals/explorer/agents/nonexistent")
+
+        assert resp.status_code == 404
+        assert "not found" in resp.json()["detail"].lower()
+
+    def test_handles_no_traces(self, client):
+        model = _make_logged_model()
+
+        with (
+            patch("mlflow.get_logged_model", return_value=model),
+            patch("mlflow.search_traces", return_value=[]),
+            patch("eval.pipeline.aggregator.get_eval_experiments", return_value=[]),
+        ):
+            resp = client.get("/admin/evals/explorer/agents/model-1")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total_traces"] == 0
+        assert body["experiment_results"] == []
+        assert body["aggregate_quality"] is None
+
+    def test_includes_git_diff_and_repo_url(self, client):
+        model = _make_logged_model(tags={
+            "mlflow.source.git.branch": "feature-x",
+            "mlflow.source.git.commit": "abc1234def5678",
+            "mlflow.source.git.dirty": "true",
+            "mlflow.source.git.diff": "--- a/file.py\n+++ b/file.py",
+            "mlflow.source.git.repoURL": "https://github.com/user/repo",
+        })
+
+        with (
+            patch("mlflow.get_logged_model", return_value=model),
+            patch("mlflow.search_traces", return_value=[]),
+            patch("eval.pipeline.aggregator.get_eval_experiments", return_value=[]),
+        ):
+            resp = client.get("/admin/evals/explorer/agents/model-1")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["git_diff"] == "--- a/file.py\n+++ b/file.py"
+        assert body["git_repo_url"] == "https://github.com/user/repo"
+        assert body["git_dirty"] is True
+
+    def test_multiple_experiments_aggregate_quality(self, client):
+        model = _make_logged_model()
+        assessment1 = _make_assessment(value=4.0)
+        assessment2 = _make_assessment(value=5.0)
+        trace1 = _make_trace_for_agent(
+            trace_id="t1", experiment_id="exp-1", source_run="run-1",
+            assessments=[assessment1],
+        )
+        trace2 = _make_trace_for_agent(
+            trace_id="t2", experiment_id="exp-2", source_run="run-2",
+            assessments=[assessment2],
+        )
+        exp1 = _make_experiment("exp-1", "eval-quality")
+        exp2 = _make_experiment("exp-2", "eval-security")
+
+        with (
+            patch("mlflow.get_logged_model", return_value=model),
+            patch("mlflow.search_traces", return_value=[trace1, trace2]),
+            patch("eval.pipeline.aggregator.get_eval_experiments",
+                  return_value=[("eval-quality", "quality"), ("eval-security", "security")]),
+            patch("mlflow.get_experiment_by_name", side_effect=[exp1, exp2]),
+        ):
+            resp = client.get("/admin/evals/explorer/agents/model-1")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["experiment_results"]) == 2
+        # Aggregate quality: average of 4.0 and 5.0 = 4.5
+        assert body["aggregate_quality"] == 4.5

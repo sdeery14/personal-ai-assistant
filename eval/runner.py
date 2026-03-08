@@ -144,6 +144,21 @@ def _log_git_sha():
         mlflow.log_param("git_sha", sha)
 
 
+def _enable_git_versioning():
+    """Enable MLflow git-based model versioning (best-effort).
+
+    Creates or reuses a LoggedModel for the current git commit so that
+    all traces and eval runs are linked to a specific code version.
+    Must be called after ``mlflow.set_experiment()`` and before
+    ``mlflow.start_run()``.
+    """
+    try:
+        mlflow.genai.enable_git_model_versioning()
+    except Exception:
+        # Non-fatal: versioning is nice-to-have, not required for eval runs
+        pass
+
+
 def _extract_rationale(row: Any, scorer_name: str) -> str | None:
     """Extract judge rationale from an eval_results DataFrame row.
 
@@ -325,6 +340,7 @@ def run_evaluation(
     if is_security_dataset:
         experiment_name = experiment_name + "-security"
     mlflow.set_experiment(experiment_name)
+    _enable_git_versioning()
 
     # Register dataset in MLflow
     experiment_id = get_experiment_id(experiment_name)
@@ -851,6 +867,7 @@ def run_memory_evaluation(
     # Set up MLflow
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-memory")
+    _enable_git_versioning()
 
     # Register dataset in MLflow
     experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-memory")
@@ -1230,6 +1247,7 @@ def run_memory_write_evaluation(
     # Set up MLflow
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-memory-write")
+    _enable_git_versioning()
 
     # Register dataset in MLflow
     experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-memory-write")
@@ -1665,6 +1683,7 @@ def run_weather_evaluation(
     # Set up MLflow
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-weather")
+    _enable_git_versioning()
 
     # Register dataset in MLflow
     experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-weather")
@@ -2119,6 +2138,7 @@ def run_graph_evaluation(
     # Set up MLflow
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-graph-extraction")
+    _enable_git_versioning()
 
     # Register dataset in MLflow
     experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-graph-extraction")
@@ -2544,6 +2564,7 @@ def run_onboarding_evaluation(
     # Set up MLflow
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-onboarding")
+    _enable_git_versioning()
 
     # Register dataset in MLflow
     experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-onboarding")
@@ -3109,6 +3130,7 @@ def run_tone_evaluation(
 
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-tone")
+    _enable_git_versioning()
     experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-tone")
     mlflow_records = prepare_tone_records(dataset)
     mlflow_dataset = get_or_create_dataset(dataset_path=dataset_path, version=dataset.version, experiment_id=experiment_id, records=mlflow_records)
@@ -3224,6 +3246,7 @@ def run_returning_greeting_evaluation(
 
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-greeting")
+    _enable_git_versioning()
     experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-greeting")
     mlflow_records = prepare_returning_greeting_records(dataset)
     mlflow_dataset = get_or_create_dataset(dataset_path=dataset_path, version=dataset.version, experiment_id=experiment_id, records=mlflow_records)
@@ -3343,6 +3366,7 @@ def run_routing_evaluation(
 
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-routing")
+    _enable_git_versioning()
     experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-routing")
     mlflow_records = prepare_routing_records(dataset)
     mlflow_dataset = get_or_create_dataset(dataset_path=dataset_path, version=dataset.version, experiment_id=experiment_id, records=mlflow_records)
@@ -3475,6 +3499,7 @@ def run_memory_informed_evaluation(
 
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-memory-informed")
+    _enable_git_versioning()
     experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-memory-informed")
     mlflow_records = prepare_memory_informed_records(dataset)
     mlflow_dataset = get_or_create_dataset(dataset_path=dataset_path, version=dataset.version, experiment_id=experiment_id, records=mlflow_records)
@@ -3643,6 +3668,7 @@ def run_multi_cap_evaluation(
 
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-multi-cap")
+    _enable_git_versioning()
     experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-multi-cap")
     mlflow_records = prepare_multi_cap_records(dataset)
     mlflow_dataset = get_or_create_dataset(dataset_path=dataset_path, version=dataset.version, experiment_id=experiment_id, records=mlflow_records)
@@ -3900,6 +3926,7 @@ def run_notification_judgment_evaluation(
 
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-notification-judgment")
+    _enable_git_versioning()
     experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-notification-judgment")
     mlflow_records = prepare_notification_judgment_records(dataset)
     mlflow_dataset = get_or_create_dataset(dataset_path=dataset_path, version=dataset.version, experiment_id=experiment_id, records=mlflow_records)
@@ -4045,6 +4072,7 @@ def run_error_recovery_evaluation(
 
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-error-recovery")
+    _enable_git_versioning()
     experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-error-recovery")
     mlflow_records = prepare_error_recovery_records(dataset)
     mlflow_dataset = get_or_create_dataset(dataset_path=dataset_path, version=dataset.version, experiment_id=experiment_id, records=mlflow_records)
@@ -4164,6 +4192,7 @@ def run_schedule_cron_evaluation(
 
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-schedule-cron")
+    _enable_git_versioning()
     experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-schedule-cron")
     mlflow_records = prepare_schedule_cron_records(dataset)
     mlflow_dataset = get_or_create_dataset(dataset_path=dataset_path, version=dataset.version, experiment_id=experiment_id, records=mlflow_records)
@@ -4310,6 +4339,7 @@ def run_knowledge_connections_evaluation(
 
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-knowledge-connections")
+    _enable_git_versioning()
     experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-knowledge-connections")
     mlflow_records = prepare_knowledge_connections_records(dataset)
     mlflow_dataset = get_or_create_dataset(dataset_path=dataset_path, version=dataset.version, experiment_id=experiment_id, records=mlflow_records)
@@ -4435,6 +4465,7 @@ def run_contradiction_handling_evaluation(
 
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-contradiction")
+    _enable_git_versioning()
     experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-contradiction")
     mlflow_records = prepare_contradiction_handling_records(dataset)
     mlflow_dataset = get_or_create_dataset(dataset_path=dataset_path, version=dataset.version, experiment_id=experiment_id, records=mlflow_records)
@@ -4599,6 +4630,7 @@ def run_long_conversation_evaluation(
 
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment_name + "-long-conversation")
+    _enable_git_versioning()
     experiment_id = get_experiment_id(settings.mlflow_experiment_name + "-long-conversation")
     mlflow_records = prepare_long_conversation_records(dataset)
     mlflow_dataset = get_or_create_dataset(dataset_path=dataset_path, version=dataset.version, experiment_id=experiment_id, records=mlflow_records)

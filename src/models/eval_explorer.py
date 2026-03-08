@@ -120,3 +120,50 @@ class DatasetDetailResponse(BaseModel):
 
 class DatasetsResponse(BaseModel):
     datasets: list[DatasetDetailResponse]
+
+
+# ---------------------------------------------------------------------------
+# Agent version models
+# ---------------------------------------------------------------------------
+
+
+class ExperimentResultResponse(BaseModel):
+    experiment_name: str
+    experiment_id: str
+    eval_type: str
+    run_count: int
+    pass_rate: Optional[float] = None
+    average_quality: Optional[float] = None
+    latest_run_id: Optional[str] = None
+
+
+class AgentVersionSummaryResponse(BaseModel):
+    model_id: str
+    name: str
+    git_branch: str
+    git_commit: str
+    git_commit_short: str
+    git_dirty: bool
+    creation_timestamp: str
+    aggregate_quality: Optional[float] = None
+    experiment_count: int
+    total_traces: int
+
+
+class AgentVersionDetailResponse(BaseModel):
+    model_id: str
+    name: str
+    git_branch: str
+    git_commit: str
+    git_commit_short: str
+    git_dirty: bool
+    git_diff: str
+    git_repo_url: str
+    creation_timestamp: str
+    aggregate_quality: Optional[float] = None
+    experiment_results: list[ExperimentResultResponse]
+    total_traces: int
+
+
+class AgentVersionsResponse(BaseModel):
+    agents: list[AgentVersionSummaryResponse]

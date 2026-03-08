@@ -17,10 +17,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from src.api.dependencies import require_admin
 from src.models.eval_explorer import (
+    AgentVersionDetailResponse,
+    AgentVersionSummaryResponse,
+    AgentVersionsResponse,
     AssessmentDetailResponse,
     DatasetCaseResponse,
     DatasetDetailResponse,
     DatasetsResponse,
+    ExperimentResultResponse,
     ExperimentSummaryResponse,
     ExperimentsResponse,
     QualityTrendPointResponse,
@@ -585,3 +589,220 @@ async def get_dataset(
         case_count=len(cases_data),
         cases=cases,
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/evals/explorer/agents
+# ---------------------------------------------------------------------------
+
+
+@router.get("/agents")
+async def list_agent_versions(
+    admin: User = Depends(require_admin),
+) -> AgentVersionsResponse:
+    """List all agent versions (LoggedModels) with git metadata."""
+    loop = asyncio.get_event_loop()
+
+    def _fetch():
+        import mlflow
+        from datetime import datetime, timezone
+
+        try:
+            models = mlflow.search_logged_models(output_format="list")
+        except Exception:
+            return []
+
+        results = []
+        for model in models:
+            tags = model.tags or {}
+            git_branch = tags.get("mlflow.source.git.branch", "")
+            git_commit = tags.get("mlflow.source.git.commit", "")
+            git_dirty = tags.get("mlflow.source.git.dirty", "false").lower() == "true"
+
+            if not git_commit:
+                continue  # Skip models without git versioning
+
+            git_commit_short = git_commit[:7] if git_commit else ""
+
+            # Parse creation timestamp
+            ts = model.creation_timestamp
+            if isinstance(ts, (int, float)):
+                creation_ts = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).isoformat()
+            else:
+                creation_ts = str(ts) if ts else ""
+
+            # Aggregate quality from model metrics
+            aggregate_quality = None
+            if model.metrics:
+                quality_values = []
+                for m in model.metrics:
+                    if "universal_quality" in m.key:
+                        quality_values.append(m.value)
+                if quality_values:
+                    aggregate_quality = round(sum(quality_values) / len(quality_values), 2)
+
+            results.append(AgentVersionSummaryResponse(
+                model_id=model.model_id,
+                name=model.name or "",
+                git_branch=git_branch,
+                git_commit=git_commit,
+                git_commit_short=git_commit_short,
+                git_dirty=git_dirty,
+                creation_timestamp=creation_ts,
+                aggregate_quality=aggregate_quality,
+                experiment_count=0,  # Enriched in detail endpoint
+                total_traces=0,  # Enriched in detail endpoint
+            ))
+
+        # Sort by creation timestamp descending (newest first)
+        results.sort(key=lambda r: r.creation_timestamp, reverse=True)
+        return results
+
+    agents = await loop.run_in_executor(None, _fetch)
+    logger.info("eval_explorer_agents", count=len(agents))
+    return AgentVersionsResponse(agents=agents)
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/evals/explorer/agents/{model_id}
+# ---------------------------------------------------------------------------
+
+
+@router.get("/agents/{model_id}")
+async def get_agent_version_detail(
+    model_id: str,
+    admin: User = Depends(require_admin),
+) -> AgentVersionDetailResponse:
+    """Get detailed info for a single agent version."""
+    from eval.pipeline.aggregator import get_eval_experiments
+
+    loop = asyncio.get_event_loop()
+
+    def _fetch():
+        import mlflow
+        from datetime import datetime, timezone
+
+        try:
+            model = mlflow.get_logged_model(model_id)
+        except Exception:
+            raise FileNotFoundError(f"Agent version {model_id} not found")
+
+        tags = model.tags or {}
+        git_branch = tags.get("mlflow.source.git.branch", "")
+        git_commit = tags.get("mlflow.source.git.commit", "")
+        git_dirty = tags.get("mlflow.source.git.dirty", "false").lower() == "true"
+        git_diff = tags.get("mlflow.source.git.diff", "")
+        git_repo_url = tags.get("mlflow.source.git.repoURL", "")
+        git_commit_short = git_commit[:7] if git_commit else ""
+
+        ts = model.creation_timestamp
+        if isinstance(ts, (int, float)):
+            creation_ts = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).isoformat()
+        else:
+            creation_ts = str(ts) if ts else ""
+
+        # Get traces for this model
+        try:
+            traces = mlflow.search_traces(model_id=model_id, return_type="list")
+        except Exception:
+            traces = []
+
+        total_traces = len(traces)
+
+        # Aggregate per-experiment results from traces
+        experiment_results_map: dict = {}
+        for trace in traces:
+            info = trace.info
+            exp_id = getattr(info, "experiment_id", None)
+            if not exp_id:
+                continue
+            if exp_id not in experiment_results_map:
+                experiment_results_map[exp_id] = {
+                    "run_ids": set(),
+                    "quality_scores": [],
+                    "pass_count": 0,
+                    "total_count": 0,
+                }
+            entry = experiment_results_map[exp_id]
+
+            # Track runs
+            source_run = ""
+            if hasattr(info, "request_metadata") and info.request_metadata:
+                source_run = info.request_metadata.get("mlflow.sourceRun", "")
+            if source_run:
+                entry["run_ids"].add(source_run)
+
+            # Track assessments for quality
+            if hasattr(info, "assessments") and info.assessments:
+                for a in info.assessments:
+                    val = getattr(a, "value", None)
+                    if val is None and hasattr(a, "feedback") and a.feedback is not None:
+                        val = getattr(a.feedback, "value", None)
+                    if val is not None:
+                        try:
+                            score = float(val) if not isinstance(val, bool) else (1.0 if val else 0.0)
+                            if 1.0 <= score <= 5.0:
+                                entry["quality_scores"].append(score)
+                                entry["total_count"] += 1
+                                if score >= 4.0:
+                                    entry["pass_count"] += 1
+                        except (ValueError, TypeError):
+                            pass
+
+        # Map experiment IDs to names/types
+        experiments_list = get_eval_experiments()
+        exp_name_map: dict = {}
+        for exp_name, eval_type in experiments_list:
+            try:
+                exp = mlflow.get_experiment_by_name(exp_name)
+                if exp:
+                    exp_name_map[exp.experiment_id] = (exp_name, eval_type)
+            except Exception:
+                continue
+
+        experiment_results = []
+        for exp_id, data in experiment_results_map.items():
+            exp_name, eval_type = exp_name_map.get(exp_id, (f"experiment-{exp_id}", "unknown"))
+            avg_quality = round(sum(data["quality_scores"]) / len(data["quality_scores"]), 2) if data["quality_scores"] else None
+            pass_rate = round(data["pass_count"] / data["total_count"], 3) if data["total_count"] > 0 else None
+            run_ids = sorted(data["run_ids"])
+
+            experiment_results.append(ExperimentResultResponse(
+                experiment_name=exp_name,
+                experiment_id=exp_id,
+                eval_type=eval_type,
+                run_count=len(run_ids),
+                pass_rate=pass_rate,
+                average_quality=avg_quality,
+                latest_run_id=run_ids[-1] if run_ids else None,
+            ))
+
+        # Aggregate quality across experiments
+        all_quality = [er.average_quality for er in experiment_results if er.average_quality is not None]
+        aggregate_quality = round(sum(all_quality) / len(all_quality), 2) if all_quality else None
+
+        return AgentVersionDetailResponse(
+            model_id=model.model_id,
+            name=model.name or "",
+            git_branch=git_branch,
+            git_commit=git_commit,
+            git_commit_short=git_commit_short,
+            git_dirty=git_dirty,
+            git_diff=git_diff,
+            git_repo_url=git_repo_url,
+            creation_timestamp=creation_ts,
+            aggregate_quality=aggregate_quality,
+            experiment_results=experiment_results,
+            total_traces=total_traces,
+        )
+
+    try:
+        detail = await loop.run_in_executor(None, _fetch)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent version {model_id} not found",
+        )
+
+    logger.info("eval_explorer_agent_detail", model_id=model_id)
+    return detail

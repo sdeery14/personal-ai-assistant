@@ -108,3 +108,40 @@ export interface DatasetDetail {
 export interface DatasetsResponse {
   datasets: DatasetDetail[];
 }
+
+// ---------------------------------------------------------------------------
+// Agent version types
+// ---------------------------------------------------------------------------
+
+export interface ExperimentResult {
+  experiment_name: string;
+  experiment_id: string;
+  eval_type: string;
+  run_count: number;
+  pass_rate: number | null;
+  average_quality: number | null;
+  latest_run_id: string | null;
+}
+
+export interface AgentVersionSummary {
+  model_id: string;
+  name: string;
+  git_branch: string;
+  git_commit: string;
+  git_commit_short: string;
+  git_dirty: boolean;
+  creation_timestamp: string;
+  aggregate_quality: number | null;
+  experiment_count: number;
+  total_traces: number;
+}
+
+export interface AgentVersionDetail extends AgentVersionSummary {
+  git_diff: string;
+  git_repo_url: string;
+  experiment_results: ExperimentResult[];
+}
+
+export interface AgentVersionsResponse {
+  agents: AgentVersionSummary[];
+}

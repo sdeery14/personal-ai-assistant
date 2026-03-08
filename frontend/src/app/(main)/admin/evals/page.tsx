@@ -1,9 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import { Button, Card } from "@/components/ui";
+import { useState } from "react";
 import { Tabs } from "@/components/ui/Tabs";
 import { TrendsTab } from "@/components/eval-dashboard/TrendsTab";
 import { PromoteTab } from "@/components/eval-dashboard/PromoteTab";
@@ -18,24 +15,13 @@ const TABS = [
 ];
 
 export default function EvalDashboardPage() {
-  const { data: session } = useSession();
-  const router = useRouter();
-  const isAdmin = (session?.user as { isAdmin?: boolean })?.isAdmin;
   const [activeTab, setActiveTab] = useState("trends");
 
-  useEffect(() => {
-    if (session && !isAdmin) {
-      router.replace("/chat");
-    }
-  }, [session, isAdmin, router]);
-
-  if (!isAdmin) return null;
-
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-          Eval Dashboard
+          Dashboard
         </h1>
       </div>
 
@@ -47,6 +33,6 @@ export default function EvalDashboardPage() {
         {activeTab === "run-evals" && <RunEvalsTab />}
         {activeTab === "rollback" && <RollbackTab />}
       </div>
-    </div>
+    </>
   );
 }
