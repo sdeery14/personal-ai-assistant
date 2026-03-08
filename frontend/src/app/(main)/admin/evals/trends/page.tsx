@@ -2,8 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { TrendsTab } from "@/components/eval-dashboard/TrendsTab";
-import { UniversalQualityChart } from "@/components/eval-explorer/UniversalQualityChart";
-import { VersionTrendChart } from "@/components/eval-explorer/VersionTrendChart";
+import { QualityTrendChart } from "@/components/eval-explorer/QualityTrendChart";
 import { useUniversalQualityTrend, useAgentVersions } from "@/hooks/useEvalExplorer";
 
 export default function TrendsPage() {
@@ -19,20 +18,14 @@ export default function TrendsPage() {
 
       <div className="mb-6">
         <h2 className="mb-2 text-lg font-semibold text-gray-800 dark:text-gray-200">
-          Agent Quality by Version
+          Quality by Agent Version
         </h2>
-        <VersionTrendChart
+        <QualityTrendChart
           agents={agents}
-          isLoading={agentsLoading}
+          points={points}
+          isLoading={agentsLoading || trendsLoading}
           onVersionClick={(modelId) => router.push(`/admin/evals/agents/${modelId}`)}
         />
-      </div>
-
-      <div className="mb-6">
-        <h2 className="mb-2 text-lg font-semibold text-gray-800 dark:text-gray-200">
-          Universal Quality
-        </h2>
-        <UniversalQualityChart points={points} isLoading={trendsLoading} />
       </div>
 
       <div>
