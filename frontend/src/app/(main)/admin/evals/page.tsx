@@ -3,19 +3,15 @@
 import { useState } from "react";
 import { Tabs } from "@/components/ui/Tabs";
 import { TrendsTab } from "@/components/eval-dashboard/TrendsTab";
-import { PromoteTab } from "@/components/eval-dashboard/PromoteTab";
 import { RunEvalsTab } from "@/components/eval-dashboard/RunEvalsTab";
-import { RollbackTab } from "@/components/eval-dashboard/RollbackTab";
 
 const TABS = [
-  { id: "trends", label: "Trends" },
-  { id: "promote", label: "Promote" },
+  { id: "overview", label: "Overview" },
   { id: "run-evals", label: "Run Evals" },
-  { id: "rollback", label: "Rollback" },
 ];
 
 export default function EvalDashboardPage() {
-  const [activeTab, setActiveTab] = useState("trends");
+  const [activeTab, setActiveTab] = useState("overview");
 
   return (
     <>
@@ -28,10 +24,8 @@ export default function EvalDashboardPage() {
       <Tabs tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} />
 
       <div className="mt-4">
-        {activeTab === "trends" && <TrendsTab />}
-        {activeTab === "promote" && <PromoteTab />}
+        {activeTab === "overview" && <TrendsTab />}
         {activeTab === "run-evals" && <RunEvalsTab />}
-        {activeTab === "rollback" && <RollbackTab />}
       </div>
     </>
   );

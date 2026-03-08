@@ -6,8 +6,6 @@ Usage:
 Commands:
     trend       View eval pass rate trends over time
     check       Detect regressions against previous baseline
-    promote     Gate and execute prompt promotion
-    rollback    Revert prompt alias to previous version
     run-evals   Run eval suite (core subset or full)
 """
 

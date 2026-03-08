@@ -1,1 +1,1 @@
-"""Eval Dashboard & Regression Pipeline — CLI tools for trend tracking, regression detection, and prompt promotion."""
+"""Eval Dashboard & Regression Pipeline — CLI tools for trend tracking and regression detection."""

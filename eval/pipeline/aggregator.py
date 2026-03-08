@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import mlflow
 import structlog
 
-from eval.pipeline.models import PromptChange, RunCaseResult, RunDetail, TrendPoint, TrendSummary
+from eval.pipeline.models import RunCaseResult, RunDetail, TrendPoint, TrendSummary
 from eval.pipeline_config import EVAL_SESSION_TYPES, EXPERIMENT_SUFFIXES, get_base_experiment_name, get_metric_names, get_primary_scorer
 
 logger = structlog.get_logger(__name__)
@@ -97,15 +97,6 @@ def get_trend_points(
         total_cases = int(_safe_float(row, metric_names["total_cases"], 0))
         error_cases = int(_safe_float(row, metric_names["error_cases"], 0))
 
-        # Extract prompt versions from params.prompt.* columns
-        prompt_versions: dict[str, str] = {}
-        for col in runs_df.columns:
-            if col.startswith("params.prompt."):
-                val = row.get(col)
-                if val is not None and str(val) != "nan":
-                    prompt_name = col[len("params.prompt."):]
-                    prompt_versions[prompt_name] = str(val)
-
         # Compute eval_status from existing metrics
         run_status = row.get("status", "FINISHED")
         if run_status == "FAILED":
@@ -125,7 +116,6 @@ def get_trend_points(
                 average_score=average_score,
                 total_cases=total_cases,
                 error_cases=error_cases,
-                prompt_versions=prompt_versions,
                 eval_status=eval_status,
             )
         )
@@ -146,19 +136,16 @@ def build_trend_summary(eval_type: str, points: list[TrendPoint]) -> TrendSummar
             points=[],
             latest_pass_rate=0.0,
             trend_direction="stable",
-            prompt_changes=[],
         )
 
     latest_pass_rate = points[-1].pass_rate
     trend_direction = _compute_trend_direction(points)
-    prompt_changes = _detect_prompt_changes(points)
 
     return TrendSummary(
         eval_type=eval_type,
         points=points,
         latest_pass_rate=latest_pass_rate,
         trend_direction=trend_direction,
-        prompt_changes=prompt_changes,
     )
 
 
@@ -182,34 +169,6 @@ def _compute_trend_direction(points: list[TrendPoint]) -> str:
     if delta < -0.01:
         return "degrading"
     return "stable"
-
-
-def _detect_prompt_changes(points: list[TrendPoint]) -> list[PromptChange]:
-    """Detect prompt version transitions between consecutive runs."""
-    changes: list[PromptChange] = []
-
-    for i in range(1, len(points)):
-        prev = points[i - 1]
-        curr = points[i]
-
-        # Compare prompt versions
-        all_prompts = set(prev.prompt_versions.keys()) | set(curr.prompt_versions.keys())
-        for prompt_name in all_prompts:
-            prev_version = prev.prompt_versions.get(prompt_name)
-            curr_version = curr.prompt_versions.get(prompt_name)
-
-            if prev_version != curr_version and prev_version is not None and curr_version is not None:
-                changes.append(
-                    PromptChange(
-                        timestamp=curr.timestamp,
-                        run_id=curr.run_id,
-                        prompt_name=prompt_name,
-                        from_version=prev_version,
-                        to_version=curr_version,
-                    )
-                )
-
-    return changes
 
 
 def get_run_detail(run_id: str, eval_type: str) -> RunDetail:

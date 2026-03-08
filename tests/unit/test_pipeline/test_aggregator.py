@@ -31,7 +31,6 @@ def _make_point(
     average_score: float = 4.0,
     eval_type: str = "tone",
     hours_offset: int = 0,
-    prompt_versions: dict | None = None,
     error_cases: int = 0,
 ) -> TrendPoint:
     return TrendPoint(
@@ -43,7 +42,6 @@ def _make_point(
         average_score=average_score,
         total_cases=10,
         error_cases=error_cases,
-        prompt_versions=prompt_versions or {"orchestrator-base": "v1"},
         eval_status="complete" if error_cases == 0 else "partial",
     )
 
@@ -256,28 +254,6 @@ class TestGetTrendPoints:
         assert points[0].error_cases == 2
 
     @patch("eval.pipeline.aggregator.mlflow")
-    def test_extracts_prompt_versions(self, mock_mlflow):
-        df = _make_runs_df([
-            {
-                "run_id": "run1",
-                "start_time": pd.Timestamp("2026-02-24 10:00:00", tz="UTC"),
-                "status": "FINISHED",
-                "metrics.tone_quality_pass_rate": 0.90,
-                "metrics.tone_error_cases": 0,
-                "params.total_cases": 10,
-                "params.prompt.orchestrator-base": "v2",
-                "params.prompt.onboarding": "v1",
-            },
-        ])
-        mock_mlflow.search_runs.return_value = df
-
-        points = get_trend_points("test", "tone")
-        assert points[0].prompt_versions == {
-            "orchestrator-base": "v2",
-            "onboarding": "v1",
-        }
-
-    @patch("eval.pipeline.aggregator.mlflow")
     def test_computes_eval_status_complete(self, mock_mlflow):
         df = _make_runs_df([
             {
@@ -352,7 +328,6 @@ class TestBuildTrendSummary:
         assert summary.eval_type == "tone"
         assert summary.latest_pass_rate == 0.0
         assert summary.trend_direction == "stable"
-        assert summary.prompt_changes == []
 
     def test_improving_trend(self):
         points = [
@@ -381,41 +356,6 @@ class TestBuildTrendSummary:
         ]
         summary = build_trend_summary("tone", points)
         assert summary.trend_direction == "stable"
-
-    def test_detects_prompt_changes(self):
-        points = [
-            _make_point(
-                run_id="r1",
-                hours_offset=0,
-                prompt_versions={"orchestrator-base": "v1"},
-            ),
-            _make_point(
-                run_id="r2",
-                hours_offset=1,
-                prompt_versions={"orchestrator-base": "v2"},
-            ),
-        ]
-        summary = build_trend_summary("tone", points)
-        assert len(summary.prompt_changes) == 1
-        assert summary.prompt_changes[0].prompt_name == "orchestrator-base"
-        assert summary.prompt_changes[0].from_version == "v1"
-        assert summary.prompt_changes[0].to_version == "v2"
-
-    def test_no_prompt_changes_when_versions_stable(self):
-        points = [
-            _make_point(
-                run_id="r1",
-                hours_offset=0,
-                prompt_versions={"orchestrator-base": "v1"},
-            ),
-            _make_point(
-                run_id="r2",
-                hours_offset=1,
-                prompt_versions={"orchestrator-base": "v1"},
-            ),
-        ]
-        summary = build_trend_summary("tone", points)
-        assert summary.prompt_changes == []
 
     def test_single_point(self):
         points = [_make_point(run_id="r1", pass_rate=0.90)]

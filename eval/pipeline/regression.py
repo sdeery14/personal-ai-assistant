@@ -5,7 +5,7 @@ from __future__ import annotations
 import structlog
 
 from eval.pipeline.aggregator import get_eval_experiments, get_trend_points
-from eval.pipeline.models import PromptChange, RegressionReport, TrendPoint
+from eval.pipeline.models import RegressionReport, TrendPoint
 from eval.pipeline_config import get_threshold
 
 logger = structlog.get_logger(__name__)
@@ -68,8 +68,6 @@ def compare_runs(
         threshold=threshold,
     )
 
-    changed_prompts = _detect_prompt_changes(baseline, current)
-
     return RegressionReport(
         eval_type=current.eval_type,
         baseline_run_id=baseline.run_id,
@@ -79,7 +77,6 @@ def compare_runs(
         delta_pp=delta_pp,
         threshold=threshold,
         verdict=verdict,
-        changed_prompts=changed_prompts,
         baseline_timestamp=baseline.timestamp,
         current_timestamp=current.timestamp,
     )
@@ -131,27 +128,3 @@ def check_all_regressions(
     return reports
 
 
-def _detect_prompt_changes(
-    baseline: TrendPoint,
-    current: TrendPoint,
-) -> list[PromptChange]:
-    """Detect prompt version changes between two runs."""
-    changes: list[PromptChange] = []
-
-    all_prompts = set(baseline.prompt_versions.keys()) | set(current.prompt_versions.keys())
-    for prompt_name in sorted(all_prompts):
-        prev_version = baseline.prompt_versions.get(prompt_name)
-        curr_version = current.prompt_versions.get(prompt_name)
-
-        if prev_version != curr_version and prev_version is not None and curr_version is not None:
-            changes.append(
-                PromptChange(
-                    timestamp=current.timestamp,
-                    run_id=current.run_id,
-                    prompt_name=prompt_name,
-                    from_version=prev_version,
-                    to_version=curr_version,
-                )
-            )
-
-    return changes

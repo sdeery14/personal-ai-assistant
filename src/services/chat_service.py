@@ -19,8 +19,7 @@ from src.services.guardrails import validate_input, validate_output
 
 logger = structlog.get_logger(__name__)
 
-# Backward-compatible prompt re-exports — delegate to prompt_service.load_prompt()
-# so existing test imports continue to work while loading from the registry.
+# Prompt constants — read directly from bundled defaults.
 from src.prompts.defaults import PROMPT_DEFAULTS as _PROMPT_DEFAULTS  # noqa: E402
 
 ORCHESTRATOR_BASE_PROMPT = _PROMPT_DEFAULTS["orchestrator-base"]

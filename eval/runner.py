@@ -125,16 +125,8 @@ def _get_git_sha() -> str | None:
 
 
 def _log_prompt_versions():
-    """Log currently active prompt versions as MLflow run params (best-effort)."""
-    try:
-        from src.services.prompt_service import get_active_prompt_versions
-        versions = get_active_prompt_versions()
-        if versions:
-            mlflow.log_params(
-                {f"prompt.{name}": f"v{version}" for name, version in versions.items()}
-            )
-    except Exception:
-        pass
+    """No-op — prompt registry removed; prompts are now bundled defaults only."""
+    pass
 
 
 def _log_git_sha():

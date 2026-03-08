@@ -16,21 +16,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from src.api.dependencies import require_admin
 from src.models.eval_dashboard import (
-    AuditRecordResponse,
     EvalRunRequest,
     EvalRunResultResponse,
     EvalRunStatusResponse,
-    PromotionCheckRequest,
-    PromotionExecuteRequest,
-    PromotionEvalCheckResponse,
-    PromotionGateResponse,
     PromptChangeResponse,
-    PromptListItem,
-    PromptsListResponse,
     RegressionsListResponse,
     RegressionReportResponse,
-    RollbackExecuteRequest,
-    RollbackInfoResponse,
     RunCaseResultResponse,
     RunDetailResponse,
     TrendPointResponse,
@@ -64,18 +55,8 @@ def _trend_point_response(point) -> TrendPointResponse:
         average_score=point.average_score,
         total_cases=point.total_cases,
         error_cases=point.error_cases,
-        prompt_versions=point.prompt_versions,
+        prompt_versions={},
         eval_status=point.eval_status,
-    )
-
-
-def _prompt_change_response(change) -> PromptChangeResponse:
-    return PromptChangeResponse(
-        timestamp=change.timestamp,
-        run_id=change.run_id,
-        prompt_name=change.prompt_name,
-        from_version=change.from_version,
-        to_version=change.to_version,
     )
 
 
@@ -89,7 +70,7 @@ def _trend_summary_response(summary) -> TrendSummaryResponse:
         trend_direction=summary.trend_direction,
         run_count=len(summary.points),
         points=[_trend_point_response(p) for p in summary.points],
-        prompt_changes=[_prompt_change_response(c) for c in summary.prompt_changes],
+        prompt_changes=[],
         pass_rate_description=descs["pass_rate"],
         average_score_description=descs["average_score"],
     )
@@ -105,22 +86,9 @@ def _regression_report_response(report) -> RegressionReportResponse:
         delta_pp=report.delta_pp,
         threshold=report.threshold,
         verdict=report.verdict,
-        changed_prompts=[_prompt_change_response(c) for c in report.changed_prompts],
+        changed_prompts=[],
         baseline_timestamp=report.baseline_timestamp,
         current_timestamp=report.current_timestamp,
-    )
-
-
-def _audit_record_response(record) -> AuditRecordResponse:
-    return AuditRecordResponse(
-        action=record.action,
-        prompt_name=record.prompt_name,
-        from_version=record.from_version,
-        to_version=record.to_version,
-        alias=record.alias,
-        timestamp=record.timestamp,
-        actor=record.actor,
-        reason=record.reason,
     )
 
 
@@ -231,118 +199,6 @@ async def get_regressions(
     return RegressionsListResponse(
         reports=response_reports, has_regressions=has_regressions
     )
-
-
-# ---------------------------------------------------------------------------
-# GET /admin/evals/prompts
-# ---------------------------------------------------------------------------
-
-
-@router.get("/prompts")
-async def list_prompts(
-    admin: User = Depends(require_admin),
-) -> PromptsListResponse:
-    """List all registered prompts for promotion/rollback selection."""
-    from src.services.prompt_service import get_active_prompt_versions
-
-    versions = get_active_prompt_versions()
-    prompts = [
-        PromptListItem(name=name, current_version=ver)
-        for name, ver in sorted(versions.items())
-    ]
-    return PromptsListResponse(prompts=prompts)
-
-
-# ---------------------------------------------------------------------------
-# POST /admin/evals/promote/check
-# ---------------------------------------------------------------------------
-
-
-@router.post("/promote/check")
-async def check_promotion(
-    request: PromotionCheckRequest,
-    admin: User = Depends(require_admin),
-) -> PromotionGateResponse:
-    """Run promotion gate check (does NOT execute the promotion)."""
-    from eval.pipeline.promotion import check_promotion_gate
-
-    result = check_promotion_gate(
-        prompt_name=request.prompt_name,
-        from_alias=request.from_alias,
-        to_alias=request.to_alias,
-        version=request.version,
-    )
-
-    logger.info(
-        "eval_dashboard_promote_check",
-        prompt=request.prompt_name,
-        allowed=result.allowed,
-    )
-    return PromotionGateResponse(
-        allowed=result.allowed,
-        prompt_name=result.prompt_name,
-        from_alias=result.from_alias,
-        to_alias=result.to_alias,
-        version=result.version,
-        eval_results=[
-            PromotionEvalCheckResponse(
-                eval_type=c.eval_type,
-                pass_rate=c.pass_rate,
-                threshold=c.threshold,
-                passed=c.passed,
-                run_id=c.run_id,
-            )
-            for c in result.eval_results
-        ],
-        blocking_evals=result.blocking_evals,
-        justifying_run_ids=result.justifying_run_ids,
-    )
-
-
-# ---------------------------------------------------------------------------
-# POST /admin/evals/promote/execute
-# ---------------------------------------------------------------------------
-
-
-@router.post("/promote/execute")
-async def execute_promotion_endpoint(
-    request: PromotionExecuteRequest,
-    admin: User = Depends(require_admin),
-) -> AuditRecordResponse:
-    """Execute a prompt promotion (optionally forced)."""
-    from eval.pipeline.promotion import check_promotion_gate, execute_promotion
-
-    if not request.force:
-        gate = check_promotion_gate(
-            prompt_name=request.prompt_name,
-            to_alias=request.to_alias,
-            version=request.version,
-        )
-        if not gate.allowed:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Promotion blocked by failing evals: {', '.join(gate.blocking_evals)}",
-            )
-        justifying_run_ids = gate.justifying_run_ids
-    else:
-        justifying_run_ids = []
-
-    record = execute_promotion(
-        prompt_name=request.prompt_name,
-        to_alias=request.to_alias,
-        version=request.version,
-        actor=admin.username,
-        justifying_run_ids=justifying_run_ids,
-    )
-
-    logger.info(
-        "eval_dashboard_promote_execute",
-        prompt=request.prompt_name,
-        version=request.version,
-        force=request.force,
-        actor=admin.username,
-    )
-    return _audit_record_response(record)
 
 
 # ---------------------------------------------------------------------------
@@ -477,58 +333,3 @@ def _build_run_status_response() -> EvalRunStatusResponse:
     )
 
 
-# ---------------------------------------------------------------------------
-# GET /admin/evals/rollback/info
-# ---------------------------------------------------------------------------
-
-
-@router.get("/rollback/info")
-async def get_rollback_info(
-    admin: User = Depends(require_admin),
-    prompt_name: str = Query(...),
-    alias: str = Query(default="production"),
-) -> RollbackInfoResponse:
-    """Get rollback information for a prompt (current and previous version)."""
-    from eval.pipeline.rollback import find_previous_version
-    from src.services.prompt_service import load_prompt_version
-
-    current = load_prompt_version(prompt_name, alias)
-    previous = find_previous_version(prompt_name, alias)
-
-    return RollbackInfoResponse(
-        prompt_name=prompt_name,
-        current_version=current.version,
-        previous_version=previous,
-        alias=alias,
-    )
-
-
-# ---------------------------------------------------------------------------
-# POST /admin/evals/rollback/execute
-# ---------------------------------------------------------------------------
-
-
-@router.post("/rollback/execute")
-async def execute_rollback_endpoint(
-    request: RollbackExecuteRequest,
-    admin: User = Depends(require_admin),
-) -> AuditRecordResponse:
-    """Execute a prompt rollback."""
-    from eval.pipeline.rollback import execute_rollback
-
-    record = execute_rollback(
-        prompt_name=request.prompt_name,
-        alias=request.alias,
-        previous_version=request.previous_version,
-        reason=request.reason,
-        actor=admin.username,
-    )
-
-    logger.info(
-        "eval_dashboard_rollback",
-        prompt=request.prompt_name,
-        from_version=record.from_version,
-        to_version=record.to_version,
-        actor=admin.username,
-    )
-    return _audit_record_response(record)

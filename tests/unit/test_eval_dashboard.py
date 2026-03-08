@@ -42,17 +42,7 @@ class FakeTrendPoint:
     average_score: float = 4.2
     total_cases: int = 10
     error_cases: int = 0
-    prompt_versions: dict = field(default_factory=lambda: {"system": "1"})
     eval_status: str = "complete"
-
-
-@dataclass
-class FakePromptChange:
-    timestamp: datetime = field(default_factory=lambda: datetime(2026, 2, 24, tzinfo=timezone.utc))
-    run_id: str = "run-1"
-    prompt_name: str = "system"
-    from_version: str = "1"
-    to_version: str = "2"
 
 
 @dataclass
@@ -77,50 +67,6 @@ class FakeRegressionReport:
     changed_prompts: list = field(default_factory=list)
     baseline_timestamp: datetime = field(default_factory=lambda: datetime(2026, 2, 23, tzinfo=timezone.utc))
     current_timestamp: datetime = field(default_factory=lambda: datetime(2026, 2, 24, tzinfo=timezone.utc))
-
-
-@dataclass
-class FakePromotionEvalCheck:
-    eval_type: str = "quality"
-    pass_rate: float = 0.90
-    threshold: float = 0.80
-    passed: bool = True
-    run_id: str = "run-1"
-
-
-@dataclass
-class FakePromotionResult:
-    allowed: bool = True
-    prompt_name: str = "system"
-    from_alias: str = "experiment"
-    to_alias: str = "production"
-    version: int = 2
-    eval_results: list = field(default_factory=lambda: [FakePromotionEvalCheck()])
-    blocking_evals: list = field(default_factory=list)
-    justifying_run_ids: list = field(default_factory=lambda: ["run-1"])
-
-
-@dataclass
-class FakeAuditRecord:
-    action: str = "promote"
-    prompt_name: str = "system"
-    from_version: int = 1
-    to_version: int = 2
-    alias: str = "production"
-    timestamp: datetime = field(default_factory=lambda: datetime(2026, 2, 24, tzinfo=timezone.utc))
-    actor: str = "admin"
-    reason: str = ""
-    justifying_run_ids: list = field(default_factory=list)
-
-
-@dataclass
-class FakePromptVersionInfo:
-    name: str = "system"
-    version: int = 2
-    alias: str = "production"
-    template: str = "You are a helpful assistant"
-    model_config: dict = None
-    is_fallback: bool = False
 
 
 @dataclass
@@ -262,117 +208,6 @@ class TestGetRegressions:
 
 
 # ---------------------------------------------------------------------------
-# GET /admin/evals/prompts
-# ---------------------------------------------------------------------------
-
-
-class TestListPrompts:
-    def test_returns_prompt_list(self, client):
-        with patch("src.services.prompt_service.get_active_prompt_versions", return_value={"system": 2, "judge": 1}):
-            resp = client.get("/admin/evals/prompts")
-
-        assert resp.status_code == 200
-        body = resp.json()
-        assert len(body["prompts"]) == 2
-        # Sorted by name
-        assert body["prompts"][0]["name"] == "judge"
-        assert body["prompts"][1]["name"] == "system"
-
-    def test_empty_prompts(self, client):
-        with patch("src.services.prompt_service.get_active_prompt_versions", return_value={}):
-            resp = client.get("/admin/evals/prompts")
-
-        assert resp.status_code == 200
-        assert resp.json()["prompts"] == []
-
-
-# ---------------------------------------------------------------------------
-# POST /admin/evals/promote/check
-# ---------------------------------------------------------------------------
-
-
-class TestPromotionCheck:
-    def test_gate_allowed(self, client):
-        with patch("eval.pipeline.promotion.check_promotion_gate", return_value=FakePromotionResult()):
-            resp = client.post("/admin/evals/promote/check", json={
-                "prompt_name": "system",
-                "from_alias": "experiment",
-                "to_alias": "production",
-            })
-
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["allowed"] is True
-        assert len(body["eval_results"]) == 1
-        assert body["blocking_evals"] == []
-
-    def test_gate_blocked(self, client):
-        result = FakePromotionResult(
-            allowed=False,
-            blocking_evals=["quality"],
-        )
-        with patch("eval.pipeline.promotion.check_promotion_gate", return_value=result):
-            resp = client.post("/admin/evals/promote/check", json={
-                "prompt_name": "system",
-            })
-
-        assert resp.status_code == 200
-        assert resp.json()["allowed"] is False
-        assert "quality" in resp.json()["blocking_evals"]
-
-
-# ---------------------------------------------------------------------------
-# POST /admin/evals/promote/execute
-# ---------------------------------------------------------------------------
-
-
-class TestPromotionExecute:
-    def test_succeeds_when_gate_passes(self, client):
-        with (
-            patch("eval.pipeline.promotion.check_promotion_gate", return_value=FakePromotionResult()),
-            patch("eval.pipeline.promotion.execute_promotion", return_value=FakeAuditRecord()),
-        ):
-            resp = client.post("/admin/evals/promote/execute", json={
-                "prompt_name": "system",
-                "to_alias": "production",
-                "version": 2,
-                "force": False,
-                "reason": "",
-            })
-
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["action"] == "promote"
-        assert body["prompt_name"] == "system"
-
-    def test_returns_403_when_blocked(self, client):
-        blocked = FakePromotionResult(allowed=False, blocking_evals=["quality"])
-        with patch("eval.pipeline.promotion.check_promotion_gate", return_value=blocked):
-            resp = client.post("/admin/evals/promote/execute", json={
-                "prompt_name": "system",
-                "to_alias": "production",
-                "version": 2,
-                "force": False,
-                "reason": "",
-            })
-
-        assert resp.status_code == 403
-
-    def test_force_promotion_bypasses_gate(self, client):
-        with patch("eval.pipeline.promotion.execute_promotion", return_value=FakeAuditRecord(reason="urgent fix")):
-            resp = client.post("/admin/evals/promote/execute", json={
-                "prompt_name": "system",
-                "to_alias": "production",
-                "version": 2,
-                "force": True,
-                "reason": "urgent fix",
-            })
-
-        assert resp.status_code == 200
-        assert resp.json()["action"] == "promote"
-
-
-# ---------------------------------------------------------------------------
 # POST /admin/evals/run & GET /admin/evals/run/status
 # ---------------------------------------------------------------------------
 
@@ -437,57 +272,3 @@ class TestEvalRun:
 
         # Clean up
         mod._eval_run_state = None
-
-
-# ---------------------------------------------------------------------------
-# GET /admin/evals/rollback/info
-# ---------------------------------------------------------------------------
-
-
-class TestRollbackInfo:
-    def test_returns_rollback_info(self, client):
-        with (
-            patch("src.services.prompt_service.load_prompt_version", return_value=FakePromptVersionInfo(version=3)),
-            patch("eval.pipeline.rollback.find_previous_version", return_value=2),
-        ):
-            resp = client.get("/admin/evals/rollback/info?prompt_name=system")
-
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["prompt_name"] == "system"
-        assert body["current_version"] == 3
-        assert body["previous_version"] == 2
-
-    def test_returns_null_previous_for_v1(self, client):
-        with (
-            patch("src.services.prompt_service.load_prompt_version", return_value=FakePromptVersionInfo(version=1)),
-            patch("eval.pipeline.rollback.find_previous_version", return_value=None),
-        ):
-            resp = client.get("/admin/evals/rollback/info?prompt_name=system")
-
-        assert resp.status_code == 200
-        assert resp.json()["previous_version"] is None
-
-
-# ---------------------------------------------------------------------------
-# POST /admin/evals/rollback/execute
-# ---------------------------------------------------------------------------
-
-
-class TestRollbackExecute:
-    def test_execute_rollback_returns_audit(self, client):
-        record = FakeAuditRecord(action="rollback", from_version=3, to_version=2, reason="regression fix")
-        with patch("eval.pipeline.rollback.execute_rollback", return_value=record):
-            resp = client.post("/admin/evals/rollback/execute", json={
-                "prompt_name": "system",
-                "alias": "production",
-                "previous_version": 2,
-                "reason": "regression fix",
-            })
-
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["action"] == "rollback"
-        assert body["from_version"] == 3
-        assert body["to_version"] == 2
-        assert body["reason"] == "regression fix"

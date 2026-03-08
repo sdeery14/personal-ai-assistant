@@ -54,45 +54,6 @@ export interface RegressionsResponse {
   has_regressions: boolean;
 }
 
-export interface PromptListItem {
-  name: string;
-  current_version: number;
-}
-
-export interface PromptsResponse {
-  prompts: PromptListItem[];
-}
-
-export interface PromotionEvalCheck {
-  eval_type: string;
-  pass_rate: number;
-  threshold: number;
-  passed: boolean;
-  run_id: string;
-}
-
-export interface PromotionGateResult {
-  allowed: boolean;
-  prompt_name: string;
-  from_alias: string;
-  to_alias: string;
-  version: number;
-  eval_results: PromotionEvalCheck[];
-  blocking_evals: string[];
-  justifying_run_ids: string[];
-}
-
-export interface AuditRecord {
-  action: string;
-  prompt_name: string;
-  from_version: number;
-  to_version: number;
-  alias: string;
-  timestamp: string;
-  actor: string;
-  reason: string;
-}
-
 export interface EvalRunResult {
   dataset_path: string;
   exit_code: number;
@@ -109,13 +70,6 @@ export interface EvalRunStatus {
   regression_reports: RegressionReport[] | null;
   started_at: string;
   finished_at: string | null;
-}
-
-export interface RollbackInfo {
-  prompt_name: string;
-  current_version: number;
-  previous_version: number | null;
-  alias: string;
 }
 
 export interface RunCaseResult {
