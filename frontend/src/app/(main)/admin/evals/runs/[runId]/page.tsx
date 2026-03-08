@@ -164,13 +164,11 @@ export default function RunDetailPage() {
 
       {evalType && <RunMetadataHeader runId={runId} evalType={evalType} />}
 
-      {sessions.length > 0 && (
-        <div className="mb-6">
-          <SessionViewer sessions={sessions} />
-        </div>
+      {sessions.length > 0 ? (
+        <SessionViewer sessions={sessions} isLoading={isLoading} error={error} />
+      ) : (
+        <TraceViewer traces={traces} isLoading={isLoading} error={error} />
       )}
-
-      <TraceViewer traces={traces} isLoading={isLoading} error={error} />
     </div>
   );
 }

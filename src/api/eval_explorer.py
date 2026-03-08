@@ -100,6 +100,12 @@ def _normalize_assessment(assessment) -> AssessmentDetailResponse:
             if label_score is not None:
                 normalized_score = label_score
                 passed = label_score >= 4.0
+            elif raw_value.lower() in ("yes", "true", "pass"):
+                normalized_score = 5.0
+                passed = True
+            elif raw_value.lower() in ("no", "false", "fail"):
+                normalized_score = 1.0
+                passed = False
             else:
                 # Try numeric string
                 try:
@@ -109,6 +115,10 @@ def _normalize_assessment(assessment) -> AssessmentDetailResponse:
                 except ValueError:
                     pass
 
+    # Ensure raw_value is a simple type for JSON serialization
+    if raw_value is not None and not isinstance(raw_value, (str, int, float, bool)):
+        raw_value = str(raw_value)
+
     return AssessmentDetailResponse(
         name=name,
         raw_value=raw_value if raw_value is not None else "",
@@ -117,6 +127,22 @@ def _normalize_assessment(assessment) -> AssessmentDetailResponse:
         rationale=rationale,
         source_type=source_type,
     )
+
+
+def _extract_case_id_from_session(session_id: str) -> str:
+    """Extract a readable case_id from a session ID.
+
+    Session IDs are like 'onboarding-{uuid}-onboard-busy-engineer'.
+    Extracts the meaningful suffix after the UUID-like prefix.
+    """
+    parts = session_id.split("-")
+    if len(parts) >= 3:
+        for i, part in enumerate(parts[1:], start=1):
+            if len(part) >= 8 and all(c in "0123456789abcdef" for c in part.lower()):
+                remainder = "-".join(parts[i + 1:])
+                if remainder:
+                    return remainder
+    return session_id
 
 
 def _extract_text(data, keys: list[str]) -> str:
@@ -267,7 +293,7 @@ async def list_runs(
                 params=params,
                 metrics=metrics,
                 universal_quality=uq,
-                trace_count=int(metrics.get("total_cases", 0)),
+                trace_count=int(metrics.get("total_cases", 0) or params.get("total_cases", 0)),
                 dataset_id=params.get("mlflow_dataset_id"),
                 git_sha=params.get("git_sha"),
             ))
@@ -329,9 +355,9 @@ async def list_traces(
             data = trace.data
 
             # Extract case ID from metadata or inputs
-            case_id = ""
-            if hasattr(info, "request_metadata") and info.request_metadata:
-                case_id = info.request_metadata.get("case_id", "")
+            # MLflow 3.10+ uses trace_metadata; older versions use request_metadata
+            metadata = getattr(info, "trace_metadata", None) or getattr(info, "request_metadata", None) or {}
+            case_id = metadata.get("case_id", "")
             if not case_id and data and data.request:
                 # Try extracting case_id from genai_evaluate inputs
                 try:
@@ -357,8 +383,8 @@ async def list_traces(
 
             # Session ID
             session_id = None
-            if is_session_type and hasattr(info, "request_metadata") and info.request_metadata:
-                session_id = info.request_metadata.get("mlflow.trace.session")
+            if is_session_type:
+                session_id = metadata.get("mlflow.trace.session")
 
             # Assessments
             assessments = []
@@ -385,9 +411,17 @@ async def list_traces(
                     session_map[session_id] = []
                     session_assessments[session_id] = None
                 session_map[session_id].append(trace_detail)
-                # Last trace's assessment is the session-level assessment
+                # Session-level assessment: prefer LLM_JUDGE, fall back to first scored
                 if assessments:
-                    session_assessments[session_id] = assessments[0]
+                    judge = next(
+                        (a for a in assessments if a.source_type == "LLM_JUDGE"),
+                        next(
+                            (a for a in assessments if a.normalized_score is not None),
+                            None,
+                        ),
+                    )
+                    if judge:
+                        session_assessments[session_id] = judge
 
         # Assign sequential case IDs to traces without one
         case_counter = 0
@@ -396,12 +430,16 @@ async def list_traces(
                 t.case_id = f"case_{case_counter}"
                 case_counter += 1
 
-        # Build session groups
+        # Build session groups with readable case IDs
         sessions = []
         for sid, session_traces in session_map.items():
-            # Sort by trace order (request_time)
+            # Extract readable case ID from session ID
+            # Session IDs are like 'onboarding-{uuid}-onboard-busy-engineer'
+            readable_id = _extract_case_id_from_session(sid)
+            # Reverse to chronological order (MLflow returns newest-first)
+            session_traces.reverse()
             sessions.append(SessionGroupResponse(
-                session_id=sid,
+                session_id=readable_id,
                 eval_type=eval_type,
                 traces=session_traces,
                 session_assessment=session_assessments.get(sid),
