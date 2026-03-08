@@ -19,6 +19,11 @@ vi.mock("recharts", () => ({
   ReferenceDot: () => <div />,
 }));
 
+const mockPush = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush }),
+}));
+
 const mockTrendsRefresh = vi.fn();
 const mockRegressionsRefresh = vi.fn();
 
@@ -37,21 +42,14 @@ const defaultRegressionsReturn = {
   refresh: mockRegressionsRefresh,
 };
 
-const mockFetchDetail = vi.fn();
-const mockClearDetail = vi.fn();
-
-const defaultRunDetailReturn = {
-  detail: null,
-  isLoading: false,
-  error: null as string | null,
-  fetchDetail: mockFetchDetail,
-  clear: mockClearDetail,
-};
-
 vi.mock("@/hooks/useEvalDashboard", () => ({
   useTrends: () => defaultTrendsReturn,
   useRegressions: () => defaultRegressionsReturn,
-  useRunDetail: () => defaultRunDetailReturn,
+}));
+
+vi.mock("@/hooks/useEvalExplorer", () => ({
+  useAgentVersions: () => ({ agents: [], isLoading: false, error: null, refresh: vi.fn() }),
+  useAgentVersionDetail: () => ({ agent: null, isLoading: false, error: null, refresh: vi.fn(), clear: vi.fn() }),
 }));
 
 vi.mock("next-auth/react", () => ({
@@ -115,9 +113,6 @@ describe("TrendsTab", () => {
     defaultRegressionsReturn.hasRegressions = false;
     defaultRegressionsReturn.isLoading = false;
     defaultRegressionsReturn.error = null;
-    defaultRunDetailReturn.detail = null;
-    defaultRunDetailReturn.isLoading = false;
-    defaultRunDetailReturn.error = null;
   });
 
   it("shows empty state when no summaries", () => {

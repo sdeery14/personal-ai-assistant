@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Card, Button } from "@/components/ui";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { TrendChart } from "./TrendChart";
-import { useTrends, useRegressions, useRunDetail } from "@/hooks/useEvalDashboard";
+import { useTrends, useRegressions } from "@/hooks/useEvalDashboard";
 import { useAgentVersions, useAgentVersionDetail } from "@/hooks/useEvalExplorer";
-import { RunDetailPanel } from "./RunDetailPanel";
 import type { TrendSummary, RegressionReport } from "@/types/eval-dashboard";
 import type { AgentConfig } from "@/types/eval-explorer";
 
@@ -304,20 +304,10 @@ function DetailView({
   summary: TrendSummary;
   regression?: RegressionReport;
 }) {
+  const router = useRouter();
   const [detailLimit, setDetailLimit] = useState(10);
   const [sortKey, setSortKey] = useState<SortKey>("timestamp");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const { detail, isLoading: detailLoading, error: detailError, fetchDetail, clear: clearDetail } = useRunDetail();
-
-  // Auto-select the latest run on mount
-  useEffect(() => {
-    if (summary.points.length > 0) {
-      const latest = summary.points[summary.points.length - 1];
-      setSelectedRunId(latest.run_id);
-      fetchDetail(latest.run_id, summary.eval_type);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- run once on mount; key={evalType} handles resets
 
   // Slice points to the most recent N (points are sorted oldest → newest)
   const visiblePoints = summary.points.slice(-detailLimit);
@@ -476,18 +466,12 @@ function DetailView({
             {sortedPoints.map((p) => (
               <tr
                 key={p.run_id}
-                className={`cursor-pointer border-b border-gray-100 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-700/50 ${
-                  selectedRunId === p.run_id ? "bg-blue-50/50 dark:bg-blue-900/10" : ""
-                }`}
-                onClick={() => {
-                  if (selectedRunId === p.run_id) {
-                    setSelectedRunId(null);
-                    clearDetail();
-                  } else {
-                    setSelectedRunId(p.run_id);
-                    fetchDetail(p.run_id, summary.eval_type);
-                  }
-                }}
+                className="cursor-pointer border-b border-gray-100 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-700/50"
+                onClick={() =>
+                  router.push(
+                    `/admin/evals/runs/${p.run_id}?eval_type=${encodeURIComponent(summary.eval_type)}&from=dashboard`
+                  )
+                }
               >
                 <td className="px-2 py-1.5 font-mono text-gray-700 dark:text-gray-300">
                   {p.run_id.slice(0, 8)}
@@ -529,31 +513,6 @@ function DetailView({
           </tbody>
         </table>
       </div>
-
-      {/* Run detail panel */}
-      {selectedRunId && detailLoading && (
-        <div className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-          Loading run detail...
-        </div>
-      )}
-      {selectedRunId && detailError && (
-        <div className="mt-4 text-sm text-red-600 dark:text-red-400">
-          {detailError}
-        </div>
-      )}
-      {selectedRunId && detail && detail.run_id === selectedRunId && (
-        <div className="mt-4">
-          <RunDetailPanel
-            detail={detail}
-            passRateDescription={summary.pass_rate_description}
-            averageScoreDescription={summary.average_score_description}
-            onClose={() => {
-              setSelectedRunId(null);
-              clearDetail();
-            }}
-          />
-        </div>
-      )}
     </Card>
   );
 }

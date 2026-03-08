@@ -143,39 +143,30 @@ export function useEvalRun() {
 // useRunDetail
 // ---------------------------------------------------------------------------
 
-export function useRunDetail() {
+export function useRunDetail(runId?: string, evalType?: string) {
+  const { data: session } = useSession();
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchDetail = useCallback(
-    async (runId: string, evalType: string) => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const data = await apiClient.get<RunDetail>(
-          `/admin/evals/runs/${runId}/detail`,
-          { eval_type: evalType }
-        );
-        setDetail(data);
-        return data;
-      } catch (err) {
+  // Auto-fetch when runId and evalType are provided declaratively
+  useEffect(() => {
+    if (!session?.accessToken || !runId || !evalType) return;
+    setIsLoading(true);
+    setError(null);
+    apiClient
+      .get<RunDetail>(`/admin/evals/runs/${runId}/detail`, {
+        eval_type: evalType,
+      })
+      .then(setDetail)
+      .catch((err) =>
         setError(
           err instanceof Error ? err.message : "Failed to load run detail"
-        );
-        return null;
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    []
-  );
+        )
+      )
+      .finally(() => setIsLoading(false));
+  }, [session?.accessToken, runId, evalType]);
 
-  const clear = useCallback(() => {
-    setDetail(null);
-    setError(null);
-  }, []);
-
-  return { detail, isLoading, error, fetchDetail, clear };
+  return { detail, isLoading, error };
 }
 
