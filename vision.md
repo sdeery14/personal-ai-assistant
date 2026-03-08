@@ -339,7 +339,26 @@ Read-only exploration UI for all eval data stored in MLflow. Replaces the need t
 
 ---
 
-### Feature 016 – User Feedback
+### Feature 016 – Unified Eval Navigation
+
+> "All eval tools — dashboard, experiments, datasets, runs, traces — live under one cohesive section instead of two separate pages."
+
+Consolidate Feature 014 (Eval Dashboard) and Feature 015 (Eval Explorer) into a single `/admin/evals/*` section with proper sub-page routing, shared layout, and breadcrumb navigation. Replaces the current two top-level admin pages with a unified information architecture.
+
+- **Dashboard landing page** (`/admin/evals`): Regression banner, summary table, promote/rollback/run-evals actions — the operational hub
+- **Experiments page** (`/admin/evals/experiments`): Sortable experiment list with eval type, run count, pass rate; click through to experiment detail
+- **Experiment detail** (`/admin/evals/experiments/[id]`): Runs table with comparison selection, universal quality chart scoped to experiment
+- **Runs detail** (`/admin/evals/runs/[id]`): Traces, sessions, assessments — full drill-down into a single eval run
+- **Datasets page** (`/admin/evals/datasets`): Browse golden datasets with case counts and versions; click through to dataset detail with expandable cases
+- **Trends page** (`/admin/evals/trends`): Per-eval-type trend charts, historical pass rates, universal quality trend across all eval types
+- **Shared layout**: Sidebar or breadcrumb navigation across all sub-pages, consistent admin chrome
+- **Component reuse**: Existing components from Features 014/015 move into the new route structure with minimal changes
+- **Single nav entry**: Header shows one "Evals" link; sub-page navigation is internal to the section
+- **Dependencies**: Feature 014 (dashboard components), Feature 015 (explorer components)
+
+---
+
+### Feature 017 – User Feedback
 
 > "Users can rate responses and conversations, and I can see how real usage correlates with eval metrics."
 
@@ -352,11 +371,11 @@ Structured feedback collection at three levels (message, session, app) with an a
 - **Privacy**: Feedback is per-user scoped; admins see aggregated trends, not individual user feedback unless explicitly granted
 - **Admin dashboard**: Feedback trends over time, correlation with eval pass rates, breakdown by feedback level
 - **API endpoints**: POST feedback (user-facing), GET aggregated feedback (admin-only)
-- **Dependencies**: Feature 008 (frontend), Feature 014 (admin dashboard shell)
+- **Dependencies**: Feature 008 (frontend), Feature 016 (unified eval admin section)
 
 ---
 
-### Feature 017 – Voice Interaction
+### Feature 018 – Voice Interaction
 
 > "I can talk to the assistant and hear it respond."
 
@@ -371,7 +390,7 @@ Phased: TTS-only output first, then two-way voice with speech-to-text input and 
 
 ---
 
-### Feature 018 – Edge Client (Raspberry Pi)
+### Feature 019 – Edge Client (Raspberry Pi)
 
 > "I can interact with the assistant from a Raspberry Pi."
 
@@ -383,11 +402,11 @@ Text-based interface (CLI / button / simple display), connection to existing bac
 - **Local state**: Minimal — last N messages cached for display continuity, no local database
 - **Hardware targets**: Raspberry Pi 4/5 with network access
 - **Deployment**: Docker container or systemd service
-- **Open questions**: Display hardware (e-ink, HDMI, none), audio integration with Feature 017
+- **Open questions**: Display hardware (e-ink, HDMI, none), audio integration with Feature 018
 
 ---
 
-### Feature 019 – Google Integrations (Read-Only)
+### Feature 020 – Google Integrations (Read-Only)
 
 > "The assistant can tell me about my emails and calendar events."
 
