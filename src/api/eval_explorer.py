@@ -733,6 +733,28 @@ async def list_agent_versions(
                 seen[model.model_id] = model
         models = list(seen.values())
 
+        # Build a mapping of git_commit -> average quality score from runs
+        commit_quality: dict[str, float] = {}
+        try:
+            runs_df = mlflow.search_runs(
+                experiment_ids=exp_ids,
+                max_results=500,
+            )
+            if not runs_df.empty and "params.git_sha" in runs_df.columns:
+                score_cols = [
+                    c for c in runs_df.columns
+                    if c.startswith("metrics.") and (c == "metrics.average_score" or c.endswith("_average_score"))
+                ]
+                if score_cols:
+                    # Coalesce: take the first non-NaN score per row
+                    runs_df["_quality"] = runs_df[score_cols].bfill(axis=1).iloc[:, 0]
+                    for sha, group in runs_df.groupby("params.git_sha"):
+                        scores = group["_quality"].dropna()
+                        if len(scores) > 0:
+                            commit_quality[str(sha)] = round(float(scores.mean()), 2)
+        except Exception as exc:
+            logger.warning("agent_quality_aggregation_error", error=str(exc))
+
         results = []
         for model in models:
             tags = model.tags or {}
@@ -751,15 +773,14 @@ async def list_agent_versions(
             else:
                 creation_ts = str(ts) if ts else ""
 
-            # Aggregate quality from model metrics
+            # Aggregate quality from runs sharing this git commit
+            # params.git_sha may be short (7 chars) while model tags have full SHA
             aggregate_quality = None
-            if model.metrics:
-                quality_values = []
-                for m in model.metrics:
-                    if "universal_quality" in m.key:
-                        quality_values.append(m.value)
-                if quality_values:
-                    aggregate_quality = round(sum(quality_values) / len(quality_values), 2)
+            if git_commit:
+                for sha, quality in commit_quality.items():
+                    if git_commit.startswith(sha) or sha.startswith(git_commit):
+                        aggregate_quality = quality
+                        break
 
             results.append(AgentVersionSummaryResponse(
                 model_id=model.model_id,
@@ -772,6 +793,15 @@ async def list_agent_versions(
                 experiment_count=0,  # Enriched in detail endpoint
                 total_traces=0,  # Enriched in detail endpoint
             ))
+
+        # Deduplicate by git commit (keep newest per commit)
+        by_commit: dict[str, AgentVersionSummaryResponse] = {}
+        for r in results:
+            if r.git_commit not in by_commit:
+                by_commit[r.git_commit] = r
+            elif r.creation_timestamp > by_commit[r.git_commit].creation_timestamp:
+                by_commit[r.git_commit] = r
+        results = list(by_commit.values())
 
         # Sort by creation timestamp descending (newest first)
         results.sort(key=lambda r: r.creation_timestamp, reverse=True)
