@@ -147,7 +147,6 @@ class AgentVersionSummaryResponse(BaseModel):
     git_branch: str
     git_commit: str
     git_commit_short: str
-    git_dirty: bool
     creation_timestamp: str
     aggregate_quality: Optional[float] = None
     experiment_count: int
@@ -160,8 +159,6 @@ class AgentVersionDetailResponse(BaseModel):
     git_branch: str
     git_commit: str
     git_commit_short: str
-    git_dirty: bool
-    git_diff: str
     git_repo_url: str
     creation_timestamp: str
     aggregate_quality: Optional[float] = None

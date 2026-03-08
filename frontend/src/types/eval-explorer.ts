@@ -133,7 +133,6 @@ export interface AgentVersionSummary {
   git_branch: string;
   git_commit: string;
   git_commit_short: string;
-  git_dirty: boolean;
   creation_timestamp: string;
   aggregate_quality: number | null;
   experiment_count: number;
@@ -141,7 +140,6 @@ export interface AgentVersionSummary {
 }
 
 export interface AgentVersionDetail extends AgentVersionSummary {
-  git_diff: string;
   git_repo_url: string;
   experiment_results: ExperimentResult[];
 }

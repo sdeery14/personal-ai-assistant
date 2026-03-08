@@ -818,7 +818,6 @@ class TestListAgentVersions:
         assert agent["git_branch"] == "main"
         assert agent["git_commit"] == "abc1234def5678"
         assert agent["git_commit_short"] == "abc1234"
-        assert agent["git_dirty"] is False
 
     def test_skips_models_without_git_commit(self, client):
         model_no_git = _make_logged_model(
@@ -875,17 +874,6 @@ class TestListAgentVersions:
         assert resp.status_code == 200
         assert resp.json()["agents"] == []
 
-    def test_git_dirty_true(self, client):
-        model = _make_logged_model(tags={
-            "mlflow.source.git.branch": "feature",
-            "mlflow.source.git.commit": "deadbeef12345678",
-            "mlflow.source.git.dirty": "True",
-        })
-        resp = self._mock_agents(client, [model])
-
-        assert resp.status_code == 200
-        assert resp.json()["agents"][0]["git_dirty"] is True
-
 
 # ---------------------------------------------------------------------------
 # GET /admin/evals/explorer/agents/{model_id}
@@ -918,7 +906,6 @@ class TestGetAgentVersionDetail:
         assert body["git_branch"] == "main"
         assert body["git_commit"] == "abc1234def5678"
         assert body["git_commit_short"] == "abc1234"
-        assert body["git_dirty"] is False
         assert body["total_traces"] == 1
         assert len(body["experiment_results"]) == 1
         er = body["experiment_results"][0]
@@ -953,12 +940,10 @@ class TestGetAgentVersionDetail:
         assert body["experiment_results"] == []
         assert body["aggregate_quality"] is None
 
-    def test_includes_git_diff_and_repo_url(self, client):
+    def test_includes_git_repo_url(self, client):
         model = _make_logged_model(tags={
             "mlflow.source.git.branch": "feature-x",
             "mlflow.source.git.commit": "abc1234def5678",
-            "mlflow.source.git.dirty": "true",
-            "mlflow.source.git.diff": "--- a/file.py\n+++ b/file.py",
             "mlflow.source.git.repoURL": "https://github.com/user/repo",
         })
 
@@ -971,9 +956,7 @@ class TestGetAgentVersionDetail:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["git_diff"] == "--- a/file.py\n+++ b/file.py"
         assert body["git_repo_url"] == "https://github.com/user/repo"
-        assert body["git_dirty"] is True
 
     def test_multiple_experiments_aggregate_quality(self, client):
         model = _make_logged_model()

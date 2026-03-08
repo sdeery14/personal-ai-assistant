@@ -670,7 +670,6 @@ async def list_agent_versions(
             tags = model.tags or {}
             git_branch = tags.get("mlflow.source.git.branch", "")
             git_commit = tags.get("mlflow.source.git.commit", "")
-            git_dirty = tags.get("mlflow.source.git.dirty", "false").lower() == "true"
 
             if not git_commit:
                 continue  # Skip models without git versioning
@@ -700,7 +699,6 @@ async def list_agent_versions(
                 git_branch=git_branch,
                 git_commit=git_commit,
                 git_commit_short=git_commit_short,
-                git_dirty=git_dirty,
                 creation_timestamp=creation_ts,
                 aggregate_quality=aggregate_quality,
                 experiment_count=0,  # Enriched in detail endpoint
@@ -743,8 +741,6 @@ async def get_agent_version_detail(
         tags = model.tags or {}
         git_branch = tags.get("mlflow.source.git.branch", "")
         git_commit = tags.get("mlflow.source.git.commit", "")
-        git_dirty = tags.get("mlflow.source.git.dirty", "false").lower() == "true"
-        git_diff = tags.get("mlflow.source.git.diff", "")
         git_repo_url = tags.get("mlflow.source.git.repoURL", "")
         git_commit_short = git_commit[:7] if git_commit else ""
 
@@ -840,8 +836,6 @@ async def get_agent_version_detail(
             git_branch=git_branch,
             git_commit=git_commit,
             git_commit_short=git_commit_short,
-            git_dirty=git_dirty,
-            git_diff=git_diff,
             git_repo_url=git_repo_url,
             creation_timestamp=creation_ts,
             aggregate_quality=aggregate_quality,

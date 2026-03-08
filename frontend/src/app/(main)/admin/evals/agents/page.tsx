@@ -54,7 +54,6 @@ export default function AgentsPage() {
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Branch</th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Quality</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Dirty</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -79,13 +78,6 @@ export default function AgentsPage() {
                   {agent.aggregate_quality != null
                     ? agent.aggregate_quality.toFixed(1)
                     : "—"}
-                </td>
-                <td className="px-4 py-2 text-sm">
-                  {agent.git_dirty && (
-                    <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-xs text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
-                      dirty
-                    </span>
-                  )}
                 </td>
               </tr>
             ))}

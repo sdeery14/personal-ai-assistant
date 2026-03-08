@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { Card } from "@/components/ui";
 import { Skeleton } from "@/components/ui/Skeleton";
 import type { AgentVersionDetail, ExperimentResult } from "@/types/eval-explorer";
@@ -28,7 +27,6 @@ export function AgentDetail({
   error,
   onExperimentClick,
 }: AgentDetailProps) {
-  const [showDiff, setShowDiff] = useState(false);
 
   if (error) {
     return (
@@ -85,35 +83,8 @@ export function AgentDetail({
           <dt className="text-gray-500 dark:text-gray-400">Total Traces</dt>
           <dd className="text-gray-900 dark:text-gray-100">{agent.total_traces}</dd>
 
-          <dt className="text-gray-500 dark:text-gray-400">Status</dt>
-          <dd>
-            {agent.git_dirty ? (
-              <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-xs text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
-                dirty
-              </span>
-            ) : (
-              <span className="rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-800 dark:bg-green-900/30 dark:text-green-400">
-                clean
-              </span>
-            )}
-          </dd>
         </dl>
 
-        {agent.git_dirty && agent.git_diff && (
-          <div className="mt-3">
-            <button
-              onClick={() => setShowDiff(!showDiff)}
-              className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-            >
-              {showDiff ? "Hide diff" : "Show diff"}
-            </button>
-            {showDiff && (
-              <pre className="mt-2 max-h-64 overflow-auto rounded bg-gray-900 p-3 text-xs text-gray-200">
-                {agent.git_diff}
-              </pre>
-            )}
-          </div>
-        )}
       </Card>
 
       {/* Experiment results */}

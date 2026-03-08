@@ -9,12 +9,10 @@ const mockAgent: AgentVersionDetail = {
   git_branch: "main",
   git_commit: "abc1234def5678",
   git_commit_short: "abc1234",
-  git_dirty: false,
   creation_timestamp: "2026-03-01T12:00:00Z",
   aggregate_quality: 4.2,
   experiment_count: 2,
   total_traces: 10,
-  git_diff: "",
   git_repo_url: "https://github.com/user/repo",
   experiment_results: [
     {
@@ -36,7 +34,6 @@ describe("AgentDetail", () => {
     );
     expect(screen.getByText("abc1234def5678")).toBeDefined();
     expect(screen.getByText("main")).toBeDefined();
-    expect(screen.getByText("clean")).toBeDefined();
   });
 
   it("renders experiment results table", () => {
@@ -84,16 +81,4 @@ describe("AgentDetail", () => {
     expect(onExperimentClick).toHaveBeenCalledWith("exp-1", "quality", "eval-quality");
   });
 
-  it("shows dirty badge and diff toggle when dirty", () => {
-    const dirtyAgent = {
-      ...mockAgent,
-      git_dirty: true,
-      git_diff: "--- a/file.py\n+++ b/file.py",
-    };
-    render(
-      <AgentDetail agent={dirtyAgent} isLoading={false} error={null} />
-    );
-    expect(screen.getByText("dirty")).toBeDefined();
-    expect(screen.getByText("Show diff")).toBeDefined();
-  });
 });
