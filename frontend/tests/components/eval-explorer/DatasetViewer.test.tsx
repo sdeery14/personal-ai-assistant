@@ -5,11 +5,14 @@ import type { DatasetDetail } from "@/types/eval-explorer";
 
 function makeDataset(overrides: Partial<DatasetDetail> = {}): DatasetDetail {
   return {
-    name: "golden_dataset",
-    file_path: "eval/golden_dataset.json",
-    version: "1.0",
-    description: "Quality evaluation golden dataset",
+    dataset_id: "d-123",
+    name: "quality-v1.0.0",
+    dataset_type: "quality",
+    version: "1.0.0",
+    source_file: "golden_dataset.json",
     case_count: 10,
+    experiment_ids: ["1"],
+    created_time: "2026-03-01T12:00:00Z",
     cases: [],
     ...overrides,
   };
@@ -17,25 +20,26 @@ function makeDataset(overrides: Partial<DatasetDetail> = {}): DatasetDetail {
 
 function makeDatasetWithCases(): DatasetDetail {
   return {
-    name: "golden_dataset",
-    file_path: "eval/golden_dataset.json",
-    version: "1.0",
-    description: "Quality evaluation golden dataset",
+    dataset_id: "d-123",
+    name: "quality-v1.0.0",
+    dataset_type: "quality",
+    version: "1.0.0",
+    source_file: "golden_dataset.json",
     case_count: 2,
+    experiment_ids: ["1"],
+    created_time: "2026-03-01T12:00:00Z",
     cases: [
       {
-        id: "case-1",
-        user_prompt: "What is AI?",
-        rubric: "Should explain artificial intelligence",
-        tags: ["basic", "intro"],
+        record_id: "dr-1",
+        inputs: { question: "What is AI?" },
+        expectations: { rubric: "Should explain artificial intelligence" },
         extra: {},
       },
       {
-        id: "case-2",
-        user_prompt: "How does memory work?",
-        rubric: null,
-        tags: [],
-        extra: { expected_behavior: "allow" },
+        record_id: "dr-2",
+        inputs: { question: "How does memory work?" },
+        expectations: {},
+        extra: { custom_field: "value" },
       },
     ],
   };
@@ -73,7 +77,7 @@ describe("DatasetViewer", () => {
   it("renders dataset list", () => {
     const datasets = [
       makeDataset(),
-      makeDataset({ name: "security_golden_dataset", description: "Security tests", case_count: 20 }),
+      makeDataset({ dataset_id: "d-456", name: "security-v1.0.0", dataset_type: "security", case_count: 20 }),
     ];
     render(
       <DatasetViewer
@@ -85,11 +89,11 @@ describe("DatasetViewer", () => {
         selectedDatasetLoading={false}
       />
     );
-    expect(screen.getByText("golden_dataset")).toBeInTheDocument();
-    expect(screen.getByText("security_golden_dataset")).toBeInTheDocument();
+    expect(screen.getByText("quality-v1.0.0")).toBeInTheDocument();
+    expect(screen.getByText("security-v1.0.0")).toBeInTheDocument();
   });
 
-  it("calls onSelectDataset when row clicked", () => {
+  it("calls onSelectDataset with dataset_id when row clicked", () => {
     const onSelect = vi.fn();
     render(
       <DatasetViewer
@@ -101,8 +105,8 @@ describe("DatasetViewer", () => {
         selectedDatasetLoading={false}
       />
     );
-    fireEvent.click(screen.getByText("golden_dataset"));
-    expect(onSelect).toHaveBeenCalledWith("golden_dataset");
+    fireEvent.click(screen.getByText("quality-v1.0.0"));
+    expect(onSelect).toHaveBeenCalledWith("d-123");
   });
 
   it("shows dataset detail with cases when selected", () => {
@@ -121,7 +125,7 @@ describe("DatasetViewer", () => {
     expect(screen.getByText(/what is ai/i)).toBeInTheDocument();
   });
 
-  it("expands case to show rubric and extra fields", () => {
+  it("expands case to show expectations", () => {
     const selected = makeDatasetWithCases();
     render(
       <DatasetViewer

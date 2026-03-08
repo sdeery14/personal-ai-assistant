@@ -55,6 +55,8 @@ class RunSummaryResponse(BaseModel):
     metrics: dict[str, float]
     universal_quality: Optional[float] = None
     trace_count: int = 0
+    dataset_id: Optional[str] = None
+    git_sha: Optional[str] = None
 
 
 class RunsResponse(BaseModel):
@@ -102,19 +104,21 @@ class QualityTrendResponse(BaseModel):
 
 
 class DatasetCaseResponse(BaseModel):
-    id: str
-    user_prompt: str
-    rubric: Optional[str] = None
-    tags: list[str] = []
+    record_id: str
+    inputs: dict[str, Any] = {}
+    expectations: dict[str, Any] = {}
     extra: dict[str, Any] = {}
 
 
 class DatasetDetailResponse(BaseModel):
+    dataset_id: str
     name: str
-    file_path: str
+    dataset_type: str
     version: str
-    description: str
+    source_file: str
     case_count: int
+    experiment_ids: list[str] = []
+    created_time: Optional[str] = None
     cases: list[DatasetCaseResponse] = []
 
 

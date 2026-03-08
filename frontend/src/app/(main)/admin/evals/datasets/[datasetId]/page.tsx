@@ -7,19 +7,19 @@ import { Breadcrumb } from "@/components/eval-nav/Breadcrumb";
 
 export default function DatasetDetailPage() {
   const params = useParams();
-  const datasetName = params.datasetName as string;
-  const { dataset, isLoading, error } = useDatasetDetail(datasetName);
+  const datasetId = params.datasetId as string;
+  const { dataset, isLoading, error } = useDatasetDetail(datasetId);
 
   const breadcrumbItems = [
     { label: "Datasets", href: "/admin/evals/datasets" },
-    { label: datasetName, href: `/admin/evals/datasets/${datasetName}` },
+    { label: dataset?.name || datasetId, href: `/admin/evals/datasets/${datasetId}` },
   ];
 
   return (
     <div>
       <Breadcrumb items={breadcrumbItems} />
       <h1 className="mb-4 text-2xl font-bold text-gray-900 dark:text-white">
-        {datasetName}
+        {dataset?.name || datasetId}
       </h1>
       <DatasetViewer
         datasets={dataset ? [dataset] : []}

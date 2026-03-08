@@ -45,6 +45,8 @@ export interface RunSummary {
   metrics: Record<string, number>;
   universal_quality: number | null;
   trace_count: number;
+  dataset_id: string | null;
+  git_sha: string | null;
 }
 
 export interface RunsResponse {
@@ -89,19 +91,21 @@ export interface QualityTrendResponse {
 // ---------------------------------------------------------------------------
 
 export interface DatasetCase {
-  id: string;
-  user_prompt: string;
-  rubric: string | null;
-  tags: string[];
+  record_id: string;
+  inputs: Record<string, unknown>;
+  expectations: Record<string, unknown>;
   extra: Record<string, unknown>;
 }
 
 export interface DatasetDetail {
+  dataset_id: string;
   name: string;
-  file_path: string;
+  dataset_type: string;
   version: string;
-  description: string;
+  source_file: string;
   case_count: number;
+  experiment_ids: string[];
+  created_time: string | null;
   cases: DatasetCase[];
 }
 

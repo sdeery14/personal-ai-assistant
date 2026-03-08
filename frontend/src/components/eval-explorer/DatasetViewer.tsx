@@ -9,13 +9,27 @@ interface DatasetViewerProps {
   datasets: DatasetDetail[];
   isLoading: boolean;
   error: string | null;
-  onSelectDataset: (name: string) => void;
+  onSelectDataset: (datasetId: string) => void;
   selectedDataset: DatasetDetail | null;
   selectedDatasetLoading: boolean;
 }
 
 function CaseRow({ c }: { c: DatasetCase }) {
   const [expanded, setExpanded] = useState(false);
+
+  // Extract a display prompt from inputs
+  const prompt =
+    (c.inputs.question as string) ||
+    (c.inputs.user_prompt as string) ||
+    (c.inputs.message as string) ||
+    (c.inputs.input as string) ||
+    JSON.stringify(c.inputs);
+
+  // Extract rubric from expectations
+  const rubric =
+    (c.expectations.rubric as string) ||
+    (c.expectations.expected_behavior as string) ||
+    null;
 
   return (
     <div className="border-b border-gray-100 dark:border-gray-800">
@@ -26,42 +40,48 @@ function CaseRow({ c }: { c: DatasetCase }) {
         <span className="text-xs text-gray-400">
           {expanded ? "\u25BC" : "\u25B6"}
         </span>
-        <span className="font-mono text-xs text-gray-500">{c.id}</span>
-        <span className="flex-1 truncate text-sm text-gray-700 dark:text-gray-300">
-          {c.user_prompt.substring(0, 120)}
-          {c.user_prompt.length > 120 ? "..." : ""}
+        <span className="font-mono text-xs text-gray-500">
+          {c.record_id.substring(0, 12)}
         </span>
-        {c.tags.length > 0 && (
-          <div className="flex gap-1">
-            {c.tags.map((tag) => (
-              <span
-                key={tag}
-                className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-400"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
+        <span className="flex-1 truncate text-sm text-gray-700 dark:text-gray-300">
+          {prompt.substring(0, 120)}
+          {prompt.length > 120 ? "..." : ""}
+        </span>
       </div>
       {expanded && (
         <div className="bg-gray-50 px-6 py-3 dark:bg-gray-900/50">
           <div className="mb-2">
             <h4 className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-              Prompt
+              Inputs
             </h4>
-            <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">
-              {c.user_prompt}
-            </p>
+            {Object.entries(c.inputs).map(([key, val]) => (
+              <div key={key} className="mb-1 text-sm">
+                <span className="font-mono text-xs text-gray-500">{key}:</span>{" "}
+                <span className="whitespace-pre-wrap text-gray-800 dark:text-gray-200">
+                  {typeof val === "object" ? JSON.stringify(val, null, 2) : String(val)}
+                </span>
+              </div>
+            ))}
           </div>
-          {c.rubric && (
+          {Object.keys(c.expectations).length > 0 && (
             <div className="mb-2">
               <h4 className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-                Rubric
+                Expectations
               </h4>
-              <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">
-                {c.rubric}
-              </p>
+              {rubric ? (
+                <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">
+                  {rubric}
+                </p>
+              ) : (
+                Object.entries(c.expectations).map(([key, val]) => (
+                  <div key={key} className="mb-1 text-sm">
+                    <span className="font-mono text-xs text-gray-500">{key}:</span>{" "}
+                    <span className="whitespace-pre-wrap text-gray-800 dark:text-gray-200">
+                      {typeof val === "object" ? JSON.stringify(val, null, 2) : String(val)}
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
           )}
           {Object.keys(c.extra).length > 0 && (
@@ -118,7 +138,7 @@ export function DatasetViewer({
     return (
       <Card className="p-4">
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          No datasets found.
+          No datasets found. Run an evaluation to register datasets in MLflow.
         </p>
       </Card>
     );
@@ -138,18 +158,18 @@ export function DatasetViewer({
           <h3 className="mb-1 text-sm font-medium text-gray-900 dark:text-white">
             {selectedDataset.name}
           </h3>
-          <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-            {selectedDataset.description}
-          </p>
           <p className="mb-3 text-xs text-gray-400">
             {selectedDataset.case_count} cases
             {selectedDataset.version && ` \u00B7 v${selectedDataset.version}`}
-            {` \u00B7 ${selectedDataset.file_path}`}
+            {selectedDataset.dataset_type && ` \u00B7 ${selectedDataset.dataset_type}`}
+            {selectedDataset.source_file && ` \u00B7 ${selectedDataset.source_file}`}
           </p>
           {selectedDatasetLoading ? (
             <Skeleton className="h-40 w-full" />
           ) : (
-            selectedDataset.cases.map((c) => <CaseRow key={c.id} c={c} />)
+            selectedDataset.cases.map((c) => (
+              <CaseRow key={c.record_id} c={c} />
+            ))
           )}
         </Card>
       </div>
@@ -166,7 +186,7 @@ export function DatasetViewer({
               Dataset
             </th>
             <th className="px-3 py-2 font-medium text-gray-600 dark:text-gray-400">
-              Description
+              Type
             </th>
             <th className="px-3 py-2 font-medium text-gray-600 dark:text-gray-400">
               Cases
@@ -174,26 +194,32 @@ export function DatasetViewer({
             <th className="px-3 py-2 font-medium text-gray-600 dark:text-gray-400">
               Version
             </th>
+            <th className="px-3 py-2 font-medium text-gray-600 dark:text-gray-400">
+              Source
+            </th>
           </tr>
         </thead>
         <tbody>
           {datasets.map((ds) => (
             <tr
-              key={ds.name}
+              key={ds.dataset_id}
               className="cursor-pointer border-b border-gray-100 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50"
-              onClick={() => onSelectDataset(ds.name)}
+              onClick={() => onSelectDataset(ds.dataset_id)}
             >
               <td className="px-3 py-2 font-medium text-blue-600 dark:text-blue-400">
                 {ds.name}
               </td>
               <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
-                {ds.description || "-"}
+                {ds.dataset_type || "-"}
               </td>
               <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
                 {ds.case_count}
               </td>
               <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
                 {ds.version || "-"}
+              </td>
+              <td className="px-3 py-2 font-mono text-xs text-gray-500">
+                {ds.source_file || "-"}
               </td>
             </tr>
           ))}

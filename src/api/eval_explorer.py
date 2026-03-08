@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from pathlib import Path
 from typing import Optional
 
 import structlog
@@ -263,6 +262,8 @@ async def list_runs(
                 metrics=metrics,
                 universal_quality=uq,
                 trace_count=int(metrics.get("total_cases", 0)),
+                dataset_id=params.get("mlflow_dataset_id"),
+                git_sha=params.get("git_sha"),
             ))
 
         return results
@@ -468,61 +469,68 @@ async def get_quality_trend(
 
 @router.get("/datasets")
 async def list_datasets(
-    include_cases: bool = Query(default=False),
     admin: User = Depends(require_admin),
 ) -> DatasetsResponse:
-    """List all golden datasets with metadata and optionally cases."""
-    eval_dir = Path(__file__).resolve().parent.parent.parent / "eval"
+    """List all datasets registered in MLflow."""
+    loop = asyncio.get_event_loop()
 
-    datasets = []
-    for path in sorted(eval_dir.glob("*golden_dataset.json")):
-        try:
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
+    def _fetch():
+        import mlflow
+        from mlflow.genai.datasets import search_datasets
+        from datetime import datetime, timezone
 
-            name = path.stem  # e.g., "golden_dataset" from "golden_dataset.json"
-            # Handle datasets that are a list (legacy format) vs dict with "cases" key
-            if isinstance(data, list):
-                cases_data = data
-                data = {"cases": data}
+        # Get all experiments to search across
+        experiments = mlflow.search_experiments()
+        exp_ids = [e.experiment_id for e in experiments]
+
+        if not exp_ids:
+            return []
+
+        raw_datasets = search_datasets(experiment_ids=exp_ids)
+
+        # Deduplicate by dataset_id (same dataset may appear in multiple experiments)
+        seen: dict[str, dict] = {}
+        for ds in raw_datasets:
+            d = ds.to_dict()
+            ds_id = d["dataset_id"]
+            if ds_id not in seen:
+                seen[ds_id] = d
             else:
-                cases_data = data.get("cases", [])
+                # Merge experiment_ids
+                existing_exp_ids = set(seen[ds_id].get("experiment_ids", []))
+                existing_exp_ids.update(d.get("experiment_ids", []))
+                seen[ds_id]["experiment_ids"] = list(existing_exp_ids)
 
-            cases = []
-            if include_cases:
-                for c in cases_data:
-                    # Separate known fields from extra
-                    known_keys = {"id", "user_prompt", "rubric", "tags", "question", "prompt"}
-                    prompt = c.get("user_prompt") or c.get("question") or c.get("prompt", "")
-                    extra = {k: v for k, v in c.items() if k not in known_keys and v is not None}
+        results = []
+        for d in seen.values():
+            tags = d.get("tags", {})
+            records = d.get("records", [])
 
-                    cases.append(DatasetCaseResponse(
-                        id=c.get("id", ""),
-                        user_prompt=prompt,
-                        rubric=c.get("rubric"),
-                        tags=c.get("tags", []),
-                        extra=extra,
-                    ))
+            # Parse creation timestamp
+            created_ts = d.get("created_time")
+            created_str = None
+            if isinstance(created_ts, (int, float)):
+                created_str = datetime.fromtimestamp(
+                    created_ts / 1000, tz=timezone.utc
+                ).isoformat()
 
-            datasets.append(DatasetDetailResponse(
-                name=name,
-                file_path=f"eval/{path.name}",
-                version=data.get("version", ""),
-                description=data.get("description", ""),
-                case_count=len(cases_data),
-                cases=cases,
-            ))
-        except Exception as exc:
-            logger.warning("eval_explorer_dataset_error", path=str(path), error=str(exc))
-            datasets.append(DatasetDetailResponse(
-                name=path.stem,
-                file_path=f"eval/{path.name}",
-                version="",
-                description=f"Error loading dataset: {exc}",
-                case_count=0,
-                cases=[],
+            results.append(DatasetDetailResponse(
+                dataset_id=d["dataset_id"],
+                name=d["name"],
+                dataset_type=tags.get("dataset_type", ""),
+                version=tags.get("version", ""),
+                source_file=tags.get("source_file", ""),
+                case_count=len(records),
+                experiment_ids=d.get("experiment_ids", []),
+                created_time=created_str,
+                cases=[],  # List endpoint doesn't include cases
             ))
 
+        # Sort by name
+        results.sort(key=lambda r: r.name)
+        return results
+
+    datasets = await loop.run_in_executor(None, _fetch)
     logger.info("eval_explorer_datasets", count=len(datasets))
     return DatasetsResponse(datasets=datasets)
 
@@ -532,63 +540,94 @@ async def list_datasets(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/datasets/{dataset_name}")
+@router.get("/datasets/{dataset_id}")
 async def get_dataset(
-    dataset_name: str,
+    dataset_id: str,
     admin: User = Depends(require_admin),
 ) -> DatasetDetailResponse:
-    """Get a single dataset with all cases."""
-    eval_dir = Path(__file__).resolve().parent.parent.parent / "eval"
+    """Get a single dataset with all cases from MLflow."""
+    loop = asyncio.get_event_loop()
 
-    # Try both with and without _golden_dataset suffix
-    candidates = [
-        eval_dir / f"{dataset_name}.json",
-        eval_dir / f"{dataset_name}_golden_dataset.json",
-    ]
+    def _fetch():
+        import mlflow
+        from mlflow.genai.datasets import search_datasets
+        from datetime import datetime, timezone
 
-    path = None
-    for candidate in candidates:
-        if candidate.exists():
-            path = candidate
-            break
+        # Search all experiments to find this dataset
+        experiments = mlflow.search_experiments()
+        exp_ids = [e.experiment_id for e in experiments]
 
-    if path is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Dataset '{dataset_name}' not found",
+        if not exp_ids:
+            raise FileNotFoundError(f"Dataset '{dataset_id}' not found")
+
+        raw_datasets = search_datasets(experiment_ids=exp_ids)
+
+        target = None
+        all_exp_ids: set[str] = set()
+        for ds in raw_datasets:
+            d = ds.to_dict()
+            if d["dataset_id"] == dataset_id:
+                if target is None:
+                    target = d
+                all_exp_ids.update(d.get("experiment_ids", []))
+
+        if target is None:
+            raise FileNotFoundError(f"Dataset '{dataset_id}' not found")
+
+        target["experiment_ids"] = list(all_exp_ids)
+
+        tags = target.get("tags", {})
+        records = target.get("records", [])
+
+        # Parse creation timestamp
+        created_ts = target.get("created_time")
+        created_str = None
+        if isinstance(created_ts, (int, float)):
+            created_str = datetime.fromtimestamp(
+                created_ts / 1000, tz=timezone.utc
+            ).isoformat()
+
+        # Convert records to cases
+        cases = []
+        for r in records:
+            inputs = r.get("inputs", {})
+            expectations = r.get("expectations", {})
+            known_keys = {"dataset_record_id", "dataset_id", "inputs",
+                          "expectations", "tags", "source", "source_type",
+                          "created_time", "last_update_time",
+                          "created_by", "last_updated_by", "outputs"}
+            extra = {k: v for k, v in r.items()
+                     if k not in known_keys and v is not None}
+
+            cases.append(DatasetCaseResponse(
+                record_id=r.get("dataset_record_id", ""),
+                inputs=inputs if isinstance(inputs, dict) else {},
+                expectations=expectations if isinstance(expectations, dict) else {},
+                extra=extra,
+            ))
+
+        return DatasetDetailResponse(
+            dataset_id=target["dataset_id"],
+            name=target["name"],
+            dataset_type=tags.get("dataset_type", ""),
+            version=tags.get("version", ""),
+            source_file=tags.get("source_file", ""),
+            case_count=len(records),
+            experiment_ids=target.get("experiment_ids", []),
+            created_time=created_str,
+            cases=cases,
         )
 
     try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-    except json.JSONDecodeError as exc:
+        result = await loop.run_in_executor(None, _fetch)
+    except FileNotFoundError:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to parse dataset: {exc}",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset '{dataset_id}' not found",
         )
 
-    cases_data = data.get("cases", [])
-    known_keys = {"id", "user_prompt", "rubric", "tags", "question", "prompt"}
-    cases = []
-    for c in cases_data:
-        prompt = c.get("user_prompt") or c.get("question") or c.get("prompt", "")
-        extra = {k: v for k, v in c.items() if k not in known_keys and v is not None}
-        cases.append(DatasetCaseResponse(
-            id=c.get("id", ""),
-            user_prompt=prompt,
-            rubric=c.get("rubric"),
-            tags=c.get("tags", []),
-            extra=extra,
-        ))
-
-    return DatasetDetailResponse(
-        name=path.stem,
-        file_path=f"eval/{path.name}",
-        version=data.get("version", ""),
-        description=data.get("description", ""),
-        case_count=len(cases_data),
-        cases=cases,
-    )
+    logger.info("eval_explorer_dataset_detail", dataset_id=dataset_id)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -608,9 +647,23 @@ async def list_agent_versions(
         from datetime import datetime, timezone
 
         try:
-            models = mlflow.search_logged_models(output_format="list")
+            # Must pass experiment_ids for search to return results
+            experiments = mlflow.search_experiments()
+            exp_ids = [e.experiment_id for e in experiments]
+            if not exp_ids:
+                return []
+            models = mlflow.search_logged_models(
+                experiment_ids=exp_ids, output_format="list"
+            )
         except Exception:
             return []
+
+        # Deduplicate by model_id (same model may appear across experiments)
+        seen = {}
+        for model in models:
+            if model.model_id not in seen:
+                seen[model.model_id] = model
+        models = list(seen.values())
 
         results = []
         for model in models:

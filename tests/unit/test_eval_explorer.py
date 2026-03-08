@@ -591,178 +591,146 @@ class TestQualityTrend:
 # ---------------------------------------------------------------------------
 
 
+def _make_mlflow_dataset(
+    dataset_id="d-123",
+    name="quality-v1.0.0",
+    tags=None,
+    records=None,
+    experiment_ids=None,
+    created_time=1709294400000,  # 2024-03-01 12:00 UTC
+):
+    """Build a mock MLflow dataset object."""
+    if tags is None:
+        tags = {"dataset_type": "quality", "version": "1.0.0", "source_file": "golden_dataset.json"}
+    if records is None:
+        records = [
+            {
+                "dataset_record_id": "dr-1",
+                "dataset_id": dataset_id,
+                "inputs": {"question": "Hello"},
+                "expectations": {"rubric": "Be helpful"},
+            }
+        ]
+    if experiment_ids is None:
+        experiment_ids = ["1"]
+
+    ds = MagicMock()
+    ds.to_dict.return_value = {
+        "dataset_id": dataset_id,
+        "name": name,
+        "tags": tags,
+        "records": records,
+        "experiment_ids": experiment_ids,
+        "created_time": created_time,
+    }
+    return ds
+
+
 class TestListDatasets:
     def test_returns_datasets(self, client):
-        fake_path = MagicMock()
-        fake_path.stem = "quality_golden_dataset"
-        fake_path.name = "quality_golden_dataset.json"
-
-        dataset_json = '{"version": "1.0", "description": "Quality evals", "cases": [{"id": "c1", "user_prompt": "Hello", "rubric": "Be helpful", "tags": ["greeting"]}]}'
+        mock_ds = _make_mlflow_dataset()
+        mock_exp = _make_experiment()
 
         with (
-            patch("src.api.eval_explorer.Path") as MockPath,
-            patch("builtins.open", mock_open(read_data=dataset_json)),
+            patch("src.api.eval_explorer.asyncio") as mock_asyncio,
         ):
-            mock_resolved = MagicMock()
-            MockPath.return_value.resolve.return_value = mock_resolved
-            mock_resolved.parent.parent.parent.__truediv__.return_value = MagicMock(
-                glob=MagicMock(return_value=[fake_path])
+            # Make run_in_executor call the function synchronously
+            mock_asyncio.get_event_loop.return_value.run_in_executor = (
+                lambda _, fn: AsyncMock(return_value=fn())()
             )
 
-            resp = client.get("/admin/evals/explorer/datasets")
+            with (
+                patch("mlflow.search_experiments", return_value=[mock_exp]),
+                patch("mlflow.genai.datasets.search_datasets", return_value=[mock_ds]),
+            ):
+                resp = client.get("/admin/evals/explorer/datasets")
 
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["datasets"]) == 1
         ds = body["datasets"][0]
-        assert ds["name"] == "quality_golden_dataset"
-        assert ds["version"] == "1.0"
-        assert ds["description"] == "Quality evals"
+        assert ds["name"] == "quality-v1.0.0"
+        assert ds["dataset_id"] == "d-123"
+        assert ds["dataset_type"] == "quality"
+        assert ds["version"] == "1.0.0"
+        assert ds["source_file"] == "golden_dataset.json"
         assert ds["case_count"] == 1
-        assert ds["cases"] == []  # include_cases defaults to False
+        assert ds["cases"] == []  # List endpoint doesn't include cases
 
-    def test_returns_cases_when_requested(self, client):
-        fake_path = MagicMock()
-        fake_path.stem = "quality_golden_dataset"
-        fake_path.name = "quality_golden_dataset.json"
-
-        dataset_json = '{"version": "1.0", "description": "Quality evals", "cases": [{"id": "c1", "user_prompt": "Hello", "rubric": "Be helpful", "tags": ["greeting"], "expected_behavior": "allow"}]}'
-
+    def test_empty_mlflow(self, client):
         with (
-            patch("src.api.eval_explorer.Path") as MockPath,
-            patch("builtins.open", mock_open(read_data=dataset_json)),
+            patch("src.api.eval_explorer.asyncio") as mock_asyncio,
         ):
-            mock_resolved = MagicMock()
-            MockPath.return_value.resolve.return_value = mock_resolved
-            mock_resolved.parent.parent.parent.__truediv__.return_value = MagicMock(
-                glob=MagicMock(return_value=[fake_path])
+            mock_asyncio.get_event_loop.return_value.run_in_executor = (
+                lambda _, fn: AsyncMock(return_value=fn())()
             )
 
-            resp = client.get("/admin/evals/explorer/datasets?include_cases=true")
-
-        assert resp.status_code == 200
-        ds = resp.json()["datasets"][0]
-        assert ds["case_count"] == 1
-        assert len(ds["cases"]) == 1
-        case = ds["cases"][0]
-        assert case["id"] == "c1"
-        assert case["user_prompt"] == "Hello"
-        assert case["rubric"] == "Be helpful"
-        assert case["tags"] == ["greeting"]
-        assert case["extra"] == {"expected_behavior": "allow"}
-
-    def test_empty_eval_dir(self, client):
-        with patch("src.api.eval_explorer.Path") as MockPath:
-            mock_resolved = MagicMock()
-            MockPath.return_value.resolve.return_value = mock_resolved
-            mock_resolved.parent.parent.parent.__truediv__.return_value = MagicMock(
-                glob=MagicMock(return_value=[])
-            )
-
-            resp = client.get("/admin/evals/explorer/datasets")
+            with patch("mlflow.search_experiments", return_value=[]):
+                resp = client.get("/admin/evals/explorer/datasets")
 
         assert resp.status_code == 200
         assert resp.json()["datasets"] == []
 
 
 # ---------------------------------------------------------------------------
-# GET /admin/evals/explorer/datasets/{dataset_name}
+# GET /admin/evals/explorer/datasets/{dataset_id}
 # ---------------------------------------------------------------------------
 
 
 class TestGetDataset:
     def test_returns_dataset_with_cases(self, client):
-        dataset_json = '{"version": "2.0", "description": "Test dataset", "cases": [{"id": "c1", "question": "What is AI?", "rubric": "Explain AI"}]}'
+        mock_ds = _make_mlflow_dataset(
+            records=[
+                {
+                    "dataset_record_id": "dr-1",
+                    "dataset_id": "d-123",
+                    "inputs": {"question": "What is AI?"},
+                    "expectations": {"rubric": "Explain AI"},
+                },
+            ],
+        )
+        mock_exp = _make_experiment()
 
-        with patch("src.api.eval_explorer.Path") as MockPath:
-            mock_resolved = MagicMock()
-            MockPath.return_value.resolve.return_value = mock_resolved
-            eval_dir = MagicMock()
-            mock_resolved.parent.parent.parent.__truediv__.return_value = eval_dir
+        with (
+            patch("src.api.eval_explorer.asyncio") as mock_asyncio,
+        ):
+            mock_asyncio.get_event_loop.return_value.run_in_executor = (
+                lambda _, fn: AsyncMock(return_value=fn())()
+            )
 
-            # First candidate doesn't exist, second does
-            candidate1 = MagicMock()
-            candidate1.exists.return_value = False
-            candidate2 = MagicMock()
-            candidate2.exists.return_value = True
-            candidate2.stem = "quality_golden_dataset"
-            candidate2.name = "quality_golden_dataset.json"
-
-            eval_dir.__truediv__ = MagicMock(side_effect=[candidate1, candidate2])
-
-            with patch("builtins.open", mock_open(read_data=dataset_json)):
-                resp = client.get("/admin/evals/explorer/datasets/quality")
+            with (
+                patch("mlflow.search_experiments", return_value=[mock_exp]),
+                patch("mlflow.genai.datasets.search_datasets", return_value=[mock_ds]),
+            ):
+                resp = client.get("/admin/evals/explorer/datasets/d-123")
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["name"] == "quality_golden_dataset"
-        assert body["version"] == "2.0"
+        assert body["name"] == "quality-v1.0.0"
+        assert body["dataset_id"] == "d-123"
         assert body["case_count"] == 1
         assert len(body["cases"]) == 1
-        # Uses "question" key fallback for user_prompt
-        assert body["cases"][0]["user_prompt"] == "What is AI?"
+        assert body["cases"][0]["inputs"]["question"] == "What is AI?"
+        assert body["cases"][0]["expectations"]["rubric"] == "Explain AI"
 
     def test_404_for_missing_dataset(self, client):
-        with patch("src.api.eval_explorer.Path") as MockPath:
-            mock_resolved = MagicMock()
-            MockPath.return_value.resolve.return_value = mock_resolved
-            eval_dir = MagicMock()
-            mock_resolved.parent.parent.parent.__truediv__.return_value = eval_dir
+        mock_exp = _make_experiment()
 
-            candidate = MagicMock()
-            candidate.exists.return_value = False
-            eval_dir.__truediv__ = MagicMock(return_value=candidate)
+        with (
+            patch("src.api.eval_explorer.asyncio") as mock_asyncio,
+        ):
+            mock_asyncio.get_event_loop.return_value.run_in_executor = (
+                lambda _, fn: AsyncMock(return_value=fn())()
+            )
 
-            resp = client.get("/admin/evals/explorer/datasets/nonexistent")
+            with (
+                patch("mlflow.search_experiments", return_value=[mock_exp]),
+                patch("mlflow.genai.datasets.search_datasets", return_value=[]),
+            ):
+                resp = client.get("/admin/evals/explorer/datasets/nonexistent")
 
         assert resp.status_code == 404
         assert "not found" in resp.json()["detail"].lower()
-
-    def test_extra_fields_extracted(self, client):
-        """Fields not in known_keys are put in 'extra'."""
-        dataset_json = '{"version": "1.0", "description": "", "cases": [{"id": "c1", "user_prompt": "Hi", "expected_behavior": "block", "severity": "high"}]}'
-
-        with patch("src.api.eval_explorer.Path") as MockPath:
-            mock_resolved = MagicMock()
-            MockPath.return_value.resolve.return_value = mock_resolved
-            eval_dir = MagicMock()
-            mock_resolved.parent.parent.parent.__truediv__.return_value = eval_dir
-
-            candidate = MagicMock()
-            candidate.exists.return_value = True
-            candidate.stem = "security_golden_dataset"
-            candidate.name = "security_golden_dataset.json"
-            eval_dir.__truediv__ = MagicMock(return_value=candidate)
-
-            with patch("builtins.open", mock_open(read_data=dataset_json)):
-                resp = client.get("/admin/evals/explorer/datasets/security_golden_dataset")
-
-        assert resp.status_code == 200
-        case = resp.json()["cases"][0]
-        assert case["extra"]["expected_behavior"] == "block"
-        assert case["extra"]["severity"] == "high"
-
-    def test_prompt_field_fallback(self, client):
-        """Falls back to 'prompt' field when user_prompt and question are absent."""
-        dataset_json = '{"version": "1.0", "description": "", "cases": [{"id": "c1", "prompt": "Tell me a story"}]}'
-
-        with patch("src.api.eval_explorer.Path") as MockPath:
-            mock_resolved = MagicMock()
-            MockPath.return_value.resolve.return_value = mock_resolved
-            eval_dir = MagicMock()
-            mock_resolved.parent.parent.parent.__truediv__.return_value = eval_dir
-
-            candidate = MagicMock()
-            candidate.exists.return_value = True
-            candidate.stem = "test_golden_dataset"
-            candidate.name = "test_golden_dataset.json"
-            eval_dir.__truediv__ = MagicMock(return_value=candidate)
-
-            with patch("builtins.open", mock_open(read_data=dataset_json)):
-                resp = client.get("/admin/evals/explorer/datasets/test_golden_dataset")
-
-        assert resp.status_code == 200
-        assert resp.json()["cases"][0]["user_prompt"] == "Tell me a story"
 
 
 # ---------------------------------------------------------------------------
@@ -822,11 +790,24 @@ def _make_trace_for_agent(
 
 
 class TestListAgentVersions:
+    """Tests for GET /admin/evals/explorer/agents.
+
+    All tests mock both search_experiments (required to get experiment IDs)
+    and search_logged_models (which requires experiment_ids to return results).
+    """
+
+    def _mock_agents(self, client, models):
+        """Helper: mock search_experiments + search_logged_models and GET /agents."""
+        mock_exp = _make_experiment()
+        with (
+            patch("mlflow.search_experiments", return_value=[mock_exp]),
+            patch("mlflow.search_logged_models", return_value=models),
+        ):
+            return client.get("/admin/evals/explorer/agents")
+
     def test_returns_agents_with_git_metadata(self, client):
         model = _make_logged_model()
-
-        with patch("mlflow.search_logged_models", return_value=[model]):
-            resp = client.get("/admin/evals/explorer/agents")
+        resp = self._mock_agents(client, [model])
 
         assert resp.status_code == 200
         body = resp.json()
@@ -845,9 +826,7 @@ class TestListAgentVersions:
             tags={"mlflow.source.git.branch": "main"},  # no commit tag
         )
         model_with_git = _make_logged_model(model_id="model-with-git")
-
-        with patch("mlflow.search_logged_models", return_value=[model_no_git, model_with_git]):
-            resp = client.get("/admin/evals/explorer/agents")
+        resp = self._mock_agents(client, [model_no_git, model_with_git])
 
         assert resp.status_code == 200
         agents = resp.json()["agents"]
@@ -855,8 +834,7 @@ class TestListAgentVersions:
         assert agents[0]["model_id"] == "model-with-git"
 
     def test_handles_empty_result(self, client):
-        with patch("mlflow.search_logged_models", return_value=[]):
-            resp = client.get("/admin/evals/explorer/agents")
+        resp = self._mock_agents(client, [])
 
         assert resp.status_code == 200
         assert resp.json()["agents"] == []
@@ -870,9 +848,7 @@ class TestListAgentVersions:
             model_id="model-new",
             creation_timestamp=1709400000000,
         )
-
-        with patch("mlflow.search_logged_models", return_value=[model_old, model_new]):
-            resp = client.get("/admin/evals/explorer/agents")
+        resp = self._mock_agents(client, [model_old, model_new])
 
         assert resp.status_code == 200
         agents = resp.json()["agents"]
@@ -886,16 +862,14 @@ class TestListAgentVersions:
             _make_model_metric("security_universal_quality", 90.0),
         ]
         model = _make_logged_model(metrics=metrics)
-
-        with patch("mlflow.search_logged_models", return_value=[model]):
-            resp = client.get("/admin/evals/explorer/agents")
+        resp = self._mock_agents(client, [model])
 
         assert resp.status_code == 200
         agent = resp.json()["agents"][0]
         assert agent["aggregate_quality"] == 85.0
 
     def test_handles_search_exception(self, client):
-        with patch("mlflow.search_logged_models", side_effect=Exception("MLflow down")):
+        with patch("mlflow.search_experiments", side_effect=Exception("MLflow down")):
             resp = client.get("/admin/evals/explorer/agents")
 
         assert resp.status_code == 200
@@ -907,9 +881,7 @@ class TestListAgentVersions:
             "mlflow.source.git.commit": "deadbeef12345678",
             "mlflow.source.git.dirty": "True",
         })
-
-        with patch("mlflow.search_logged_models", return_value=[model]):
-            resp = client.get("/admin/evals/explorer/agents")
+        resp = self._mock_agents(client, [model])
 
         assert resp.status_code == 200
         assert resp.json()["agents"][0]["git_dirty"] is True

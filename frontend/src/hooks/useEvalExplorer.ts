@@ -254,7 +254,7 @@ export function useUniversalQualityTrend(limit: number = 20) {
 // useDatasets
 // ---------------------------------------------------------------------------
 
-export function useDatasets(includeCases: boolean = false) {
+export function useDatasets() {
   const { data: session } = useSession();
   const [datasets, setDatasets] = useState<DatasetDetail[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -266,8 +266,7 @@ export function useDatasets(includeCases: boolean = false) {
     setError(null);
     try {
       const data = await apiClient.get<DatasetsResponse>(
-        "/admin/evals/explorer/datasets",
-        { include_cases: String(includeCases) }
+        "/admin/evals/explorer/datasets"
       );
       setDatasets(data.datasets);
     } catch (err) {
@@ -277,7 +276,7 @@ export function useDatasets(includeCases: boolean = false) {
     } finally {
       setIsLoading(false);
     }
-  }, [session?.accessToken, includeCases]);
+  }, [session?.accessToken]);
 
   useEffect(() => {
     refresh();
@@ -290,19 +289,19 @@ export function useDatasets(includeCases: boolean = false) {
 // useDatasetDetail
 // ---------------------------------------------------------------------------
 
-export function useDatasetDetail(datasetName: string | null) {
+export function useDatasetDetail(datasetId: string | null) {
   const { data: session } = useSession();
   const [dataset, setDataset] = useState<DatasetDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!session?.accessToken || !datasetName) return;
+    if (!session?.accessToken || !datasetId) return;
     setIsLoading(true);
     setError(null);
     try {
       const data = await apiClient.get<DatasetDetail>(
-        `/admin/evals/explorer/datasets/${datasetName}`
+        `/admin/evals/explorer/datasets/${datasetId}`
       );
       setDataset(data);
     } catch (err) {
@@ -312,7 +311,7 @@ export function useDatasetDetail(datasetName: string | null) {
     } finally {
       setIsLoading(false);
     }
-  }, [session?.accessToken, datasetName]);
+  }, [session?.accessToken, datasetId]);
 
   useEffect(() => {
     refresh();

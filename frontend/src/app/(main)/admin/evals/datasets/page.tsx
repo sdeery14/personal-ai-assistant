@@ -19,7 +19,7 @@ export default function DatasetsPage() {
         error={error}
         selectedDataset={null}
         selectedDatasetLoading={false}
-        onSelectDataset={(name) => router.push(`/admin/evals/datasets/${name}`)}
+        onSelectDataset={(datasetId) => router.push(`/admin/evals/datasets/${datasetId}`)}
       />
     </div>
   );
