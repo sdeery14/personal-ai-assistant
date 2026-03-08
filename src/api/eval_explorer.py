@@ -328,10 +328,17 @@ async def list_traces(
             info = trace.info
             data = trace.data
 
-            # Extract case ID from metadata
+            # Extract case ID from metadata or inputs
             case_id = ""
             if hasattr(info, "request_metadata") and info.request_metadata:
                 case_id = info.request_metadata.get("case_id", "")
+            if not case_id and data and data.request:
+                # Try extracting case_id from genai_evaluate inputs
+                try:
+                    req = data.request if isinstance(data.request, dict) else {}
+                    case_id = str(req.get("case_id", ""))
+                except (AttributeError, TypeError):
+                    pass
 
             # Extract user prompt and assistant response
             user_prompt = _extract_text(
@@ -381,6 +388,13 @@ async def list_traces(
                 # Last trace's assessment is the session-level assessment
                 if assessments:
                     session_assessments[session_id] = assessments[0]
+
+        # Assign sequential case IDs to traces without one
+        case_counter = 0
+        for t in trace_results:
+            if not t.case_id:
+                t.case_id = f"case_{case_counter}"
+                case_counter += 1
 
         # Build session groups
         sessions = []

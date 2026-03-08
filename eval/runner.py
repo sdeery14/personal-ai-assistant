@@ -434,7 +434,7 @@ def run_evaluation(
         eval_data = []
         for case, question, response, latency_ms in case_predictions:
             eval_data.append({
-                "inputs": {"question": question},
+                "inputs": {"question": question, "case_id": case.id},
                 "outputs": {"response": response},
                 "expectations": {"rubric": case.rubric},
             })
@@ -1371,7 +1371,7 @@ def run_memory_write_evaluation(
                 if ea.action == "save"
             ]
             eval_data.append({
-                "inputs": {"message": message},
+                "inputs": {"message": message, "case_id": case.id},
                 "outputs": response,
                 "expectations": {
                     "rubric": case.rubric,
@@ -1815,7 +1815,7 @@ def run_weather_evaluation(
         eval_data = []
         for case, query, response, latency_ms, error in case_data:
             eval_data.append({
-                "inputs": {"query": query},
+                "inputs": {"query": query, "case_id": case.id},
                 "outputs": response,
                 "expectations": {
                     "expected_behavior": case.expected_behavior,
@@ -2261,7 +2261,7 @@ def run_graph_evaluation(
         eval_data = []
         for case, prompt, response, entities, rels, latency_ms, error in case_data:
             eval_data.append({
-                "inputs": {"message": prompt},
+                "inputs": {"message": prompt, "case_id": case.id},
                 "outputs": response,
                 "expectations": {
                     "rubric": case.rubric,
@@ -3182,7 +3182,7 @@ def run_tone_evaluation(
         if verbose:
             print("\nPhase 2: Running tone quality judge...")
         tone_judge = create_tone_judge(judge_model)
-        eval_data = [{"inputs": {"question": q}, "outputs": {"response": r}, "expectations": {"rubric": c.rubric}} for c, q, r, _ in case_predictions]
+        eval_data = [{"inputs": {"question": q, "case_id": c.id}, "outputs": {"response": r}, "expectations": {"rubric": c.rubric}} for c, q, r, _ in case_predictions]
         eval_results = genai_evaluate(data=eval_data, scorers=[tone_judge])
         eval_duration_ms = int((time.perf_counter() - start_time) * 1000)
 
@@ -3302,7 +3302,7 @@ def run_returning_greeting_evaluation(
         if verbose:
             print("\nPhase 2: Running greeting quality judge...")
         greeting_judge = create_greeting_judge(judge_model)
-        eval_data = [{"inputs": {"persona": c.persona}, "outputs": {"response": r}, "expectations": {"rubric": c.rubric}} for c, r, _ in case_predictions]
+        eval_data = [{"inputs": {"persona": c.persona, "case_id": c.id}, "outputs": {"response": r}, "expectations": {"rubric": c.rubric}} for c, r, _ in case_predictions]
         eval_results = genai_evaluate(data=eval_data, scorers=[greeting_judge])
         eval_duration_ms = int((time.perf_counter() - start_time) * 1000)
 
@@ -3428,7 +3428,7 @@ def run_routing_evaluation(
         if verbose:
             print("\nPhase 2: Running routing quality judge...")
         routing_judge = create_routing_quality_judge(judge_model)
-        eval_data = [{"inputs": {"question": c.user_prompt}, "outputs": {"response": r}, "expectations": {"rubric": c.rubric}} for c, r, _, _, _ in case_predictions]
+        eval_data = [{"inputs": {"question": c.user_prompt, "case_id": c.id}, "outputs": {"response": r}, "expectations": {"rubric": c.rubric}} for c, r, _, _, _ in case_predictions]
         eval_results = genai_evaluate(data=eval_data, scorers=[routing_judge])
         eval_duration_ms = int((time.perf_counter() - start_time) * 1000)
 
@@ -3999,7 +3999,7 @@ def run_notification_judgment_evaluation(
         if verbose:
             print("\nPhase 2: Running notification quality judge...")
         quality_judge = create_notification_quality_judge(judge_model)
-        eval_data = [{"inputs": {"question": c.user_prompt}, "outputs": {"response": r}, "expectations": {"rubric": c.rubric}} for c, r, _, _, _ in case_predictions]
+        eval_data = [{"inputs": {"question": c.user_prompt, "case_id": c.id}, "outputs": {"response": r}, "expectations": {"rubric": c.rubric}} for c, r, _, _, _ in case_predictions]
         eval_results = genai_evaluate(data=eval_data, scorers=[quality_judge])
         eval_duration_ms = int((time.perf_counter() - start_time) * 1000)
 
@@ -4127,7 +4127,7 @@ def run_error_recovery_evaluation(
         if verbose:
             print("\nPhase 2: Running error recovery quality judge...")
         error_judge = create_error_recovery_judge(judge_model)
-        eval_data = [{"inputs": {"question": c.user_prompt}, "outputs": {"response": r}, "expectations": {"rubric": c.scenario}} for c, r, _ in case_predictions]
+        eval_data = [{"inputs": {"question": c.user_prompt, "case_id": c.id}, "outputs": {"response": r}, "expectations": {"rubric": c.scenario}} for c, r, _ in case_predictions]
         eval_results = genai_evaluate(data=eval_data, scorers=[error_judge])
         eval_duration_ms = int((time.perf_counter() - start_time) * 1000)
 
@@ -4268,7 +4268,7 @@ def run_schedule_cron_evaluation(
         if verbose:
             print("\nPhase 2: Running schedule quality judge...")
         schedule_judge = create_schedule_quality_judge(judge_model)
-        eval_data = [{"inputs": {"question": c.user_prompt}, "outputs": {"response": r}, "expectations": {"rubric": c.rubric}} for c, r, _, _, _, _ in case_predictions]
+        eval_data = [{"inputs": {"question": c.user_prompt, "case_id": c.id}, "outputs": {"response": r}, "expectations": {"rubric": c.rubric}} for c, r, _, _, _, _ in case_predictions]
         eval_results = genai_evaluate(data=eval_data, scorers=[schedule_judge])
         eval_duration_ms = int((time.perf_counter() - start_time) * 1000)
 
@@ -4400,7 +4400,7 @@ def run_knowledge_connections_evaluation(
         if verbose:
             print("\nPhase 2: Running knowledge connections quality judge...")
         kg_judge = create_knowledge_connections_judge(judge_model)
-        eval_data = [{"inputs": {"question": c.user_prompt}, "outputs": {"response": r}, "expectations": {"rubric": c.rubric}} for c, r, _ in case_predictions]
+        eval_data = [{"inputs": {"question": c.user_prompt, "case_id": c.id}, "outputs": {"response": r}, "expectations": {"rubric": c.rubric}} for c, r, _ in case_predictions]
         eval_results = genai_evaluate(data=eval_data, scorers=[kg_judge])
         eval_duration_ms = int((time.perf_counter() - start_time) * 1000)
 
