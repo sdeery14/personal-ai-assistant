@@ -156,7 +156,10 @@ export function TrendsTab() {
                   <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">
                     {s.eval_type}
                   </td>
-                  <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">
+                  <td
+                    className="px-3 py-2 text-right text-gray-700 dark:text-gray-300"
+                    title={s.pass_rate_description}
+                  >
                     {(s.latest_pass_rate * 100).toFixed(1)}%
                   </td>
                   <td
@@ -347,6 +350,7 @@ function DetailView({
               <th
                 className="cursor-pointer select-none px-2 py-1.5 text-right font-medium text-gray-600 dark:text-gray-400"
                 onClick={() => handleSort("pass_rate")}
+                title={summary.pass_rate_description}
               >
                 Pass Rate
                 <SortArrow active={sortKey === "pass_rate"} dir={sortDir} />
@@ -354,6 +358,7 @@ function DetailView({
               <th
                 className="cursor-pointer select-none px-2 py-1.5 text-right font-medium text-gray-600 dark:text-gray-400"
                 onClick={() => handleSort("average_score")}
+                title={summary.average_score_description}
               >
                 Avg Score
                 <SortArrow active={sortKey === "average_score"} dir={sortDir} />
@@ -454,6 +459,8 @@ function DetailView({
         <div className="mt-4">
           <RunDetailPanel
             detail={detail}
+            passRateDescription={summary.pass_rate_description}
+            averageScoreDescription={summary.average_score_description}
             onClose={() => {
               setSelectedRunId(null);
               clearDetail();

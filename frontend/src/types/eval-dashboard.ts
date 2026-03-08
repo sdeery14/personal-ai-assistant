@@ -27,6 +27,8 @@ export interface TrendSummary {
   run_count: number;
   points: TrendPoint[];
   prompt_changes: PromptChange[];
+  pass_rate_description: string;
+  average_score_description: string;
 }
 
 export interface TrendsResponse {

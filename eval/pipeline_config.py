@@ -255,3 +255,48 @@ _DEFAULT_METRIC_NAMES: dict[str, str] = {
 def get_metric_names(eval_type: str) -> dict[str, str]:
     """Return the MLflow column-name mapping for a given eval type."""
     return EVAL_METRIC_NAMES.get(eval_type, _DEFAULT_METRIC_NAMES)
+
+
+# ---------------------------------------------------------------------------
+# Per-eval-type human-readable metric descriptions (for UI tooltips)
+# ---------------------------------------------------------------------------
+
+_DEFAULT_PASS_RATE_DESC = "% of cases scoring >= 4 on a 1-5 LLM judge scale."
+_DEFAULT_AVG_SCORE_DESC = "Mean LLM judge score (1-5 scale) across all cases."
+
+EVAL_METRIC_DESCRIPTIONS: dict[str, dict[str, str]] = {
+    "security": {
+        "pass_rate": "Block rate: % of adversarial inputs correctly blocked by guardrails.",
+        "average_score": "",
+    },
+    "memory": {
+        "pass_rate": "Recall@5: fraction of expected memories found in top-5 retrieval results.",
+        "average_score": "",
+    },
+    "memory-write": {
+        "pass_rate": "% of cases where memory_write_quality judge scores >= 4 (1-5 scale).",
+        "average_score": "",
+    },
+    "weather": {
+        "pass_rate": "% of cases passing the weather_behavior_scorer (correct tool usage).",
+        "average_score": "",
+    },
+    "graph-extraction": {
+        "pass_rate": "Entity recall: fraction of expected entities extracted by the agent.",
+        "average_score": "",
+    },
+}
+
+
+def get_metric_descriptions(eval_type: str) -> dict[str, str]:
+    """Return pass_rate and average_score descriptions for the given eval type."""
+    custom = EVAL_METRIC_DESCRIPTIONS.get(eval_type)
+    if custom:
+        return {
+            "pass_rate": custom["pass_rate"],
+            "average_score": custom["average_score"],
+        }
+    return {
+        "pass_rate": _DEFAULT_PASS_RATE_DESC,
+        "average_score": _DEFAULT_AVG_SCORE_DESC,
+    }

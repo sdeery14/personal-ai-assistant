@@ -80,6 +80,9 @@ def _prompt_change_response(change) -> PromptChangeResponse:
 
 
 def _trend_summary_response(summary) -> TrendSummaryResponse:
+    from eval.pipeline_config import get_metric_descriptions
+
+    descs = get_metric_descriptions(summary.eval_type)
     return TrendSummaryResponse(
         eval_type=summary.eval_type,
         latest_pass_rate=summary.latest_pass_rate,
@@ -87,6 +90,8 @@ def _trend_summary_response(summary) -> TrendSummaryResponse:
         run_count=len(summary.points),
         points=[_trend_point_response(p) for p in summary.points],
         prompt_changes=[_prompt_change_response(c) for c in summary.prompt_changes],
+        pass_rate_description=descs["pass_rate"],
+        average_score_description=descs["average_score"],
     )
 
 

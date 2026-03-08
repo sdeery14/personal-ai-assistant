@@ -205,9 +205,13 @@ function CaseExpandedRow({ c }: { c: RunCaseResult }) {
 
 export function RunDetailPanel({
   detail,
+  passRateDescription,
+  averageScoreDescription,
   onClose,
 }: {
   detail: RunDetail;
+  passRateDescription?: string;
+  averageScoreDescription?: string;
   onClose: () => void;
 }) {
   const [expandedCaseId, setExpandedCaseId] = useState<string | null>(null);
@@ -321,7 +325,10 @@ export function RunDetailPanel({
           <p className="text-gray-800 dark:text-gray-200">{datasetVersion}</p>
         </div>
         <div>
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+          <span
+            className="text-xs font-medium text-gray-500 dark:text-gray-400"
+            title={passRateDescription}
+          >
             Pass Rate
           </span>
           <p className="text-gray-800 dark:text-gray-200">
@@ -329,7 +336,10 @@ export function RunDetailPanel({
           </p>
         </div>
         <div>
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+          <span
+            className="text-xs font-medium text-gray-500 dark:text-gray-400"
+            title={averageScoreDescription}
+          >
             Avg Score
           </span>
           <p className="text-gray-800 dark:text-gray-200">

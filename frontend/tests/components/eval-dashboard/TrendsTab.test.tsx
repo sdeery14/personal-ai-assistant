@@ -82,6 +82,8 @@ function makeSummary(overrides: Partial<TrendSummary> = {}): TrendSummary {
       },
     ],
     prompt_changes: [],
+    pass_rate_description: "% of cases scoring >= 4 on a 1-5 LLM judge scale.",
+    average_score_description: "Mean LLM judge score (1-5 scale) across all cases.",
     ...overrides,
   };
 }

@@ -38,6 +38,8 @@ class TrendSummaryResponse(BaseModel):
     run_count: int
     points: list[TrendPointResponse]
     prompt_changes: list[PromptChangeResponse]
+    pass_rate_description: str = ""
+    average_score_description: str = ""
 
 
 class RegressionReportResponse(BaseModel):
