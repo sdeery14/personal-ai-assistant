@@ -193,9 +193,79 @@ Optional: `OPENAI_MODEL` (default: gpt-4o), `MAX_TOKENS` (default: 2000), `TIMEO
 - `GET /health` - Returns `{"status": "healthy", "timestamp": "..."}`
 - `POST /chat` - SSE streaming. Body: `{"message": "...", "model": null, "max_tokens": null}`
 
+## Agent Development Cycle (Eval-Driven Iteration)
+
+When asked to improve agent quality, fix a failing eval, or iterate on agent behavior, follow this process:
+
+### Step 1: Identify the Problem
+
+Check the eval dashboard or run evals to find what's failing:
+
+```bash
+# Run full eval suite
+uv run python -m eval
+
+# Run a specific eval
+uv run python -m eval --dataset eval/<dataset>.json --verbose
+
+# Check dashboard at /admin/evals for visual overview
+```
+
+### Step 2: Diagnose Failures
+
+Read the failing traces to understand root causes. Use the MLflow API or dashboard:
+
+```bash
+# Search traces for a specific experiment
+# Via the eval dashboard: /admin/evals/experiments → click experiment → click run → view traces
+```
+
+Categorize each failure as one of:
+- **Prompt gap** → system prompt needs updating (`src/agents.py`, specialist agents)
+- **Tool bug** → tool code needs fixing (`src/tools/`)
+- **Dataset issue** → golden dataset expectation is wrong (`eval/*.json`)
+- **Scorer issue** → judge/scorer is misaligned (`eval/judge.py`, scorer functions)
+- **Capability gap** → agent lacks needed tool/integration
+
+### Step 3: Fix → Eval → Repeat
+
+Make ONE targeted change per iteration. Then re-run the specific eval:
+
+```bash
+uv run python -m eval --dataset eval/<dataset>.json --verbose
+```
+
+Compare pass rate to baseline. If improved, continue. If not, re-diagnose with fresh trace data. Loop until the eval passes (≥80%).
+
+### Step 4: Verify No Regressions
+
+Once the target eval passes, run the full suite:
+
+```bash
+uv run python -m eval
+```
+
+All 19 eval types must remain at or above their previous pass rates. If any regressed, diagnose and fix before proceeding.
+
+### Step 5: Ship
+
+Commit the changes. If using prompt registry, promote via the dashboard or CLI.
+
+### Key Rules
+
+- **One change per iteration**: Don't bundle prompt edits with tool fixes
+- **Always baseline first**: Record current pass rate before changing anything
+- **Trace-driven diagnosis**: Never guess — read the actual failing traces
+- **Full suite before shipping**: A targeted fix that regresses other evals is not a fix
+- **Dataset fixes count**: Sometimes the test is wrong, not the agent
+
+### Eval Types (19 total)
+
+`quality`, `security`, `tone`, `routing`, `greeting`, `returning-greeting`, `memory`, `memory-write`, `memory-informed`, `weather`, `graph-extraction`, `onboarding`, `multi-cap`, `notification-judgment`, `error-recovery`, `schedule-cron`, `knowledge-connections`, `contradiction`, `long-conversation`
+
 ## Feature Roadmap Context
 
-See `vision.md` for the full roadmap. Completed: 001–015. Next: 016 (Unified Eval Navigation).
+See `vision.md` for the full roadmap. Completed: 001–016. Next: 017 (User Feedback).
 
 When a feature, idea, or capability is deferred or declared out of scope during any phase (specify, clarify, plan, implement), add it to the **Future Capabilities** section in `vision.md` so it is not lost.
 

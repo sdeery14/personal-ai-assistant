@@ -459,6 +459,90 @@ Each new capability must follow the constitution, include evaluation coverage, a
 
 ---
 
+## Agent Development Cycle
+
+### Philosophy
+
+Agent quality is not a one-time achievement — it's a continuous loop of measurement, diagnosis, and improvement. The eval framework exists not just to detect regressions, but to drive intentional capability development. Every agent behavior change (prompt edits, tool fixes, system prompt updates) should be motivated by eval data and validated by eval results.
+
+### The Iteration Loop
+
+```
+┌─────────────┐
+│  1. IDENTIFY │◄──────────────────────────────────┐
+│  (Dashboard) │                                    │
+└──────┬──────┘                                    │
+       ▼                                           │
+┌─────────────┐                                    │
+│ 2. BASELINE  │                                    │
+│ (Run eval)   │                                    │
+└──────┬──────┘                                    │
+       ▼                                           │
+┌─────────────┐     ┌──────────┐     ┌──────────┐ │
+│ 3. DIAGNOSE  │────►│ 4. FIX   │────►│ 5. EVAL  │─┤
+│ (Read traces)│     │ (Change) │     │ (Re-run) │ │
+└─────────────┘     └──────────┘     └──────┬───┘ │
+                                            │      │
+                                    passing?│      │
+                                     yes ───▼──    │
+                                   ┌──────────┐    │
+                                   │ 6. VERIFY │    │
+                                   │ (Full suite)   │
+                                   └────┬─────┘    │
+                                        │ regress? │
+                                        │ yes ─────┘
+                                        ▼ no
+                                   ┌──────────┐
+                                   │ 7. SHIP   │
+                                   │ (Promote) │
+                                   └──────────┘
+```
+
+### Step Details
+
+1. **IDENTIFY** — The eval dashboard (`/admin/evals`) shows which eval types are failing, regressing, or below target. The trends page shows quality trajectory across agent versions. Start here to decide what to work on.
+
+2. **BASELINE** — Run the targeted eval to establish current pass rate: `uv run python -m eval --dataset eval/<dataset>.json --verbose`. Record the baseline metrics before making changes.
+
+3. **DIAGNOSE** — Read failing traces to understand *why* the agent fails. Categorize failures:
+   - **Prompt gap**: The agent doesn't know it should do X → fix system prompt
+   - **Tool bug**: The tool returns wrong data or errors → fix tool code
+   - **Dataset issue**: The golden dataset expectation is wrong or ambiguous → fix dataset
+   - **Scorer issue**: The judge/scorer is too strict or misaligned → fix scorer
+   - **Capability gap**: The agent lacks a tool or integration to handle the case → add capability
+
+4. **FIX** — Make the smallest change that addresses the root cause. One change per iteration — don't bundle prompt edits with tool fixes. Common fixes:
+   - Edit system prompt in `src/agents.py` or specialist agent files
+   - Fix tool implementation in `src/tools/`
+   - Update golden dataset cases in `eval/`
+   - Adjust scorer thresholds or rubrics in `eval/judge.py`
+
+5. **EVAL** — Re-run the targeted eval and compare to baseline. If pass rate improved, continue. If not, return to step 3 with new trace data.
+
+6. **VERIFY** — Once the targeted eval passes (≥80%), run the full eval suite to check for regressions: `uv run python -m eval`. All 19 eval types must remain at or above their previous pass rates.
+
+7. **SHIP** — Commit the changes, promote prompts if using the prompt registry, and verify the dashboard reflects the improvement.
+
+### Eval Types Reference
+
+The agent is evaluated across 19 dimensions:
+
+| Category | Eval Types | What They Test |
+|----------|-----------|----------------|
+| Core Quality | quality, tone, routing, greeting, returning-greeting | Response quality, personality, intent routing |
+| Safety | security | Guardrail block rate, false positive rate |
+| Memory | memory, memory-write, memory-informed | Retrieval recall, write precision, contextual use |
+| Tools | weather, graph-extraction | Tool calling correctness, entity extraction |
+| Multi-Turn | onboarding, multi-cap, long-conversation | Session coherence, capability demonstration |
+| Judgment | notification-judgment, error-recovery, schedule-cron | Decision quality in complex scenarios |
+| Knowledge | knowledge-connections, contradiction | Relationship reasoning, consistency |
+
+### Quality Targets
+
+- **Passing threshold**: ≥80% pass rate per eval type (required for prompt promotion)
+- **Quality score**: ≥4.0 average on 1-5 LLM judge scale (target, not gate)
+- **Regression tolerance**: No eval type may drop more than 5 percentage points from its previous pass rate
+
 ## Non-Goals
 
 - Replicate human memory
