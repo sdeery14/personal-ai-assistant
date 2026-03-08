@@ -5,8 +5,10 @@ import { Card, Button } from "@/components/ui";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { TrendChart } from "./TrendChart";
 import { useTrends, useRegressions, useRunDetail } from "@/hooks/useEvalDashboard";
+import { useAgentVersions, useAgentVersionDetail } from "@/hooks/useEvalExplorer";
 import { RunDetailPanel } from "./RunDetailPanel";
 import type { TrendSummary, RegressionReport } from "@/types/eval-dashboard";
+import type { AgentConfig } from "@/types/eval-explorer";
 
 const DETAIL_LIMIT_OPTIONS = [5, 10, 20, 50, 100];
 
@@ -44,6 +46,76 @@ function formatDelta(delta: number): string {
   return `${sign}${delta.toFixed(1)}pp`;
 }
 
+// ---------------------------------------------------------------------------
+// Agent Snapshot Card – compact current-agent summary for the Overview tab
+// ---------------------------------------------------------------------------
+
+function AgentSnapshotCard({ config, gitCommitShort, gitBranch }: {
+  config: AgentConfig;
+  gitCommitShort: string;
+  gitBranch: string;
+}) {
+  return (
+    <Card padding="sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        {/* Left: identity */}
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Current Agent
+            </h3>
+            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+              {gitCommitShort}
+            </span>
+            <span className="text-[10px] text-gray-400 dark:text-gray-500">
+              {gitBranch}
+            </span>
+          </div>
+
+          {/* Model + framework row */}
+          <div className="flex items-center gap-2 text-xs">
+            <span className="font-mono font-medium text-gray-800 dark:text-gray-200">
+              {config.model}
+            </span>
+            <span className="text-gray-400 dark:text-gray-500">·</span>
+            <span className="text-gray-500 dark:text-gray-400">
+              {config.framework}
+            </span>
+            {config.guardrails.length > 0 && (
+              <>
+                <span className="text-gray-400 dark:text-gray-500">·</span>
+                <span className="text-gray-500 dark:text-gray-400">
+                  {config.guardrails.length} guardrail{config.guardrails.length !== 1 ? "s" : ""}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Right: specialist badges */}
+        {config.specialists.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {config.specialists.map((s) => (
+              <span
+                key={s.name}
+                className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                title={`${s.description}\nTools: ${s.tools.join(", ")}`}
+              >
+                {s.name.replace(/^ask_/, "").replace(/_agent$/, "")}
+                {s.tools.length > 0 && (
+                  <span className="text-[9px] text-gray-400 dark:text-gray-500">
+                    ({s.tools.length})
+                  </span>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 export function TrendsTab() {
   const { summaries, isLoading, error, refresh } = useTrends(undefined, 100);
   const {
@@ -53,6 +125,11 @@ export function TrendsTab() {
     error: regressionsError,
   } = useRegressions();
   const [expandedType, setExpandedType] = useState<string | null>(null);
+
+  // Agent snapshot: fetch latest agent version + its config
+  const { agents: agentVersions } = useAgentVersions();
+  const latestAgentId = agentVersions.length > 0 ? agentVersions[0].model_id : null;
+  const { agent: latestAgent } = useAgentVersionDetail(latestAgentId);
 
   // Build a lookup from eval_type to regression report
   const regressionByType = new Map<string, RegressionReport>();
@@ -120,6 +197,15 @@ export function TrendsTab() {
           Refresh
         </Button>
       </div>
+
+      {/* Agent snapshot */}
+      {latestAgent?.config?.model && (
+        <AgentSnapshotCard
+          config={latestAgent.config}
+          gitCommitShort={latestAgent.git_commit_short}
+          gitBranch={latestAgent.git_branch}
+        />
+      )}
 
       <Card padding="sm">
         <table className="w-full text-sm">
