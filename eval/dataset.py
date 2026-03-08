@@ -424,6 +424,8 @@ def is_weather_dataset(path: str | Path) -> bool:
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
+        if not isinstance(data, dict):
+            return False
         cases = data.get("cases", [])
         if cases and "expected_behavior" in cases[0] and "expected_fields" in cases[0]:
             return True
@@ -455,6 +457,8 @@ def is_memory_write_dataset(path: str | Path) -> bool:
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
+        if not isinstance(data, dict):
+            return False
         cases = data.get("cases", [])
         if cases and "expected_actions" in cases[0] and "conversation" in cases[0]:
             return True
@@ -544,6 +548,8 @@ def is_graph_extraction_dataset(path: str | Path) -> bool:
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
+        if not isinstance(data, dict):
+            return False
         cases = data.get("cases", [])
         if cases and "expected_entities" in cases[0] and "expected_relationships" in cases[0]:
             return True
@@ -633,6 +639,8 @@ def is_onboarding_dataset(path: str | Path) -> bool:
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
+        if not isinstance(data, dict):
+            return False
         cases = data.get("cases", [])
         if cases and "user_turns" in cases[0] and "persona" in cases[0]:
             return True

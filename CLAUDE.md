@@ -65,7 +65,7 @@ uv run pytest tests/integration/test_chat_endpoint.py -v
 # Run with coverage
 uv run pytest tests/ --cov=src --cov-report=html
 
-# Run MLflow evaluation suite (requires Docker services running)
+# Run MLflow evaluation suite locally (preferred — requires API + MLflow Docker services)
 uv run python -m eval
 
 # Validate evaluation dataset only
@@ -74,14 +74,8 @@ uv run python -m eval --dry-run
 # Run eval with verbose output
 uv run python -m eval --verbose
 
-# Run eval inside Docker (requires both API and MLflow stacks running)
-docker compose -f docker/docker-compose.eval.yml run --rm eval --dataset eval/graph_extraction_golden_dataset.json --verbose
-
-# Dry-run eval in Docker
-docker compose -f docker/docker-compose.eval.yml run --rm eval --dry-run
-
-# Rebuild eval container after code changes
-docker compose -f docker/docker-compose.eval.yml build
+# Run a specific eval dataset
+uv run python -m eval --dataset eval/graph_extraction_golden_dataset.json --verbose
 ```
 
 ### Dependency Management
@@ -171,9 +165,22 @@ tests/
 ## Testing Philosophy
 
 - **pytest**: Test code logic, error handling, control flow. Mock all OpenAI/LLM API calls. Fast, deterministic, cheap.
-- **MLflow eval**: Test AI behavior, output quality, guardrail effectiveness. Real API calls. Slow, non-deterministic, expensive.
+- **MLflow eval**: Test AI behavior, output quality, guardrail effectiveness. Real API calls. Slow, non-deterministic, expensive. **Run evals locally** via `uv run python -m eval` (not in the Docker eval container) so that git SHA and local context are captured. The Docker eval compose file exists but is not the primary path.
 
 Never mock the entire SDK/Runner in pytest. If you need to test SDK integration behavior, that belongs in MLflow eval.
+
+### Manual UI Testing with Playwright
+
+Use the Playwright MCP tool (`mcp__playwright__*`) for manual frontend verification. This is preferred over screenshot-based testing because Playwright's accessibility snapshots give structured DOM state.
+
+**Workflow:**
+1. Ensure Docker API (`localhost:8000`) and Next.js dev server (`localhost:3000`) are running
+2. Navigate to login page, sign in (admin user: `sdeery` / `password123`)
+3. Use `browser_snapshot` (not screenshots) to inspect page state — it returns structured accessibility trees
+4. Use `browser_click` with element refs from snapshots to interact with the UI
+5. Verify data flows end-to-end: backend API → frontend rendering
+
+**When to use Playwright:** After changing API response shapes, frontend components that display backend data, or eval dashboard data flow. Not needed for pure logic/utility changes.
 
 ## Environment Variables
 

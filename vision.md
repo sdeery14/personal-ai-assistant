@@ -321,7 +321,42 @@ Web frontend for the eval pipeline (Feature 013), giving admin users a visual da
 
 ---
 
-### Feature 015 – Voice Interaction
+### Feature 015 – Eval Explorer UI
+
+> "I can browse experiments, runs, traces, and assessments in a purpose-built UI that's better than MLflow for understanding my agent's quality."
+
+Read-only exploration UI for all eval data stored in MLflow. Replaces the need to use MLflow's generic UI by providing navigation and visualization tailored to this project's eval structure. Complements Feature 014 (pipeline operations) with deep data browsing.
+
+- **Experiment browser**: List all eval experiments with metadata (eval type, run count, last run date, latest pass rate)
+- **Run browser**: Sortable/filterable run list per experiment with full params and metrics; run-to-run comparison (side-by-side diff)
+- **Trace viewer**: Span tree visualization showing agent execution flow — tool calls, inputs/outputs, timing per span
+- **Assessment viewer**: All scorer results per trace (not just primary), with scores, rationales, and pass/fail status
+- **Session viewer**: Multi-turn conversation timeline for session-grouped evals (onboarding, contradiction, etc.)
+- **Dataset viewer**: Browse golden dataset cases and their versions
+- **Universal quality trend**: Cross-experiment agent quality chart — every eval type includes a 1-5 LLM quality judge, enabling a single "agent health over time" view
+- **Access control**: Read-only, admin-only; no mutations to MLflow data from this UI
+- **Dependencies**: Feature 014 (existing API layer and dashboard shell), Feature 002/013 (MLflow eval data)
+
+---
+
+### Feature 016 – User Feedback
+
+> "Users can rate responses and conversations, and I can see how real usage correlates with eval metrics."
+
+Structured feedback collection at three levels (message, session, app) with an admin dashboard showing feedback trends alongside eval quality data.
+
+- **Message-level feedback**: Thumbs up/down on individual assistant responses, optional free-text comment
+- **Session-level feedback**: End-of-conversation rating (1-5 stars) with optional comment
+- **App-level feedback**: Periodic satisfaction prompt (dismissible), free-text feedback form
+- **Data model**: `feedback` table in PostgreSQL (user_id, conversation_id, message_id, level, rating, comment, created_at)
+- **Privacy**: Feedback is per-user scoped; admins see aggregated trends, not individual user feedback unless explicitly granted
+- **Admin dashboard**: Feedback trends over time, correlation with eval pass rates, breakdown by feedback level
+- **API endpoints**: POST feedback (user-facing), GET aggregated feedback (admin-only)
+- **Dependencies**: Feature 008 (frontend), Feature 014 (admin dashboard shell)
+
+---
+
+### Feature 017 – Voice Interaction
 
 > "I can talk to the assistant and hear it respond."
 
@@ -336,7 +371,7 @@ Phased: TTS-only output first, then two-way voice with speech-to-text input and 
 
 ---
 
-### Feature 016 – Edge Client (Raspberry Pi)
+### Feature 018 – Edge Client (Raspberry Pi)
 
 > "I can interact with the assistant from a Raspberry Pi."
 
@@ -348,11 +383,11 @@ Text-based interface (CLI / button / simple display), connection to existing bac
 - **Local state**: Minimal — last N messages cached for display continuity, no local database
 - **Hardware targets**: Raspberry Pi 4/5 with network access
 - **Deployment**: Docker container or systemd service
-- **Open questions**: Display hardware (e-ink, HDMI, none), audio integration with Feature 015
+- **Open questions**: Display hardware (e-ink, HDMI, none), audio integration with Feature 017
 
 ---
 
-### Feature 017 – Google Integrations (Read-Only)
+### Feature 019 – Google Integrations (Read-Only)
 
 > "The assistant can tell me about my emails and calendar events."
 

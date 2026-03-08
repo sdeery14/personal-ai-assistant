@@ -106,6 +106,24 @@ from eval.onboarding_models import (
 )
 
 
+def _get_git_sha() -> str | None:
+    """Return the current git HEAD SHA (short), or None if unavailable."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
 def _log_prompt_versions():
     """Log currently active prompt versions as MLflow run params (best-effort)."""
     try:
@@ -117,6 +135,42 @@ def _log_prompt_versions():
             )
     except Exception:
         pass
+
+
+def _log_git_sha():
+    """Log the current git commit SHA as an MLflow run param (best-effort)."""
+    sha = _get_git_sha()
+    if sha:
+        mlflow.log_param("git_sha", sha)
+
+
+def _extract_rationale(row: Any, scorer_name: str) -> str | None:
+    """Extract judge rationale from an eval_results DataFrame row.
+
+    Tries two approaches:
+    1. Direct ``<scorer_name>/rationale`` column (MLflow >= 3.10).
+    2. ``assessments`` list where ``assessment["name"] == scorer_name``.
+
+    Returns *None* if no rationale is found.
+    """
+    # Approach 1: direct rationale column
+    rationale_col = f"{scorer_name}/rationale"
+    val = row.get(rationale_col) if hasattr(row, "get") else None
+    if val is not None and not (isinstance(val, float) and val != val):
+        text = str(val).strip()
+        if text:
+            return text
+
+    # Approach 2: assessments list (MLflow stores feedback here)
+    assessments = row.get("assessments", []) if hasattr(row, "get") else []
+    if isinstance(assessments, list):
+        for a in assessments:
+            if isinstance(a, dict) and a.get("name") == scorer_name:
+                r = a.get("rationale")
+                if r:
+                    return str(r).strip()
+
+    return None
 
 
 @dataclass
@@ -257,26 +311,29 @@ def run_evaluation(
             dataset_version=dataset.version,
         )
 
-    # Set up MLflow
-    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
-    mlflow.set_experiment(settings.mlflow_experiment_name)
-
-    # Register dataset in MLflow
-    experiment_id = get_experiment_id(settings.mlflow_experiment_name)
-    mlflow_records = prepare_quality_records(dataset)
-    mlflow_dataset = get_or_create_dataset(
-        dataset_path=dataset_path,
-        version=dataset.version,
-        experiment_id=experiment_id,
-        records=mlflow_records,
-    )
-
     # Capture API key for agent invocation
     api_key = settings.openai_api_key
 
     # Detect if this is a security dataset (has expected_behavior field)
     is_security_dataset = any(
         case.expected_behavior is not None for case in dataset.cases
+    )
+
+    # Set up MLflow (security evals get their own experiment)
+    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+    experiment_name = settings.mlflow_experiment_name
+    if is_security_dataset:
+        experiment_name = experiment_name + "-security"
+    mlflow.set_experiment(experiment_name)
+
+    # Register dataset in MLflow
+    experiment_id = get_experiment_id(experiment_name)
+    mlflow_records = prepare_quality_records(dataset)
+    mlflow_dataset = get_or_create_dataset(
+        dataset_path=dataset_path,
+        version=dataset.version,
+        experiment_id=experiment_id,
+        records=mlflow_records,
     )
 
     # Create judge
@@ -301,6 +358,7 @@ def run_evaluation(
             }
         )
         _log_prompt_versions()
+        _log_git_sha()
 
         # ============================================================
         # PHASE 1: Manual prediction loop (autolog disabled)
@@ -394,14 +452,6 @@ def run_evaluation(
                     "security_gate_passed": (1 if metrics.security_gate_passed else 0),
                 }
             )
-
-        # Log per-case results as artifact
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()  # Clean up temp file
 
     return EvaluationResult(
         metrics=metrics,
@@ -832,17 +882,30 @@ def run_memory_evaluation(
             }
         )
         _log_prompt_versions()
+        _log_git_sha()
+
+        # Suppress autolog embedding traces during memory queries
+        mlflow.openai.autolog(disable=True)
 
         for case in dataset.cases:
             try:
+                @mlflow.trace(name="memory_retrieval")
+                def _run_memory_case(query: str, user_id: str) -> dict:
+                    """Traced wrapper for a single memory retrieval case."""
+                    contents, user_ids, tokens = _query_memory(
+                        query=query,
+                        user_id=user_id,
+                        settings=settings,
+                    )
+                    return {"retrieved_contents": contents, "retrieved_user_ids": user_ids, "token_count": tokens}
+
                 start_time = time.perf_counter()
 
-                # Call the memory service directly
-                retrieved_contents, retrieved_user_ids, token_count = _query_memory(
-                    query=case.query,
-                    user_id=case.user_id,
-                    settings=settings,
-                )
+                # Call the traced memory query
+                trace_result = _run_memory_case(query=case.query, user_id=case.user_id)
+                retrieved_contents = trace_result["retrieved_contents"]
+                retrieved_user_ids = trace_result["retrieved_user_ids"]
+                token_count = trace_result["token_count"]
 
                 latency_ms = int((time.perf_counter() - start_time) * 1000)
                 latencies.append(latency_ms)
@@ -881,6 +944,29 @@ def run_memory_evaluation(
                 )
                 results.append(result)
 
+                # Log feedback assessment on the trace for dashboard visibility
+                try:
+                    from mlflow.entities import AssessmentSource, AssessmentSourceType
+                    traces = mlflow.search_traces(
+                        experiment_ids=[experiment_id],
+                        max_results=1,
+                        order_by=["timestamp_ms DESC"],
+                    )
+                    if len(traces) > 0:
+                        trace_id = traces.iloc[0]["trace_id"]
+                        mlflow.log_feedback(
+                            trace_id=trace_id,
+                            name="memory_retrieval",
+                            value=recall,
+                            source=AssessmentSource(
+                                source_type=AssessmentSourceType.CODE,
+                                source_id="memory_eval",
+                            ),
+                            rationale=f"recall={recall:.2f}, precision={precision:.2f}, expected_found={expected_found}/{len(case.expected_retrievals)}, cross_user_violation={cross_user_violation}",
+                        )
+                except Exception:
+                    pass  # Non-critical — dashboard reads from metrics, not trace feedback
+
                 if verbose:
                     status = "✅" if recall >= 0.8 and not cross_user_violation else "❌"
                     print(f"  {case.id}: {status} R={recall:.2f} P={precision:.2f} {latency_ms}ms")
@@ -905,6 +991,9 @@ def run_memory_evaluation(
                 )
                 if verbose:
                     print(f"  {case.id}: ⚠️ ERROR - {str(e)}")
+
+        # Re-enable autolog after memory eval
+        mlflow.openai.autolog(disable=False)
 
         # Compute aggregate metrics
         valid_results = [r for r in results if r.error is None]
@@ -962,14 +1051,6 @@ def run_memory_evaluation(
                 "memory_overall_passed": 1 if overall_passed else 0,
             }
         )
-
-        # Log per-case results as artifact
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("memory_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
 
     return MemoryEvaluationResult(
         metrics=metrics,
@@ -1184,6 +1265,7 @@ def run_memory_write_evaluation(
             "mlflow_dataset_id": mlflow_dataset.dataset_id,
         })
         _log_prompt_versions()
+        _log_git_sha()
 
         # ============================================================
         # PHASE 1: Manual prediction loop (autolog disabled)
@@ -1464,14 +1546,6 @@ def run_memory_write_evaluation(
         if judge_pass_rate is not None:
             mlflow.log_metrics({"memory_write_judge_pass_rate": judge_pass_rate})
 
-        # Log per-case results as artifact
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("memory_write_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
-
     return MemoryWriteEvaluationResult(
         metrics=metrics,
         results=results,
@@ -1658,6 +1732,7 @@ def run_weather_evaluation(
             }
         )
         _log_prompt_versions()
+        _log_git_sha()
 
         # ============================================================
         # PHASE 1: Manual prediction loop (autolog disabled)
@@ -1866,14 +1941,6 @@ def run_weather_evaluation(
                 "weather_overall_passed": 1 if overall_passed else 0,
             }
         )
-
-        # Log per-case results as artifact
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("weather_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
 
     return WeatherEvaluationResult(
         metrics=metrics,
@@ -2085,6 +2152,7 @@ def run_graph_evaluation(
             "mlflow_dataset_id": mlflow_dataset.dataset_id,
         })
         _log_prompt_versions()
+        _log_git_sha()
 
         # ============================================================
         # PHASE 1: Manual prediction loop (autolog disabled)
@@ -2358,14 +2426,6 @@ def run_graph_evaluation(
             "graph_overall_passed": 1 if overall_passed else 0,
         })
 
-        # Log per-case results as artifact
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("graph_extraction_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
-
     return GraphExtractionEvaluationResult(
         metrics=metrics,
         results=results,
@@ -2520,6 +2580,7 @@ def run_onboarding_evaluation(
             "mlflow_dataset_id": mlflow_dataset.dataset_id,
         })
         _log_prompt_versions()
+        _log_git_sha()
 
         # ============================================================
         # PHASE 1: Multi-turn conversation loop (autolog disabled)
@@ -2625,6 +2686,7 @@ def run_onboarding_evaluation(
 
         # Multi-turn quality evaluation via session traces
         quality_by_case: dict[str, str] = {}  # case_id -> quality_rating
+        rationale_by_case: dict[str, str | None] = {}  # case_id -> rationale
 
         from collections import defaultdict
         from typing import Literal
@@ -2710,16 +2772,17 @@ def run_onboarding_evaluation(
                     "(e.g., reminders, scheduling, prep assistance)?\n"
                     "5. MEMORY: Did the conversation show the assistant "
                     "remembering and building on earlier details?\n\n"
-                    "Rating guide:\n"
-                    "- excellent: All 5 criteria strongly met\n"
-                    "- good: 4 criteria met, minor gaps\n"
-                    "- adequate: 2-3 criteria met\n"
-                    "- poor: Fewer than 2 criteria met\n\n"
-                    "Answer with ONLY one word: excellent, good, "
-                    "adequate, or poor."
+                    "Scoring Scale:\n"
+                    "- 5 (Excellent): All 5 criteria strongly met\n"
+                    "- 4 (Good): 4 criteria met, minor gaps\n"
+                    "- 3 (Adequate): 2-3 criteria met\n"
+                    "- 2 (Poor): Fewer than 2 criteria met\n"
+                    "- 1 (Unacceptable): Fails most criteria or "
+                    "fundamentally wrong\n\n"
+                    "Return ONLY the numeric score (1, 2, 3, 4, or 5)."
                 ),
                 feedback_value_type=Literal[
-                    "excellent", "good", "adequate", "poor"
+                    "1", "2", "3", "4", "5"
                 ],
                 model=f"openai:/{judge_model}",
             )
@@ -2749,6 +2812,7 @@ def run_onboarding_evaluation(
                             quality_by_case[case.id] = str(
                                 quality_value
                             ).strip().lower()
+                            rationale_by_case[case.id] = _extract_rationale(row, "onboarding_quality")
 
             if verbose:
                 print(
@@ -2782,9 +2846,10 @@ def run_onboarding_evaluation(
                                 {
                                     "role": "system",
                                     "content": (
-                                        "Rate this onboarding conversation "
-                                        "as: excellent, good, adequate, or "
-                                        "poor. Answer ONLY one word."
+                                        "Rate this onboarding conversation on "
+                                        "a 1-5 scale (5=Excellent, 4=Good, "
+                                        "3=Adequate, 2=Poor, 1=Unacceptable). "
+                                        "Return ONLY the number."
                                     ),
                                 },
                                 {
@@ -2804,21 +2869,19 @@ def run_onboarding_evaluation(
                     answer = resp.json()["choices"][0]["message"][
                         "content"
                     ].strip().lower()
-                    for valid in (
-                        "excellent", "good", "adequate", "poor"
-                    ):
-                        if valid in answer:
+                    for valid in ("5", "4", "3", "2", "1"):
+                        if answer.strip() == valid:
                             quality_by_case[case.id] = valid
                             break
                     else:
-                        quality_by_case[case.id] = "poor"
+                        quality_by_case[case.id] = "1"
                 except Exception:
-                    quality_by_case[case.id] = "poor"
+                    quality_by_case[case.id] = "1"
 
         # Build final per-case results from quality + extraction metrics
         for case, transcript, memory_writes, entity_creates, tool_calls, turn_count, latency_ms, error in case_data:
-            quality_rating = quality_by_case.get(case.id, "poor")
-            quality_passed = quality_rating in ("excellent", "good")
+            quality_rating = quality_by_case.get(case.id, "1")
+            quality_passed = quality_rating.isdigit() and int(quality_rating) >= 4
             extraction = extraction_by_case.get(case.id, {})
             mem_recall = extraction.get("memory_recall", 0.0)
             ent_recall = extraction.get("entity_recall", 0.0)
@@ -2835,6 +2898,7 @@ def run_onboarding_evaluation(
                 entity_recall=ent_recall,
                 quality_passed=quality_passed,
                 quality_rating=quality_rating,
+                quality_rationale=rationale_by_case.get(case.id),
                 total_latency_ms=latency_ms,
                 error=error,
             ))
@@ -2879,21 +2943,16 @@ def run_onboarding_evaluation(
         )
 
         # Log metrics
+        valid_scores = [int(r.quality_rating) for r in valid_results if r.quality_rating and r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         mlflow.log_metrics({
             "onboarding_quality_pass_rate": quality_pass_rate,
             "onboarding_memory_recall": avg_mem_recall,
             "onboarding_entity_recall": avg_ent_recall,
             "onboarding_error_cases": error_count,
             "onboarding_overall_passed": 1 if overall_passed else 0,
+            "onboarding_average_score": avg_score,
         })
-
-        # Log per-case results as artifact
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("onboarding_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
 
     return OnboardingEvaluationResult(
         metrics=metrics,
@@ -3064,6 +3123,7 @@ def run_tone_evaluation(
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "tone", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3102,14 +3162,15 @@ def run_tone_evaluation(
                 results_df = pd.DataFrame()
 
         for idx, (case, question, response, latency_ms) in enumerate(case_predictions):
-            rating = "poor"
+            rating = "1"
             if idx < len(results_df):
                 row = results_df.iloc[idx]
                 value = row.get("tone_quality/value")
                 if pd.notna(value):
                     rating = str(value).strip().lower()
-            passed = rating in ("excellent", "good")
-            results.append(ToneCaseResult(case_id=case.id, response=response, quality_passed=passed, quality_rating=rating, latency_ms=latency_ms))
+                rationale = _extract_rationale(row, "tone_quality")
+            passed = rating.isdigit() and int(rating) >= 4
+            results.append(ToneCaseResult(case_id=case.id, response=response, quality_passed=passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if passed else 'FAIL'}) {latency_ms}ms")
 
@@ -3117,15 +3178,10 @@ def run_tone_evaluation(
         error_count = len(results) - len(valid)
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = ToneMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"tone_quality_pass_rate": quality_pass_rate, "tone_error_cases": error_count, "tone_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("tone_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
+        mlflow.log_metrics({"tone_quality_pass_rate": quality_pass_rate, "tone_error_cases": error_count, "tone_overall_passed": 1 if overall_passed else 0, "tone_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return ToneEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -3182,6 +3238,7 @@ def run_returning_greeting_evaluation(
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "returning_greeting", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3224,14 +3281,15 @@ def run_returning_greeting_evaluation(
                 results_df = pd.DataFrame()
 
         for idx, (case, response, latency_ms) in enumerate(case_predictions):
-            rating = "poor"
+            rating = "1"
             if idx < len(results_df):
                 row = results_df.iloc[idx]
                 value = row.get("greeting_quality/value")
                 if pd.notna(value):
                     rating = str(value).strip().lower()
-            passed = rating in ("excellent", "good")
-            results.append(ReturningGreetingCaseResult(case_id=case.id, persona=case.persona, response=response, quality_passed=passed, quality_rating=rating, latency_ms=latency_ms))
+                rationale = _extract_rationale(row, "greeting_quality")
+            passed = rating.isdigit() and int(rating) >= 4
+            results.append(ReturningGreetingCaseResult(case_id=case.id, persona=case.persona, response=response, quality_passed=passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if passed else 'FAIL'}) {latency_ms}ms")
 
@@ -3239,15 +3297,10 @@ def run_returning_greeting_evaluation(
         error_count = len(results) - len(valid)
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = ReturningGreetingMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"greeting_quality_pass_rate": quality_pass_rate, "greeting_error_cases": error_count, "greeting_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("greeting_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
+        mlflow.log_metrics({"greeting_quality_pass_rate": quality_pass_rate, "greeting_error_cases": error_count, "greeting_overall_passed": 1 if overall_passed else 0, "greeting_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return ReturningGreetingEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -3304,6 +3357,7 @@ def run_routing_evaluation(
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "routing", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "routing_accuracy_threshold": 0.80, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3352,14 +3406,16 @@ def run_routing_evaluation(
                 results_df = pd.DataFrame()
 
         for idx, (case, response, actual_delegations, routing_correct, latency_ms) in enumerate(case_predictions):
-            rating = "poor"
+            rating = "1"
+            rationale = None
             if idx < len(results_df):
                 row = results_df.iloc[idx]
                 value = row.get("routing_quality/value")
                 if pd.notna(value):
                     rating = str(value).strip().lower()
-            quality_passed = rating in ("excellent", "good")
-            results.append(RoutingCaseResult(case_id=case.id, response=response, actual_delegations=actual_delegations, routing_correct=routing_correct, quality_passed=quality_passed, quality_rating=rating, latency_ms=latency_ms))
+                rationale = _extract_rationale(row, "routing_quality")
+            quality_passed = rating.isdigit() and int(rating) >= 4
+            results.append(RoutingCaseResult(case_id=case.id, response=response, actual_delegations=actual_delegations, routing_correct=routing_correct, quality_passed=quality_passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if quality_passed else 'FAIL'}) {latency_ms}ms")
 
@@ -3368,15 +3424,10 @@ def run_routing_evaluation(
         routing_accuracy = sum(1 for r in valid if r.routing_correct) / len(valid) if valid else 0.0
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = routing_accuracy >= 0.80 and quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = RoutingMetrics(total_cases=len(dataset.cases), routing_accuracy=routing_accuracy, quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"routing_accuracy": routing_accuracy, "routing_quality_pass_rate": quality_pass_rate, "routing_error_cases": error_count, "routing_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("routing_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
+        mlflow.log_metrics({"routing_accuracy": routing_accuracy, "routing_quality_pass_rate": quality_pass_rate, "routing_error_cases": error_count, "routing_overall_passed": 1 if overall_passed else 0, "routing_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return RoutingEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -3439,6 +3490,7 @@ def run_memory_informed_evaluation(
         run_prefix = run_id[:8]
         mlflow.log_params({"dataset_type": "memory_informed", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3479,6 +3531,7 @@ def run_memory_informed_evaluation(
             print("\nPhase 2: Running memory-informed quality evaluation...")
 
         quality_by_case: dict[str, str] = {}
+        rationale_by_case: dict[str, str | None] = {}
         try:
             from collections import defaultdict
             session_traces = mlflow.search_traces(locations=[experiment_id], return_type="list")
@@ -3507,6 +3560,7 @@ def run_memory_informed_evaluation(
                         c = case_by_session.get(session)
                         if c:
                             quality_by_case[c.id] = str(qv).strip().lower()
+                            rationale_by_case[c.id] = _extract_rationale(row, "memory_informed_quality")
             if verbose:
                 print(f"  Quality ratings: {len(quality_by_case)}/{len(dataset.cases)} cases")
         except Exception as e:
@@ -3519,22 +3573,22 @@ def run_memory_informed_evaluation(
                 if error:
                     continue
                 try:
-                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this conversation on memory application: excellent, good, adequate, or poor. Answer ONLY one word."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
+                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this conversation on memory application on a 1-5 scale (5=Excellent, 4=Good, 3=Adequate, 2=Poor, 1=Unacceptable). Return ONLY the number."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
                     resp.raise_for_status()
                     answer = resp.json()["choices"][0]["message"]["content"].strip().lower()
-                    for vr in ("excellent", "good", "adequate", "poor"):
-                        if vr in answer:
+                    for vr in ("5", "4", "3", "2", "1"):
+                        if answer.strip() == vr:
                             quality_by_case[case.id] = vr
                             break
                     else:
-                        quality_by_case[case.id] = "poor"
+                        quality_by_case[case.id] = "1"
                 except Exception:
-                    quality_by_case[case.id] = "poor"
+                    quality_by_case[case.id] = "1"
 
         for case, transcript, latency_ms, error in case_data:
-            qr = quality_by_case.get(case.id, "poor")
-            qp = qr in ("excellent", "good")
-            results.append(MemoryInformedCaseResult(case_id=case.id, persona=case.persona, conversation_transcript=transcript, quality_passed=qp, quality_rating=qr, latency_ms=latency_ms, error=error))
+            qr = quality_by_case.get(case.id, "1")
+            qp = qr.isdigit() and int(qr) >= 4
+            results.append(MemoryInformedCaseResult(case_id=case.id, persona=case.persona, conversation_transcript=transcript, quality_passed=qp, quality_rating=qr, quality_rationale=rationale_by_case.get(case.id), latency_ms=latency_ms, error=error))
             if verbose:
                 print(f"  {case.id}: {qr} ({'PASS' if qp else 'FAIL'}) {latency_ms}ms")
 
@@ -3543,15 +3597,10 @@ def run_memory_informed_evaluation(
         error_count = len(results) - len(valid)
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = MemoryInformedMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"meminf_quality_pass_rate": quality_pass_rate, "meminf_error_cases": error_count, "meminf_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("memory_informed_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
+        mlflow.log_metrics({"meminf_quality_pass_rate": quality_pass_rate, "meminf_error_cases": error_count, "meminf_overall_passed": 1 if overall_passed else 0, "meminf_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return MemoryInformedEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -3609,6 +3658,7 @@ def run_multi_cap_evaluation(
         run_prefix = run_id[:8]
         mlflow.log_params({"dataset_type": "multi_cap", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3649,6 +3699,7 @@ def run_multi_cap_evaluation(
             print("\nPhase 2: Running multi-capability quality evaluation...")
 
         quality_by_case: dict[str, str] = {}
+        rationale_by_case: dict[str, str | None] = {}
         try:
             from collections import defaultdict
             session_traces = mlflow.search_traces(locations=[experiment_id], return_type="list")
@@ -3677,6 +3728,7 @@ def run_multi_cap_evaluation(
                         c = case_by_session.get(session)
                         if c:
                             quality_by_case[c.id] = str(qv).strip().lower()
+                            rationale_by_case[c.id] = _extract_rationale(row, "multi_cap_quality")
             if verbose:
                 print(f"  Quality ratings: {len(quality_by_case)}/{len(dataset.cases)} cases")
         except Exception as e:
@@ -3689,22 +3741,22 @@ def run_multi_cap_evaluation(
                 if error:
                     continue
                 try:
-                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this multi-capability conversation: excellent, good, adequate, or poor. Answer ONLY one word."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
+                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this multi-capability conversation on a 1-5 scale (5=Excellent, 4=Good, 3=Adequate, 2=Poor, 1=Unacceptable). Return ONLY the number."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
                     resp.raise_for_status()
                     answer = resp.json()["choices"][0]["message"]["content"].strip().lower()
-                    for vr in ("excellent", "good", "adequate", "poor"):
-                        if vr in answer:
+                    for vr in ("5", "4", "3", "2", "1"):
+                        if answer.strip() == vr:
                             quality_by_case[case.id] = vr
                             break
                     else:
-                        quality_by_case[case.id] = "poor"
+                        quality_by_case[case.id] = "1"
                 except Exception:
-                    quality_by_case[case.id] = "poor"
+                    quality_by_case[case.id] = "1"
 
         for case, transcript, tool_calls, latency_ms, error in case_data:
-            qr = quality_by_case.get(case.id, "poor")
-            qp = qr in ("excellent", "good")
-            results.append(MultiCapCaseResult(case_id=case.id, persona=case.persona, scenario=case.scenario, conversation_transcript=transcript, tool_calls=tool_calls, quality_passed=qp, quality_rating=qr, latency_ms=latency_ms, error=error))
+            qr = quality_by_case.get(case.id, "1")
+            qp = qr.isdigit() and int(qr) >= 4
+            results.append(MultiCapCaseResult(case_id=case.id, persona=case.persona, scenario=case.scenario, conversation_transcript=transcript, tool_calls=tool_calls, quality_passed=qp, quality_rating=qr, quality_rationale=rationale_by_case.get(case.id), latency_ms=latency_ms, error=error))
             if verbose:
                 print(f"  {case.id}: {qr} ({'PASS' if qp else 'FAIL'}) {latency_ms}ms")
 
@@ -3713,15 +3765,10 @@ def run_multi_cap_evaluation(
         error_count = len(results) - len(valid)
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = MultiCapMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"mcap_quality_pass_rate": quality_pass_rate, "mcap_error_cases": error_count, "mcap_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("multi_cap_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
+        mlflow.log_metrics({"mcap_quality_pass_rate": quality_pass_rate, "mcap_error_cases": error_count, "mcap_overall_passed": 1 if overall_passed else 0, "mcap_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return MultiCapEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -3867,6 +3914,7 @@ def run_notification_judgment_evaluation(
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "notification_judgment", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "notification_accuracy_threshold": 0.80, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -3926,14 +3974,16 @@ def run_notification_judgment_evaluation(
                 results_df = pd.DataFrame()
 
         for idx, (case, response, notification_created, notification_correct, latency_ms) in enumerate(case_predictions):
-            rating = "poor"
+            rating = "1"
+            rationale = None
             if idx < len(results_df):
                 row = results_df.iloc[idx]
                 value = row.get("notification_quality/value")
                 if pd.notna(value):
                     rating = str(value).strip().lower()
-            quality_passed = rating in ("excellent", "good")
-            results.append(NotificationJudgmentCaseResult(case_id=case.id, response=response, notification_created=notification_created, notification_correct=notification_correct, quality_passed=quality_passed, quality_rating=rating, latency_ms=latency_ms))
+                rationale = _extract_rationale(row, "notification_quality")
+            quality_passed = rating.isdigit() and int(rating) >= 4
+            results.append(NotificationJudgmentCaseResult(case_id=case.id, response=response, notification_created=notification_created, notification_correct=notification_correct, quality_passed=quality_passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if quality_passed else 'FAIL'}) {latency_ms}ms")
 
@@ -3944,15 +3994,10 @@ def run_notification_judgment_evaluation(
         notification_accuracy = sum(1 for r in notif_cases if r.notification_correct) / len(notif_cases) if notif_cases else 0.0
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = notification_accuracy >= 0.80 and quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = NotificationJudgmentMetrics(total_cases=len(dataset.cases), notification_accuracy=notification_accuracy, quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"notif_accuracy": notification_accuracy, "notif_quality_pass_rate": quality_pass_rate, "notif_error_cases": error_count, "notif_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("notification_judgment_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
+        mlflow.log_metrics({"notif_accuracy": notification_accuracy, "notif_quality_pass_rate": quality_pass_rate, "notif_error_cases": error_count, "notif_overall_passed": 1 if overall_passed else 0, "notif_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return NotificationJudgmentEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -4014,6 +4059,7 @@ def run_error_recovery_evaluation(
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "error_recovery", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -4055,14 +4101,16 @@ def run_error_recovery_evaluation(
                 results_df = pd.DataFrame()
 
         for idx, (case, response, latency_ms) in enumerate(case_predictions):
-            rating = "poor"
+            rating = "1"
+            rationale = None
             if idx < len(results_df):
                 row = results_df.iloc[idx]
                 value = row.get("error_recovery_quality/value")
                 if pd.notna(value):
                     rating = str(value).strip().lower()
-            passed = rating in ("excellent", "good")
-            results.append(ErrorRecoveryCaseResult(case_id=case.id, response=response, quality_passed=passed, quality_rating=rating, latency_ms=latency_ms))
+                rationale = _extract_rationale(row, "error_recovery_quality")
+            passed = rating.isdigit() and int(rating) >= 4
+            results.append(ErrorRecoveryCaseResult(case_id=case.id, response=response, quality_passed=passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if passed else 'FAIL'}) {latency_ms}ms")
 
@@ -4070,15 +4118,10 @@ def run_error_recovery_evaluation(
         error_count = len(results) - len(valid)
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = ErrorRecoveryMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"errrecov_quality_pass_rate": quality_pass_rate, "errrecov_error_cases": error_count, "errrecov_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("error_recovery_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
+        mlflow.log_metrics({"errrecov_quality_pass_rate": quality_pass_rate, "errrecov_error_cases": error_count, "errrecov_overall_passed": 1 if overall_passed else 0, "errrecov_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return ErrorRecoveryEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -4135,6 +4178,7 @@ def run_schedule_cron_evaluation(
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "schedule_cron", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "cron_accuracy_threshold": 0.80, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -4197,14 +4241,16 @@ def run_schedule_cron_evaluation(
                 results_df = pd.DataFrame()
 
         for idx, (case, response, actual_cron, actual_task_type, cron_correct, latency_ms) in enumerate(case_predictions):
-            rating = "poor"
+            rating = "1"
+            rationale = None
             if idx < len(results_df):
                 row = results_df.iloc[idx]
                 value = row.get("schedule_quality/value")
                 if pd.notna(value):
                     rating = str(value).strip().lower()
-            quality_passed = rating in ("excellent", "good")
-            results.append(ScheduleCronCaseResult(case_id=case.id, response=response, actual_cron=actual_cron, actual_task_type=actual_task_type, cron_correct=cron_correct, quality_passed=quality_passed, quality_rating=rating, latency_ms=latency_ms))
+                rationale = _extract_rationale(row, "schedule_quality")
+            quality_passed = rating.isdigit() and int(rating) >= 4
+            results.append(ScheduleCronCaseResult(case_id=case.id, response=response, actual_cron=actual_cron, actual_task_type=actual_task_type, cron_correct=cron_correct, quality_passed=quality_passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if quality_passed else 'FAIL'}) {latency_ms}ms")
 
@@ -4213,15 +4259,10 @@ def run_schedule_cron_evaluation(
         cron_accuracy = sum(1 for r in valid if r.cron_correct) / len(valid) if valid else 0.0
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = cron_accuracy >= 0.80 and quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = ScheduleCronMetrics(total_cases=len(dataset.cases), cron_accuracy=cron_accuracy, quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"cron_accuracy": cron_accuracy, "cron_quality_pass_rate": quality_pass_rate, "cron_error_cases": error_count, "cron_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("schedule_cron_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
+        mlflow.log_metrics({"cron_accuracy": cron_accuracy, "cron_quality_pass_rate": quality_pass_rate, "cron_error_cases": error_count, "cron_overall_passed": 1 if overall_passed else 0, "cron_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return ScheduleCronEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -4283,6 +4324,7 @@ def run_knowledge_connections_evaluation(
         run_id = run.info.run_id
         mlflow.log_params({"dataset_type": "knowledge_connections", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -4330,14 +4372,16 @@ def run_knowledge_connections_evaluation(
                 results_df = pd.DataFrame()
 
         for idx, (case, response, latency_ms) in enumerate(case_predictions):
-            rating = "poor"
+            rating = "1"
+            rationale = None
             if idx < len(results_df):
                 row = results_df.iloc[idx]
                 value = row.get("knowledge_connections_quality/value")
                 if pd.notna(value):
                     rating = str(value).strip().lower()
-            passed = rating in ("excellent", "good")
-            results.append(KnowledgeConnectionsCaseResult(case_id=case.id, response=response, quality_passed=passed, quality_rating=rating, latency_ms=latency_ms))
+                rationale = _extract_rationale(row, "knowledge_connections_quality")
+            passed = rating.isdigit() and int(rating) >= 4
+            results.append(KnowledgeConnectionsCaseResult(case_id=case.id, response=response, quality_passed=passed, quality_rating=rating, quality_rationale=rationale, latency_ms=latency_ms))
             if verbose:
                 print(f"  {case.id}: {rating} ({'PASS' if passed else 'FAIL'}) {latency_ms}ms")
 
@@ -4345,15 +4389,10 @@ def run_knowledge_connections_evaluation(
         error_count = len(results) - len(valid)
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = KnowledgeConnectionsMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"kg_quality_pass_rate": quality_pass_rate, "kg_error_cases": error_count, "kg_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("knowledge_connections_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
+        mlflow.log_metrics({"kg_quality_pass_rate": quality_pass_rate, "kg_error_cases": error_count, "kg_overall_passed": 1 if overall_passed else 0, "kg_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return KnowledgeConnectionsEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -4411,6 +4450,7 @@ def run_contradiction_handling_evaluation(
         run_prefix = run_id[:8]
         mlflow.log_params({"dataset_type": "contradiction_handling", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -4451,6 +4491,7 @@ def run_contradiction_handling_evaluation(
             print("\nPhase 2: Running contradiction quality evaluation...")
 
         quality_by_case: dict[str, str] = {}
+        rationale_by_case: dict[str, str | None] = {}
         try:
             from collections import defaultdict
             session_traces = mlflow.search_traces(locations=[experiment_id], return_type="list")
@@ -4475,6 +4516,7 @@ def run_contradiction_handling_evaluation(
                         c = case_by_session.get(session)
                         if c:
                             quality_by_case[c.id] = str(qv).strip().lower()
+                            rationale_by_case[c.id] = _extract_rationale(row, "contradiction_quality")
             if verbose:
                 print(f"  Quality ratings: {len(quality_by_case)}/{len(dataset.cases)} cases")
         except Exception as e:
@@ -4487,22 +4529,22 @@ def run_contradiction_handling_evaluation(
                 if error:
                     continue
                 try:
-                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this conversation on contradiction handling: excellent, good, adequate, or poor. Answer ONLY one word."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
+                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this conversation on contradiction handling on a 1-5 scale (5=Excellent, 4=Good, 3=Adequate, 2=Poor, 1=Unacceptable). Return ONLY the number."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
                     resp.raise_for_status()
                     answer = resp.json()["choices"][0]["message"]["content"].strip().lower()
-                    for vr in ("excellent", "good", "adequate", "poor"):
-                        if vr in answer:
+                    for vr in ("5", "4", "3", "2", "1"):
+                        if answer.strip() == vr:
                             quality_by_case[case.id] = vr
                             break
                     else:
-                        quality_by_case[case.id] = "poor"
+                        quality_by_case[case.id] = "1"
                 except Exception:
-                    quality_by_case[case.id] = "poor"
+                    quality_by_case[case.id] = "1"
 
         for case, transcript, latency_ms, error in case_data:
-            qr = quality_by_case.get(case.id, "poor")
-            qp = qr in ("excellent", "good")
-            results.append(ContradictionHandlingCaseResult(case_id=case.id, persona=case.persona, conversation_transcript=transcript, quality_passed=qp, quality_rating=qr, latency_ms=latency_ms, error=error))
+            qr = quality_by_case.get(case.id, "1")
+            qp = qr.isdigit() and int(qr) >= 4
+            results.append(ContradictionHandlingCaseResult(case_id=case.id, persona=case.persona, conversation_transcript=transcript, quality_passed=qp, quality_rating=qr, quality_rationale=rationale_by_case.get(case.id), latency_ms=latency_ms, error=error))
             if verbose:
                 print(f"  {case.id}: {qr} ({'PASS' if qp else 'FAIL'}) {latency_ms}ms")
 
@@ -4511,15 +4553,10 @@ def run_contradiction_handling_evaluation(
         error_count = len(results) - len(valid)
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = ContradictionHandlingMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"contra_quality_pass_rate": quality_pass_rate, "contra_error_cases": error_count, "contra_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("contradiction_handling_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
+        mlflow.log_metrics({"contra_quality_pass_rate": quality_pass_rate, "contra_error_cases": error_count, "contra_overall_passed": 1 if overall_passed else 0, "contra_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return ContradictionHandlingEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 
@@ -4577,6 +4614,7 @@ def run_long_conversation_evaluation(
         run_prefix = run_id[:8]
         mlflow.log_params({"dataset_type": "long_conversation", "dataset_version": dataset.version, "total_cases": len(dataset.cases), "assistant_model": actual_model, "judge_model": judge_model, "quality_pass_rate_threshold": 0.80, "mlflow_dataset_id": mlflow_dataset.dataset_id})
         _log_prompt_versions()
+        _log_git_sha()
 
         # Phase 1
         mlflow.openai.autolog(disable=True)
@@ -4623,6 +4661,7 @@ def run_long_conversation_evaluation(
             print("\nPhase 2: Running long conversation quality evaluation...")
 
         quality_by_case: dict[str, str] = {}
+        rationale_by_case: dict[str, str | None] = {}
         try:
             from collections import defaultdict
             session_traces = mlflow.search_traces(locations=[experiment_id], return_type="list")
@@ -4647,6 +4686,7 @@ def run_long_conversation_evaluation(
                         c = case_by_session.get(session)
                         if c:
                             quality_by_case[c.id] = str(qv).strip().lower()
+                            rationale_by_case[c.id] = _extract_rationale(row, "long_conversation_quality")
             if verbose:
                 print(f"  Quality ratings: {len(quality_by_case)}/{len(dataset.cases)} cases")
         except Exception as e:
@@ -4659,22 +4699,22 @@ def run_long_conversation_evaluation(
                 if error:
                     continue
                 try:
-                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this long conversation on coherence and context retention: excellent, good, adequate, or poor. Answer ONLY one word."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
+                    resp = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": judge_model, "messages": [{"role": "system", "content": "Rate this long conversation on coherence and context retention on a 1-5 scale (5=Excellent, 4=Good, 3=Adequate, 2=Poor, 1=Unacceptable). Return ONLY the number."}, {"role": "user", "content": f"Conversation:\n{transcript}\n\nRubric: {case.rubric}"}], "max_tokens": 10, "temperature": 0.0}, timeout=30.0)
                     resp.raise_for_status()
                     answer = resp.json()["choices"][0]["message"]["content"].strip().lower()
-                    for vr in ("excellent", "good", "adequate", "poor"):
-                        if vr in answer:
+                    for vr in ("5", "4", "3", "2", "1"):
+                        if answer.strip() == vr:
                             quality_by_case[case.id] = vr
                             break
                     else:
-                        quality_by_case[case.id] = "poor"
+                        quality_by_case[case.id] = "1"
                 except Exception:
-                    quality_by_case[case.id] = "poor"
+                    quality_by_case[case.id] = "1"
 
         for case, transcript, latency_ms, error in case_data:
-            qr = quality_by_case.get(case.id, "poor")
-            qp = qr in ("excellent", "good")
-            results.append(LongConversationCaseResult(case_id=case.id, persona=case.persona, scenario=case.scenario, conversation_transcript=transcript, quality_passed=qp, quality_rating=qr, latency_ms=latency_ms, error=error))
+            qr = quality_by_case.get(case.id, "1")
+            qp = qr.isdigit() and int(qr) >= 4
+            results.append(LongConversationCaseResult(case_id=case.id, persona=case.persona, scenario=case.scenario, conversation_transcript=transcript, quality_passed=qp, quality_rating=qr, quality_rationale=rationale_by_case.get(case.id), latency_ms=latency_ms, error=error))
             if verbose:
                 print(f"  {case.id}: {qr} ({'PASS' if qp else 'FAIL'}) {latency_ms}ms")
 
@@ -4683,15 +4723,10 @@ def run_long_conversation_evaluation(
         error_count = len(results) - len(valid)
         quality_pass_rate = sum(1 for r in valid if r.quality_passed) / len(valid) if valid else 0.0
         overall_passed = quality_pass_rate >= 0.80
+        valid_scores = [int(r.quality_rating) for r in valid if r.quality_rating.isdigit()]
+        avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0.0
         metrics = LongConversationMetrics(total_cases=len(dataset.cases), quality_pass_rate=quality_pass_rate, error_cases=error_count, overall_passed=overall_passed)
-        mlflow.log_metrics({"longconv_quality_pass_rate": quality_pass_rate, "longconv_error_cases": error_count, "longconv_overall_passed": 1 if overall_passed else 0, "eval_duration_ms": eval_duration_ms})
-
-        results_json = [r.model_dump() for r in results]
-        results_path = Path("long_conversation_eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(results_json, f, indent=2, default=str)
-        mlflow.log_artifact(str(results_path))
-        results_path.unlink()
+        mlflow.log_metrics({"longconv_quality_pass_rate": quality_pass_rate, "longconv_error_cases": error_count, "longconv_overall_passed": 1 if overall_passed else 0, "longconv_average_score": avg_score, "eval_duration_ms": eval_duration_ms})
 
     return LongConversationEvaluationResult(metrics=metrics, results=results, mlflow_run_id=run_id, dataset_version=dataset.version)
 

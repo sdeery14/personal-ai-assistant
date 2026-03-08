@@ -15,6 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.api.admin import router as admin_router
+from src.api.eval_dashboard import router as eval_dashboard_router
+from src.api.eval_explorer import router as eval_explorer_router
 from src.api.auth import router as auth_router
 from src.api.conversations import router as conversations_router
 from src.api.entities import router as entities_router
@@ -229,6 +231,8 @@ app.add_middleware(CorrelationIdMiddleware)
 # Include API routes
 app.include_router(auth_router)
 app.include_router(admin_router)
+app.include_router(eval_dashboard_router)
+app.include_router(eval_explorer_router)
 app.include_router(conversations_router)
 app.include_router(memories_router)
 app.include_router(entities_router)

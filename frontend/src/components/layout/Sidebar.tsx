@@ -51,17 +51,41 @@ export function Sidebar() {
         </Link>
       ))}
       {isAdmin && (
-        <Link
-          href="/admin"
-          onClick={() => setMobileOpen(false)}
-          className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-            pathname.startsWith("/admin")
-              ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-              : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-          }`}
-        >
-          Admin
-        </Link>
+        <>
+          <Link
+            href="/admin"
+            onClick={() => setMobileOpen(false)}
+            className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+              pathname === "/admin"
+                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+            }`}
+          >
+            Admin
+          </Link>
+          <Link
+            href="/admin/evals"
+            onClick={() => setMobileOpen(false)}
+            className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+              pathname.startsWith("/admin/evals")
+                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+            }`}
+          >
+            Evals
+          </Link>
+          <Link
+            href="/admin/eval-explorer"
+            onClick={() => setMobileOpen(false)}
+            className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+              pathname.startsWith("/admin/eval-explorer")
+                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+            }`}
+          >
+            Explorer
+          </Link>
+        </>
       )}
     </nav>
   );

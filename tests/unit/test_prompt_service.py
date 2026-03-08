@@ -412,8 +412,8 @@ class TestModelConfig:
         assert result.model_config == {"temperature": 0.5, "top_p": 0.9}
 
     @patch("src.services.prompt_service.mlflow")
-    def test_seed_works_without_model_config(self, mock_mlflow):
-        """seed_prompts should work without model_config (seeds without it)."""
+    def test_seed_includes_default_model_config(self, mock_mlflow):
+        """seed_prompts should include default model_config from settings."""
         from src.services.prompt_service import seed_prompts
 
         mock_mlflow.genai.load_prompt.return_value = None
@@ -424,6 +424,8 @@ class TestModelConfig:
         result = seed_prompts()
 
         assert len(result) == 11
-        # Verify register_prompt was NOT called with model_config
+        # Verify register_prompt was called with model_config containing model and max_tokens
         for call in mock_mlflow.genai.register_prompt.call_args_list:
-            assert "model_config" not in call.kwargs
+            cfg = call.kwargs["model_config"]
+            assert "model" in cfg
+            assert "max_tokens" in cfg

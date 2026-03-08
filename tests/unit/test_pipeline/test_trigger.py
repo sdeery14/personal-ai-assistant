@@ -22,8 +22,8 @@ class TestRunEvalSuite:
 
         results = run_eval_suite(suite="full")
 
-        assert len(results) == 19
-        assert mock_run.call_count == 19
+        assert len(results) == 18
+        assert mock_run.call_count == 18
 
     @patch("eval.pipeline.trigger.subprocess.run")
     def test_failed_eval_captured(self, mock_run):

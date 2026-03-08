@@ -51,10 +51,12 @@ def run_eval_suite(
                 cmd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=600,  # 10 minute timeout per eval
             )
             exit_code = proc.returncode
-            output = proc.stdout + proc.stderr
+            output = (proc.stdout or "") + (proc.stderr or "")
         except subprocess.TimeoutExpired:
             exit_code = 2
             output = f"Timeout: eval for {dataset_path} exceeded 600s"
