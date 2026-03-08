@@ -178,9 +178,9 @@ export function QualityTrendChart({
             type="monotone"
             dataKey="overall"
             name="Overall"
-            stroke="#111827"
+            stroke="#facc15"
             strokeWidth={3}
-            dot={{ r: 4, fill: "#111827", stroke: "#fff", strokeWidth: 2 }}
+            dot={{ r: 4, fill: "#facc15", stroke: "#a16207", strokeWidth: 2 }}
             activeDot={{ r: 6 }}
             connectNulls
           />
