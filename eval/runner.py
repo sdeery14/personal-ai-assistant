@@ -1830,7 +1830,7 @@ def run_weather_evaluation(
                 "outputs": response,
                 "expectations": {
                     "expected_behavior": case.expected_behavior,
-                    "accepted_behaviors": getattr(case, "accepted_behaviors", None),
+                    "accepted_behaviors": getattr(case, "accepted_behaviors", None) or [case.expected_behavior],
                     "expected_fields": case.expected_fields,
                     "expected_error_keywords": getattr(case, "expected_error_keywords", []),
                     "rubric": getattr(case, "rubric", ""),
