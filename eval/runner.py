@@ -1729,6 +1729,7 @@ def run_weather_evaluation(
                 "unable to", "no weather information", "no information available",
                 "not a real", "no data available", "invalid location",
                 "doesn't appear to", "not a recognized",
+                "real place", "real location", "doesn't register",
             ]
         ):
             actual_behavior = "error"
@@ -2007,6 +2008,9 @@ def _detect_weather_behavior(response: str, case) -> str:
         "invalid location",
         "doesn't appear to",
         "not a recognized",
+        "real place",
+        "real location",
+        "doesn't register",
     ]
     if any(indicator in response_lower for indicator in error_indicators):
         return "error"
