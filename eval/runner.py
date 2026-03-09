@@ -1728,8 +1728,9 @@ def run_weather_evaluation(
                 "check spelling", "try a nearby", "not found",
                 "unable to", "no weather information", "no information available",
                 "not a real", "no data available", "invalid location",
-                "doesn't appear to", "not a recognized",
+                "doesn't appear to", "not a recognized", "recognized location",
                 "real place", "real location", "doesn't register",
+                "isn't a recognized", "not recognized",
             ]
         ):
             actual_behavior = "error"
@@ -2008,6 +2009,9 @@ def _detect_weather_behavior(response: str, case) -> str:
         "invalid location",
         "doesn't appear to",
         "not a recognized",
+        "recognized location",
+        "isn't a recognized",
+        "not recognized",
         "real place",
         "real location",
         "doesn't register",
