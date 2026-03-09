@@ -496,6 +496,10 @@ class WeatherTestCase(BaseModel):
         pattern=r"^(success|error|clarification)$",
         description="Expected response type: success (weather data), error (user-friendly error), clarification (ask for more info)",
     )
+    accepted_behaviors: list[str] | None = Field(
+        default=None,
+        description="Additional accepted behaviors for non-deterministic cases (e.g., ['success', 'clarification'])",
+    )
     expected_fields: list[str] = Field(
         default_factory=list,
         description="Fields expected in successful response (e.g., 'temperature', 'conditions')",

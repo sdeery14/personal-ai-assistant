@@ -1717,14 +1717,15 @@ def run_weather_evaluation(
         response = outputs if isinstance(outputs, str) else str(outputs)
         expected_behavior = expectations.get("expected_behavior", "success")
 
-        # Detect actual behavior from response
-        response_lower = response.lower()
+        # Detect actual behavior from response (normalize smart quotes)
+        response_lower = response.lower().replace("\u2019", "'").replace("\u201c", '"').replace("\u201d", '"')
         if "[error" in response_lower:
             actual_behavior = "error"
         elif any(
             kw in response_lower
             for kw in [
-                "couldn't find", "check spelling", "try a nearby", "not found",
+                "couldn't find", "can't find", "cannot find",
+                "check spelling", "try a nearby", "not found",
                 "unable to", "no weather information", "no information available",
                 "not a real", "no data available", "invalid location",
                 "doesn't appear to", "not a recognized",
@@ -1748,8 +1749,9 @@ def run_weather_evaluation(
         else:
             actual_behavior = "unknown"
 
-        # Return True if behavior matches expected
-        return actual_behavior == expected_behavior
+        # Return True if behavior matches expected (supports multiple accepted behaviors)
+        accepted = expectations.get("accepted_behaviors") or [expected_behavior]
+        return actual_behavior in accepted
 
     # Run evaluation with MLflow
     results: list[WeatherEvalResult] = []
@@ -1828,6 +1830,7 @@ def run_weather_evaluation(
                 "outputs": response,
                 "expectations": {
                     "expected_behavior": case.expected_behavior,
+                    "accepted_behaviors": getattr(case, "accepted_behaviors", None),
                     "expected_fields": case.expected_fields,
                     "expected_error_keywords": getattr(case, "expected_error_keywords", []),
                     "rubric": getattr(case, "rubric", ""),
@@ -1847,7 +1850,8 @@ def run_weather_evaluation(
             for idx, (case, query, response, latency_ms, error) in enumerate(case_data):
                 # Detect actual behavior from response
                 actual_behavior = _detect_weather_behavior(response, case)
-                behavior_match = (actual_behavior == case.expected_behavior)
+                accepted = getattr(case, "accepted_behaviors", None) or [case.expected_behavior]
+                behavior_match = (actual_behavior in accepted)
 
                 # Check for expected fields in response
                 response_lower = response.lower()
@@ -1983,11 +1987,14 @@ def _detect_weather_behavior(response: str, case) -> str:
 
     Returns: "success", "error", or "clarification"
     """
-    response_lower = response.lower()
+    # Normalize smart quotes to ASCII for keyword matching
+    response_lower = response.lower().replace("\u2019", "'").replace("\u201c", '"').replace("\u201d", '"')
 
     # Check for error indicators
     error_indicators = [
         "couldn't find",
+        "can't find",
+        "cannot find",
         "unable to retrieve",
         "error",
         "not found",

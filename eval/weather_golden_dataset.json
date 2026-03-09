@@ -149,7 +149,7 @@
     {
       "id": "weather-010",
       "query": "Weather in Springfield",
-      "expected_behavior": "clarification",
+      "expected_behavior": "success",
       "expected_fields": [],
       "expected_error_keywords": [],
       "rubric": "Response should handle ambiguous city name. May return data for most common Springfield or ask for clarification. Should not fail.",
@@ -157,6 +157,10 @@
       "tags": [
         "edge-case",
         "ambiguous"
+      ],
+      "accepted_behaviors": [
+        "success",
+        "clarification"
       ]
     },
     {
@@ -174,6 +178,10 @@
       "tags": [
         "edge-case",
         "missing-location"
+      ],
+      "accepted_behaviors": [
+        "clarification",
+        "success"
       ]
     },
     {
