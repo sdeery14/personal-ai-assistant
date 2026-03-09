@@ -12,7 +12,7 @@ from typing import Optional
 from agents import Agent, RunConfig
 
 from src.config import get_settings
-from src.services.prompt_service import load_prompt
+from src.prompts.defaults import PROMPT_DEFAULTS
 
 logger = structlog.get_logger(__name__)
 
@@ -126,9 +126,9 @@ def create_memory_agent(model: str) -> Optional[Agent]:
         return None
     instructions = (
         "You are a memory specialist. You retrieve, save, and delete user memories.\n"
-        + load_prompt("memory")
+        + PROMPT_DEFAULTS["memory"]
         + "\n"
-        + load_prompt("memory-write")
+        + PROMPT_DEFAULTS["memory-write"]
     )
     return Agent(
         name="MemoryAgent",
@@ -145,7 +145,7 @@ def create_knowledge_agent(model: str) -> Optional[Agent]:
         return None
     instructions = (
         "You are a knowledge graph specialist. You extract and query entities and relationships.\n"
-        + load_prompt("knowledge-graph")
+        + PROMPT_DEFAULTS["knowledge-graph"]
     )
     return Agent(
         name="KnowledgeAgent",
@@ -162,7 +162,7 @@ def create_weather_agent(model: str) -> Optional[Agent]:
         return None
     instructions = (
         "You are a weather specialist. You retrieve weather data for locations.\n"
-        + load_prompt("weather")
+        + PROMPT_DEFAULTS["weather"]
     )
     return Agent(
         name="WeatherAgent",
@@ -179,11 +179,11 @@ def create_proactive_agent(model: str) -> Optional[Agent]:
         return None
     instructions = (
         "You are a proactive assistant specialist. You track patterns, manage schedules, and calibrate proactiveness.\n"
-        + load_prompt("observation")
+        + PROMPT_DEFAULTS["observation"]
         + "\n"
-        + load_prompt("calibration")
+        + PROMPT_DEFAULTS["calibration"]
         + "\n"
-        + load_prompt("schedule")
+        + PROMPT_DEFAULTS["schedule"]
     )
     return Agent(
         name="ProactiveAgent",
@@ -200,7 +200,7 @@ def create_notification_agent(model: str) -> Optional[Agent]:
         return None
     instructions = (
         "You are a notification specialist. You create persistent notifications for the user.\n"
-        + load_prompt("notification")
+        + PROMPT_DEFAULTS["notification"]
     )
     return Agent(
         name="NotificationAgent",
@@ -329,13 +329,13 @@ def build_orchestrator_instructions(
     Returns:
         Complete instruction string for the orchestrator agent.
     """
-    parts = [load_prompt("orchestrator-base")]
+    parts = [PROMPT_DEFAULTS["orchestrator-base"]]
 
     # Personality / greeting based on onboarding status
     if is_onboarded is False:
-        parts.append(load_prompt("onboarding"))
+        parts.append(PROMPT_DEFAULTS["onboarding"])
     elif is_onboarded is True:
-        parts.append(load_prompt("proactive-greeting"))
+        parts.append(PROMPT_DEFAULTS["proactive-greeting"])
 
     # Routing hints for available specialists
     routing_hints = []

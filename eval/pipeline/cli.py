@@ -15,15 +15,13 @@ from eval.pipeline.aggregator import (
     get_trend_points,
 )
 from eval.pipeline.models import RegressionReport, TrendSummary
-from eval.pipeline.promotion import check_promotion_gate, execute_promotion
 from eval.pipeline.regression import check_all_regressions
-from eval.pipeline.rollback import execute_rollback, find_previous_version
 from eval.pipeline.trigger import run_eval_suite
 
 
 @click.group()
 def pipeline() -> None:
-    """Eval Dashboard & Regression Pipeline — trend tracking, regression detection, and prompt promotion."""
+    """Eval Dashboard & Regression Pipeline — trend tracking and regression detection."""
     pass
 
 
@@ -90,24 +88,16 @@ def _print_trend_table(
             f"{summary.eval_type} (latest: {summary.latest_pass_rate:.1%} pass rate, {direction})"
         )
         click.echo(
-            f"  {'Run':<20} {'Date':<22} {'Pass Rate':<12} {'Score':<8} {'Prompts Changed'}"
+            f"  {'Run':<20} {'Date':<22} {'Pass Rate':<12} {'Score':<8}"
         )
-
-        # Build a lookup of prompt changes by run_id
-        changes_by_run: dict[str, list[str]] = {}
-        for pc in summary.prompt_changes:
-            changes_by_run.setdefault(pc.run_id, []).append(
-                f"{pc.prompt_name}: {pc.from_version}->{pc.to_version}"
-            )
 
         for point in reversed(summary.points):  # newest first
             run_short = point.run_id[:16] if len(point.run_id) > 16 else point.run_id
             date_str = point.timestamp.strftime("%Y-%m-%d %H:%M")
             pass_rate_str = f"{point.pass_rate:.1%}"
             score_str = f"{point.average_score:.1f}"
-            prompts_str = ", ".join(changes_by_run.get(point.run_id, ["-"]))
             click.echo(
-                f"  {run_short:<20} {date_str:<22} {pass_rate_str:<12} {score_str:<8} {prompts_str}"
+                f"  {run_short:<20} {date_str:<22} {pass_rate_str:<12} {score_str:<8}"
             )
         click.echo()
 
@@ -183,23 +173,6 @@ def _print_check_table(reports: list[RegressionReport]) -> None:
 
     click.echo()
 
-    # Collect all changed prompts
-    all_changes: list[str] = []
-    for r in reports:
-        for pc in r.changed_prompts:
-            change_str = (
-                f"  {pc.prompt_name}: {pc.from_version} -> {pc.to_version} "
-                f"(between runs {r.baseline_run_id[:8]}.. and {r.current_run_id[:8]}..)"
-            )
-            if change_str not in all_changes:
-                all_changes.append(change_str)
-
-    if all_changes:
-        click.echo("Changed Prompts:")
-        for change in all_changes:
-            click.echo(change)
-        click.echo()
-
     # Summary counts
     counts: dict[str, int] = {}
     for r in reports:
@@ -225,137 +198,6 @@ def _print_check_json(reports: list[RegressionReport]) -> None:
 
     data = [asdict(r) for r in reports]
     click.echo(json.dumps(data, default=_serialize, indent=2))
-
-
-# ---------------------------------------------------------------------------
-# US3: promote command
-# ---------------------------------------------------------------------------
-
-
-@pipeline.command()
-@click.argument("prompt_name")
-@click.option("--from-alias", default="experiment", help="Source alias.")
-@click.option("--to-alias", default="production", help="Target alias.")
-@click.option("--version", default=None, type=int, help="Specific version to promote.")
-@click.option("--force", is_flag=True, default=False, help="Skip eval gate (with warning).")
-@click.option("--actor", default="cli-user", help="Actor name for audit log.")
-def promote(
-    prompt_name: str,
-    from_alias: str,
-    to_alias: str,
-    version: int | None,
-    force: bool,
-    actor: str,
-) -> None:
-    """Gate and execute prompt promotion."""
-    result = check_promotion_gate(
-        prompt_name=prompt_name,
-        from_alias=from_alias,
-        to_alias=to_alias,
-        version=version,
-    )
-
-    click.echo()
-    click.echo("Promotion Gate Check")
-    click.echo("=" * 60)
-    click.echo()
-    click.echo(f"Prompt: {result.prompt_name} (v{result.version})")
-    click.echo(f"From: @{result.from_alias} -> To: @{result.to_alias}")
-    click.echo()
-
-    click.echo(f"  {'Eval Type':<24} {'Pass Rate':<12} {'Threshold':<12} {'Status'}")
-    for ec in result.eval_results:
-        status = "PASS" if ec.passed else "FAIL"
-        click.echo(
-            f"  {ec.eval_type:<24} {ec.pass_rate:.1%}{'':>5} {ec.threshold:.1%}{'':>5} {status}"
-        )
-    click.echo()
-
-    if result.allowed:
-        click.echo(f"All {len(result.eval_results)} eval types pass. Promoting...")
-        click.echo()
-        record = execute_promotion(
-            prompt_name=result.prompt_name,
-            to_alias=result.to_alias,
-            version=result.version,
-            actor=actor,
-            justifying_run_ids=result.justifying_run_ids,
-        )
-        click.echo(
-            f"SUCCESS: {result.prompt_name} @{result.to_alias} now points to v{result.version}"
-        )
-        click.echo(f"Audit logged on runs: {', '.join(r[:8] for r in record.justifying_run_ids)}")
-    elif force:
-        click.echo("WARNING: Force flag set — bypassing eval gate.")
-        click.echo()
-        record = execute_promotion(
-            prompt_name=result.prompt_name,
-            to_alias=result.to_alias,
-            version=result.version,
-            actor=actor,
-            justifying_run_ids=result.justifying_run_ids,
-        )
-        click.echo(
-            f"SUCCESS (forced): {result.prompt_name} @{result.to_alias} now points to v{result.version}"
-        )
-    else:
-        click.echo(f"BLOCKED: {len(result.blocking_evals)} eval type(s) below threshold.")
-        for eval_type in result.blocking_evals:
-            ec = next(e for e in result.eval_results if e.eval_type == eval_type)
-            click.echo(f"  {eval_type}: {ec.pass_rate:.1%} < {ec.threshold:.1%} required")
-        click.echo()
-        click.echo("Fix the prompt and re-run evals before promoting.")
-        sys.exit(1)
-
-
-# ---------------------------------------------------------------------------
-# US5: rollback command
-# ---------------------------------------------------------------------------
-
-
-@pipeline.command()
-@click.argument("prompt_name")
-@click.option("--alias", default="production", help="Alias to roll back.")
-@click.option("--reason", required=True, help="Reason for rollback.")
-@click.option("--actor", default="cli-user", help="Actor name for audit log.")
-def rollback(prompt_name: str, alias: str, reason: str, actor: str) -> None:
-    """Revert prompt alias to previous version."""
-    previous_version = find_previous_version(prompt_name, alias=alias)
-
-    if previous_version is None:
-        click.echo(f"No previous version available for {prompt_name} @{alias}.")
-        click.echo("Cannot roll back.")
-        sys.exit(1)
-
-    # Get current version for display
-    try:
-        from src.services.prompt_service import load_prompt_version
-
-        current = load_prompt_version(prompt_name, alias=alias)
-        current_version = current.version
-    except Exception:
-        current_version = "unknown"
-
-    click.echo()
-    click.echo(f"Rollback: {prompt_name}")
-    click.echo("=" * 60)
-    click.echo()
-    click.echo(f"Current: @{alias} -> v{current_version}")
-    click.echo(f"Rolling back to: v{previous_version}")
-    click.echo()
-
-    record = execute_rollback(
-        prompt_name=prompt_name,
-        alias=alias,
-        previous_version=previous_version,
-        reason=reason,
-        actor=actor,
-    )
-
-    click.echo(f"SUCCESS: {prompt_name} @{alias} now points to v{previous_version}")
-    click.echo(f'Reason: "{reason}"')
-    if record.justifying_run_ids:
-        click.echo(f"Audit logged on run: {', '.join(r[:8] for r in record.justifying_run_ids)}")
 
 
 # ---------------------------------------------------------------------------

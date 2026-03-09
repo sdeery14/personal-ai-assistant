@@ -321,7 +321,61 @@ Web frontend for the eval pipeline (Feature 013), giving admin users a visual da
 
 ---
 
-### Feature 015 – Voice Interaction
+### Feature 015 – Eval Explorer UI
+
+> "I can browse experiments, runs, traces, and assessments in a purpose-built UI that's better than MLflow for understanding my agent's quality."
+
+Read-only exploration UI for all eval data stored in MLflow. Replaces the need to use MLflow's generic UI by providing navigation and visualization tailored to this project's eval structure. Complements Feature 014 (pipeline operations) with deep data browsing.
+
+- **Experiment browser**: List all eval experiments with metadata (eval type, run count, last run date, latest pass rate)
+- **Run browser**: Sortable/filterable run list per experiment with full params and metrics; run-to-run comparison (side-by-side diff)
+- **Trace viewer**: Span tree visualization showing agent execution flow — tool calls, inputs/outputs, timing per span
+- **Assessment viewer**: All scorer results per trace (not just primary), with scores, rationales, and pass/fail status
+- **Session viewer**: Multi-turn conversation timeline for session-grouped evals (onboarding, contradiction, etc.)
+- **Dataset viewer**: Browse golden dataset cases and their versions
+- **Universal quality trend**: Cross-experiment agent quality chart — every eval type includes a 1-5 LLM quality judge, enabling a single "agent health over time" view
+- **Access control**: Read-only, admin-only; no mutations to MLflow data from this UI
+- **Dependencies**: Feature 014 (existing API layer and dashboard shell), Feature 002/013 (MLflow eval data)
+
+---
+
+### Feature 016 – Unified Eval Navigation
+
+> "All eval tools — dashboard, experiments, datasets, runs, traces — live under one cohesive section instead of two separate pages."
+
+Consolidate Feature 014 (Eval Dashboard) and Feature 015 (Eval Explorer) into a single `/admin/evals/*` section with proper sub-page routing, shared layout, and breadcrumb navigation. Replaces the current two top-level admin pages with a unified information architecture.
+
+- **Dashboard landing page** (`/admin/evals`): Regression banner, summary table, promote/rollback/run-evals actions — the operational hub
+- **Experiments page** (`/admin/evals/experiments`): Sortable experiment list with eval type, run count, pass rate; click through to experiment detail
+- **Experiment detail** (`/admin/evals/experiments/[id]`): Runs table with comparison selection, universal quality chart scoped to experiment
+- **Runs detail** (`/admin/evals/runs/[id]`): Traces, sessions, assessments — full drill-down into a single eval run
+- **Datasets page** (`/admin/evals/datasets`): Browse golden datasets with case counts and versions; click through to dataset detail with expandable cases
+- **Trends page** (`/admin/evals/trends`): Per-eval-type trend charts, historical pass rates, universal quality trend across all eval types
+- **Shared layout**: Sidebar or breadcrumb navigation across all sub-pages, consistent admin chrome
+- **Component reuse**: Existing components from Features 014/015 move into the new route structure with minimal changes
+- **Single nav entry**: Header shows one "Evals" link; sub-page navigation is internal to the section
+- **Dependencies**: Feature 014 (dashboard components), Feature 015 (explorer components)
+
+---
+
+### Feature 017 – User Feedback
+
+> "Users can rate responses and conversations, and I can see how real usage correlates with eval metrics."
+
+Structured feedback collection at three levels (message, session, app) with an admin dashboard showing feedback trends alongside eval quality data.
+
+- **Message-level feedback**: Thumbs up/down on individual assistant responses, optional free-text comment
+- **Session-level feedback**: End-of-conversation rating (1-5 stars) with optional comment
+- **App-level feedback**: Periodic satisfaction prompt (dismissible), free-text feedback form
+- **Data model**: `feedback` table in PostgreSQL (user_id, conversation_id, message_id, level, rating, comment, created_at)
+- **Privacy**: Feedback is per-user scoped; admins see aggregated trends, not individual user feedback unless explicitly granted
+- **Admin dashboard**: Feedback trends over time, correlation with eval pass rates, breakdown by feedback level
+- **API endpoints**: POST feedback (user-facing), GET aggregated feedback (admin-only)
+- **Dependencies**: Feature 008 (frontend), Feature 016 (unified eval admin section)
+
+---
+
+### Feature 018 – Voice Interaction
 
 > "I can talk to the assistant and hear it respond."
 
@@ -336,7 +390,7 @@ Phased: TTS-only output first, then two-way voice with speech-to-text input and 
 
 ---
 
-### Feature 016 – Edge Client (Raspberry Pi)
+### Feature 019 – Edge Client (Raspberry Pi)
 
 > "I can interact with the assistant from a Raspberry Pi."
 
@@ -348,11 +402,11 @@ Text-based interface (CLI / button / simple display), connection to existing bac
 - **Local state**: Minimal — last N messages cached for display continuity, no local database
 - **Hardware targets**: Raspberry Pi 4/5 with network access
 - **Deployment**: Docker container or systemd service
-- **Open questions**: Display hardware (e-ink, HDMI, none), audio integration with Feature 015
+- **Open questions**: Display hardware (e-ink, HDMI, none), audio integration with Feature 018
 
 ---
 
-### Feature 017 – Google Integrations (Read-Only)
+### Feature 020 – Google Integrations (Read-Only)
 
 > "The assistant can tell me about my emails and calendar events."
 
@@ -404,6 +458,90 @@ Gmail read/search, calendar read, explicit permission prompts, audit logging. No
 Each new capability must follow the constitution, include evaluation coverage, and be introduced as its own scoped feature.
 
 ---
+
+## Agent Development Cycle
+
+### Philosophy
+
+Agent quality is not a one-time achievement — it's a continuous loop of measurement, diagnosis, and improvement. The eval framework exists not just to detect regressions, but to drive intentional capability development. Every agent behavior change (prompt edits, tool fixes, system prompt updates) should be motivated by eval data and validated by eval results.
+
+### The Iteration Loop
+
+```
+┌─────────────┐
+│  1. IDENTIFY │◄──────────────────────────────────┐
+│  (Dashboard) │                                    │
+└──────┬──────┘                                    │
+       ▼                                           │
+┌─────────────┐                                    │
+│ 2. BASELINE  │                                    │
+│ (Run eval)   │                                    │
+└──────┬──────┘                                    │
+       ▼                                           │
+┌─────────────┐     ┌──────────┐     ┌──────────┐ │
+│ 3. DIAGNOSE  │────►│ 4. FIX   │────►│ 5. EVAL  │─┤
+│ (Read traces)│     │ (Change) │     │ (Re-run) │ │
+└─────────────┘     └──────────┘     └──────┬───┘ │
+                                            │      │
+                                    passing?│      │
+                                     yes ───▼──    │
+                                   ┌──────────┐    │
+                                   │ 6. VERIFY │    │
+                                   │ (Full suite)   │
+                                   └────┬─────┘    │
+                                        │ regress? │
+                                        │ yes ─────┘
+                                        ▼ no
+                                   ┌──────────┐
+                                   │ 7. SHIP   │
+                                   │ (Promote) │
+                                   └──────────┘
+```
+
+### Step Details
+
+1. **IDENTIFY** — The eval dashboard (`/admin/evals`) shows which eval types are failing, regressing, or below target. The trends page shows quality trajectory across agent versions. Start here to decide what to work on.
+
+2. **BASELINE** — Run the targeted eval to establish current pass rate: `uv run python -m eval --dataset eval/<dataset>.json --verbose`. Record the baseline metrics before making changes.
+
+3. **DIAGNOSE** — Read failing traces to understand *why* the agent fails. Categorize failures:
+   - **Prompt gap**: The agent doesn't know it should do X → fix system prompt
+   - **Tool bug**: The tool returns wrong data or errors → fix tool code
+   - **Dataset issue**: The golden dataset expectation is wrong or ambiguous → fix dataset
+   - **Scorer issue**: The judge/scorer is too strict or misaligned → fix scorer
+   - **Capability gap**: The agent lacks a tool or integration to handle the case → add capability
+
+4. **FIX** — Make the smallest change that addresses the root cause. One change per iteration — don't bundle prompt edits with tool fixes. Common fixes:
+   - Edit system prompt in `src/agents.py` or specialist agent files
+   - Fix tool implementation in `src/tools/`
+   - Update golden dataset cases in `eval/`
+   - Adjust scorer thresholds or rubrics in `eval/judge.py`
+
+5. **EVAL** — Re-run the targeted eval and compare to baseline. If pass rate improved, continue. If not, return to step 3 with new trace data.
+
+6. **VERIFY** — Once the targeted eval passes (≥80%), run the full eval suite to check for regressions: `uv run python -m eval`. All 19 eval types must remain at or above their previous pass rates.
+
+7. **SHIP** — Commit the changes, promote prompts if using the prompt registry, and verify the dashboard reflects the improvement.
+
+### Eval Types Reference
+
+The agent is evaluated across 19 dimensions:
+
+| Category | Eval Types | What They Test |
+|----------|-----------|----------------|
+| Core Quality | quality, tone, routing, greeting, returning-greeting | Response quality, personality, intent routing |
+| Safety | security | Guardrail block rate, false positive rate |
+| Memory | memory, memory-write, memory-informed | Retrieval recall, write precision, contextual use |
+| Tools | weather, graph-extraction | Tool calling correctness, entity extraction |
+| Multi-Turn | onboarding, multi-cap, long-conversation | Session coherence, capability demonstration |
+| Judgment | notification-judgment, error-recovery, schedule-cron | Decision quality in complex scenarios |
+| Knowledge | knowledge-connections, contradiction | Relationship reasoning, consistency |
+
+### Quality Targets
+
+- **Passing threshold**: ≥80% pass rate per eval type (required for prompt promotion)
+- **Quality score**: ≥4.0 average on 1-5 LLM judge scale (target, not gate)
+- **Regression tolerance**: No eval type may drop more than 5 percentage points from its previous pass rate
 
 ## Non-Goals
 

@@ -121,6 +121,7 @@ class ToneCaseResult(BaseModel):
     response: str = ""
     quality_passed: Optional[bool] = None
     quality_rating: Optional[str] = None
+    quality_rationale: Optional[str] = None
     latency_ms: int = 0
     error: Optional[str] = None
 
@@ -188,6 +189,7 @@ class ReturningGreetingCaseResult(BaseModel):
     response: str = ""
     quality_passed: Optional[bool] = None
     quality_rating: Optional[str] = None
+    quality_rationale: Optional[str] = None
     latency_ms: int = 0
     error: Optional[str] = None
 
@@ -255,6 +257,7 @@ class RoutingCaseResult(BaseModel):
     routing_correct: Optional[bool] = None
     quality_passed: Optional[bool] = None
     quality_rating: Optional[str] = None
+    quality_rationale: Optional[str] = None
     latency_ms: int = 0
     error: Optional[str] = None
 
@@ -324,6 +327,7 @@ class MemoryInformedCaseResult(BaseModel):
     conversation_transcript: str = ""
     quality_passed: Optional[bool] = None
     quality_rating: Optional[str] = None
+    quality_rationale: Optional[str] = None
     latency_ms: int = 0
     error: Optional[str] = None
 
@@ -399,6 +403,7 @@ class MultiCapCaseResult(BaseModel):
     tool_calls: list[dict] = Field(default_factory=list)
     quality_passed: Optional[bool] = None
     quality_rating: Optional[str] = None
+    quality_rationale: Optional[str] = None
     latency_ms: int = 0
     error: Optional[str] = None
 
@@ -463,6 +468,7 @@ class ScheduleCronCaseResult(BaseModel):
     cron_correct: Optional[bool] = None
     quality_passed: Optional[bool] = None
     quality_rating: Optional[str] = None
+    quality_rationale: Optional[str] = None
     latency_ms: int = 0
     error: Optional[str] = None
 
@@ -526,6 +532,7 @@ class NotificationJudgmentCaseResult(BaseModel):
     notification_correct: Optional[bool] = None
     quality_passed: Optional[bool] = None
     quality_rating: Optional[str] = None
+    quality_rationale: Optional[str] = None
     latency_ms: int = 0
     error: Optional[str] = None
 
@@ -596,6 +603,7 @@ class KnowledgeConnectionsCaseResult(BaseModel):
     response: str = ""
     quality_passed: Optional[bool] = None
     quality_rating: Optional[str] = None
+    quality_rationale: Optional[str] = None
     latency_ms: int = 0
     error: Optional[str] = None
 
@@ -653,6 +661,7 @@ class ErrorRecoveryCaseResult(BaseModel):
     response: str = ""
     quality_passed: Optional[bool] = None
     quality_rating: Optional[str] = None
+    quality_rationale: Optional[str] = None
     latency_ms: int = 0
     error: Optional[str] = None
 
@@ -726,6 +735,7 @@ class LongConversationCaseResult(BaseModel):
     conversation_transcript: str = ""
     quality_passed: Optional[bool] = None
     quality_rating: Optional[str] = None
+    quality_rationale: Optional[str] = None
     latency_ms: int = 0
     error: Optional[str] = None
 
@@ -789,6 +799,7 @@ class ContradictionHandlingCaseResult(BaseModel):
     conversation_transcript: str = ""
     quality_passed: Optional[bool] = None
     quality_rating: Optional[str] = None
+    quality_rationale: Optional[str] = None
     latency_ms: int = 0
     error: Optional[str] = None
 

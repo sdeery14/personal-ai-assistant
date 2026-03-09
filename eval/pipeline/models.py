@@ -1,20 +1,10 @@
-"""Pipeline data models for eval trend tracking, regression detection, and promotion gating."""
+"""Pipeline data models for eval trend tracking and regression detection."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-
-
-@dataclass
-class PromptChange:
-    """Annotation for a prompt version transition between two consecutive runs."""
-
-    timestamp: datetime
-    run_id: str
-    prompt_name: str
-    from_version: str
-    to_version: str
+from typing import Any
 
 
 @dataclass
@@ -29,8 +19,8 @@ class TrendPoint:
     average_score: float
     total_cases: int
     error_cases: int
-    prompt_versions: dict[str, str]
     eval_status: str  # "complete", "partial", or "error"
+    overall_passed: bool | None = None  # gate result from metrics.overall_passed
 
 
 @dataclass
@@ -41,7 +31,7 @@ class TrendSummary:
     points: list[TrendPoint]
     latest_pass_rate: float
     trend_direction: str  # "improving", "stable", or "degrading"
-    prompt_changes: list[PromptChange]
+    latest_overall_passed: bool | None = None  # gate result from latest run
 
 
 @dataclass
@@ -56,7 +46,6 @@ class RegressionReport:
     delta_pp: float
     threshold: float
     verdict: str  # "REGRESSION", "WARNING", "PASS", or "IMPROVED"
-    changed_prompts: list[PromptChange]
     baseline_timestamp: datetime
     current_timestamp: datetime
 
@@ -85,53 +74,27 @@ class RegressionReport:
 
 
 @dataclass
-class PromotionEvalCheck:
-    """Per-eval-type result within a promotion gate check."""
+class RunCaseResult:
+    """Per-case result from an eval run's trace assessments."""
 
-    eval_type: str
-    pass_rate: float
-    threshold: float
-    passed: bool
+    case_id: str
+    score: float | None
+    duration_ms: int | None
+    error: str | None
+    user_prompt: str
+    assistant_response: str
+    justification: str | None
+    rating: str | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class RunDetail:
+    """Full detail for a single MLflow eval run."""
+
     run_id: str
-
-
-@dataclass
-class PromotionResult:
-    """Outcome of a promotion gate check."""
-
-    allowed: bool
-    prompt_name: str
-    from_alias: str
-    to_alias: str
-    version: int
-    eval_results: list[PromotionEvalCheck]
-    blocking_evals: list[str]
-    justifying_run_ids: list[str]
-
-
-@dataclass
-class AuditRecord:
-    """Represents a promotion or rollback action stored as MLflow tags."""
-
-    action: str  # "promote" or "rollback"
-    prompt_name: str
-    from_version: int
-    to_version: int
-    alias: str
+    eval_type: str
     timestamp: datetime
-    actor: str
-    reason: str
-    justifying_run_ids: list[str] = field(default_factory=list)
-
-    def to_tags(self) -> dict[str, str]:
-        """Convert to MLflow tag key-value pairs."""
-        return {
-            "audit.action": self.action,
-            "audit.prompt_name": self.prompt_name,
-            "audit.from_version": str(self.from_version),
-            "audit.to_version": str(self.to_version),
-            "audit.alias": self.alias,
-            "audit.timestamp": self.timestamp.isoformat(),
-            "audit.actor": self.actor,
-            "audit.reason": self.reason,
-        }
+    params: dict[str, str] = field(default_factory=dict)
+    metrics: dict[str, float] = field(default_factory=dict)
+    cases: list[RunCaseResult] = field(default_factory=list)

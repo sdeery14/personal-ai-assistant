@@ -245,6 +245,36 @@ def main() -> int:
         print(f"  Workers:         {args.workers or settings.eval_max_workers}")
         print()
 
+    # Enforce clean git state (no uncommitted changes)
+    if not args.dry_run:
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["git", "status", "--porcelain"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                print(
+                    "❌ Git working tree is dirty. Commit or stash changes before running evals.",
+                    file=sys.stderr,
+                )
+                print(
+                    "   This ensures eval results are tied to a reproducible git commit.",
+                    file=sys.stderr,
+                )
+                print(
+                    "   Dirty files:",
+                    file=sys.stderr,
+                )
+                for line in result.stdout.strip().split("\n")[:10]:
+                    print(f"     {line}", file=sys.stderr)
+                return 2
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass  # If git isn't available, skip the check
+
     # Validate dataset path
     dataset_path = Path(args.dataset)
     if not dataset_path.exists():

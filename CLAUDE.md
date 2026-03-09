@@ -65,7 +65,7 @@ uv run pytest tests/integration/test_chat_endpoint.py -v
 # Run with coverage
 uv run pytest tests/ --cov=src --cov-report=html
 
-# Run MLflow evaluation suite (requires Docker services running)
+# Run MLflow evaluation suite locally (preferred — requires API + MLflow Docker services)
 uv run python -m eval
 
 # Validate evaluation dataset only
@@ -74,14 +74,8 @@ uv run python -m eval --dry-run
 # Run eval with verbose output
 uv run python -m eval --verbose
 
-# Run eval inside Docker (requires both API and MLflow stacks running)
-docker compose -f docker/docker-compose.eval.yml run --rm eval --dataset eval/graph_extraction_golden_dataset.json --verbose
-
-# Dry-run eval in Docker
-docker compose -f docker/docker-compose.eval.yml run --rm eval --dry-run
-
-# Rebuild eval container after code changes
-docker compose -f docker/docker-compose.eval.yml build
+# Run a specific eval dataset
+uv run python -m eval --dataset eval/graph_extraction_golden_dataset.json --verbose
 ```
 
 ### Dependency Management
@@ -171,9 +165,22 @@ tests/
 ## Testing Philosophy
 
 - **pytest**: Test code logic, error handling, control flow. Mock all OpenAI/LLM API calls. Fast, deterministic, cheap.
-- **MLflow eval**: Test AI behavior, output quality, guardrail effectiveness. Real API calls. Slow, non-deterministic, expensive.
+- **MLflow eval**: Test AI behavior, output quality, guardrail effectiveness. Real API calls. Slow, non-deterministic, expensive. **Run evals locally** via `uv run python -m eval` (not in the Docker eval container) so that git SHA and local context are captured. The Docker eval compose file exists but is not the primary path.
 
 Never mock the entire SDK/Runner in pytest. If you need to test SDK integration behavior, that belongs in MLflow eval.
+
+### Manual UI Testing with Playwright
+
+Use the Playwright MCP tool (`mcp__playwright__*`) for manual frontend verification. This is preferred over screenshot-based testing because Playwright's accessibility snapshots give structured DOM state.
+
+**Workflow:**
+1. Ensure Docker API (`localhost:8000`) and Next.js dev server (`localhost:3000`) are running
+2. Navigate to login page, sign in (admin user: `sdeery` / `password123`)
+3. Use `browser_snapshot` (not screenshots) to inspect page state — it returns structured accessibility trees
+4. Use `browser_click` with element refs from snapshots to interact with the UI
+5. Verify data flows end-to-end: backend API → frontend rendering
+
+**When to use Playwright:** After changing API response shapes, frontend components that display backend data, or eval dashboard data flow. Not needed for pure logic/utility changes.
 
 ## Environment Variables
 
@@ -186,9 +193,79 @@ Optional: `OPENAI_MODEL` (default: gpt-4o), `MAX_TOKENS` (default: 2000), `TIMEO
 - `GET /health` - Returns `{"status": "healthy", "timestamp": "..."}`
 - `POST /chat` - SSE streaming. Body: `{"message": "...", "model": null, "max_tokens": null}`
 
+## Agent Development Cycle (Eval-Driven Iteration)
+
+When asked to improve agent quality, fix a failing eval, or iterate on agent behavior, follow this process:
+
+### Step 1: Identify the Problem
+
+Check the eval dashboard or run evals to find what's failing:
+
+```bash
+# Run full eval suite
+uv run python -m eval
+
+# Run a specific eval
+uv run python -m eval --dataset eval/<dataset>.json --verbose
+
+# Check dashboard at /admin/evals for visual overview
+```
+
+### Step 2: Diagnose Failures
+
+Read the failing traces to understand root causes. Use the MLflow API or dashboard:
+
+```bash
+# Search traces for a specific experiment
+# Via the eval dashboard: /admin/evals/experiments → click experiment → click run → view traces
+```
+
+Categorize each failure as one of:
+- **Prompt gap** → system prompt needs updating (`src/agents.py`, specialist agents)
+- **Tool bug** → tool code needs fixing (`src/tools/`)
+- **Dataset issue** → golden dataset expectation is wrong (`eval/*.json`)
+- **Scorer issue** → judge/scorer is misaligned (`eval/judge.py`, scorer functions)
+- **Capability gap** → agent lacks needed tool/integration
+
+### Step 3: Fix → Eval → Repeat
+
+Make ONE targeted change per iteration. Then re-run the specific eval:
+
+```bash
+uv run python -m eval --dataset eval/<dataset>.json --verbose
+```
+
+Compare pass rate to baseline. If improved, continue. If not, re-diagnose with fresh trace data. Loop until the eval passes (≥80%).
+
+### Step 4: Verify No Regressions
+
+Once the target eval passes, run the full suite:
+
+```bash
+uv run python -m eval
+```
+
+All 19 eval types must remain at or above their previous pass rates. If any regressed, diagnose and fix before proceeding.
+
+### Step 5: Ship
+
+Commit the changes. If using prompt registry, promote via the dashboard or CLI.
+
+### Key Rules
+
+- **One change per iteration**: Don't bundle prompt edits with tool fixes
+- **Always baseline first**: Record current pass rate before changing anything
+- **Trace-driven diagnosis**: Never guess — read the actual failing traces
+- **Full suite before shipping**: A targeted fix that regresses other evals is not a fix
+- **Dataset fixes count**: Sometimes the test is wrong, not the agent
+
+### Eval Types (19 total)
+
+`quality`, `security`, `tone`, `routing`, `greeting`, `returning-greeting`, `memory`, `memory-write`, `memory-informed`, `weather`, `graph-extraction`, `onboarding`, `multi-cap`, `notification-judgment`, `error-recovery`, `schedule-cron`, `knowledge-connections`, `contradiction`, `long-conversation`
+
 ## Feature Roadmap Context
 
-See `vision.md` for the full roadmap. Completed: 001–013. Next: 014 (Eval Dashboard UI).
+See `vision.md` for the full roadmap. Completed: 001–016. Next: 017 (User Feedback).
 
 When a feature, idea, or capability is deferred or declared out of scope during any phase (specify, clarify, plan, implement), add it to the **Future Capabilities** section in `vision.md` so it is not lost.
 

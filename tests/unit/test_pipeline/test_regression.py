@@ -21,7 +21,6 @@ def _make_point(
     pass_rate: float = 0.90,
     eval_type: str = "tone",
     hours_offset: int = 0,
-    prompt_versions: dict | None = None,
     error_cases: int = 0,
 ) -> TrendPoint:
     return TrendPoint(
@@ -33,7 +32,6 @@ def _make_point(
         average_score=4.0,
         total_cases=10,
         error_cases=error_cases,
-        prompt_versions=prompt_versions or {"orchestrator-base": "v1"},
         eval_status="complete" if error_cases == 0 else "partial",
     )
 
@@ -129,41 +127,6 @@ class TestCompareRuns:
 
         assert report.verdict == "PASS"
 
-    def test_detects_changed_prompts(self):
-        baseline = _make_point(
-            run_id="r1",
-            prompt_versions={"orchestrator-base": "v1", "onboarding": "v1"},
-        )
-        current = _make_point(
-            run_id="r2",
-            hours_offset=1,
-            prompt_versions={"orchestrator-base": "v2", "onboarding": "v1"},
-        )
-
-        report = compare_runs(baseline, current, threshold=0.80)
-
-        assert len(report.changed_prompts) == 1
-        assert report.changed_prompts[0].prompt_name == "orchestrator-base"
-        assert report.changed_prompts[0].from_version == "v1"
-        assert report.changed_prompts[0].to_version == "v2"
-
-    def test_detects_multiple_prompt_changes_simultaneously(self):
-        baseline = _make_point(
-            run_id="r1",
-            prompt_versions={"orchestrator-base": "v1", "onboarding": "v1", "guardrails": "v2"},
-        )
-        current = _make_point(
-            run_id="r2",
-            hours_offset=1,
-            prompt_versions={"orchestrator-base": "v2", "onboarding": "v3", "guardrails": "v2"},
-        )
-
-        report = compare_runs(baseline, current, threshold=0.80)
-
-        assert len(report.changed_prompts) == 2
-        names = [c.prompt_name for c in report.changed_prompts]
-        assert "onboarding" in names
-        assert "orchestrator-base" in names
 
 
 # ---------------------------------------------------------------------------
