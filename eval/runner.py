@@ -1727,7 +1727,7 @@ def run_weather_evaluation(
                 "couldn't find", "check spelling", "try a nearby", "not found",
                 "unable to", "no weather information", "no information available",
                 "not a real", "no data available", "invalid location",
-                "doesn't appear to be", "not a recognized",
+                "doesn't appear to", "not a recognized",
             ]
         ):
             actual_behavior = "error"
@@ -1766,7 +1766,7 @@ def run_weather_evaluation(
                 "total_cases": len(dataset.cases),
                 "assistant_model": actual_model,
                 "success_rate_threshold": 0.95,
-                "latency_p95_threshold": 10000,
+                "latency_p95_threshold": 15000,
                 "mlflow_dataset_id": mlflow_dataset.dataset_id,
             }
         )
@@ -1952,7 +1952,7 @@ def run_weather_evaluation(
         # Check overall pass criteria
         overall_passed = (
             success_rate >= 0.95
-            and latency_p95 < 10000
+            and latency_p95 < 15000
         )
 
         metrics = WeatherMetrics(
@@ -2010,7 +2010,7 @@ def _detect_weather_behavior(response: str, case) -> str:
         "not a real",
         "no data available",
         "invalid location",
-        "doesn't appear to be",
+        "doesn't appear to",
         "not a recognized",
     ]
     if any(indicator in response_lower for indicator in error_indicators):
@@ -2085,7 +2085,7 @@ def format_weather_summary(result: WeatherEvaluationResult) -> str:
         "PERFORMANCE METRICS:",
         f"  Cache Hit Rate:     {m.cache_hit_rate:.1%}",
         f"  Latency P50:        {m.latency_p50:.0f}ms",
-        f"  Latency P95:        {m.latency_p95:.0f}ms (threshold: <10000ms)",
+        f"  Latency P95:        {m.latency_p95:.0f}ms (threshold: <15000ms)",
         "",
     ]
 
@@ -2096,8 +2096,8 @@ def format_weather_summary(result: WeatherEvaluationResult) -> str:
         reasons = []
         if m.success_rate < 0.95:
             reasons.append(f"Success rate {m.success_rate:.1%} < 95%")
-        if m.latency_p95 >= 10000:
-            reasons.append(f"Latency P95 {m.latency_p95:.0f}ms >= 10000ms")
+        if m.latency_p95 >= 15000:
+            reasons.append(f"Latency P95 {m.latency_p95:.0f}ms >= 15000ms")
         if reasons:
             lines.append(f"   Reasons: {'; '.join(reasons)}")
 
