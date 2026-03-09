@@ -21,6 +21,7 @@ class TrendPointResponse(BaseModel):
     error_cases: int
     prompt_versions: dict[str, str]
     eval_status: str
+    overall_passed: Optional[bool] = None
 
 
 class PromptChangeResponse(BaseModel):
@@ -40,6 +41,7 @@ class TrendSummaryResponse(BaseModel):
     prompt_changes: list[PromptChangeResponse]
     pass_rate_description: str = ""
     average_score_description: str = ""
+    latest_overall_passed: Optional[bool] = None
 
 
 class RegressionReportResponse(BaseModel):

@@ -20,6 +20,7 @@ class TrendPoint:
     total_cases: int
     error_cases: int
     eval_status: str  # "complete", "partial", or "error"
+    overall_passed: bool | None = None  # gate result from metrics.overall_passed
 
 
 @dataclass
@@ -30,6 +31,7 @@ class TrendSummary:
     points: list[TrendPoint]
     latest_pass_rate: float
     trend_direction: str  # "improving", "stable", or "degrading"
+    latest_overall_passed: bool | None = None  # gate result from latest run
 
 
 @dataclass

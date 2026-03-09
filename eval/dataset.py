@@ -721,6 +721,8 @@ def _detect_eval_type(path: str | Path) -> str | None:
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
+        if not isinstance(data, dict):
+            return None
         eval_type = data.get("eval_type")
         if eval_type in _KNOWN_EVAL_TYPES:
             return eval_type

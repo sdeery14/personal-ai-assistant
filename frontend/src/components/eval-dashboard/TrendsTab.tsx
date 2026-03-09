@@ -214,6 +214,9 @@ export function TrendsTab() {
               <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">
                 Eval Type
               </th>
+              <th className="px-3 py-2 text-center font-medium text-gray-700 dark:text-gray-300">
+                Gate
+              </th>
               <th className="px-3 py-2 text-right font-medium text-gray-700 dark:text-gray-300">
                 Latest Pass Rate
               </th>
@@ -241,6 +244,21 @@ export function TrendsTab() {
                 >
                   <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">
                     {s.eval_type}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    {s.latest_overall_passed === true && (
+                      <span className="inline-block rounded px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                        PASS
+                      </span>
+                    )}
+                    {s.latest_overall_passed === false && (
+                      <span className="inline-block rounded px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                        FAIL
+                      </span>
+                    )}
+                    {s.latest_overall_passed == null && (
+                      <span className="text-xs text-gray-400">&mdash;</span>
+                    )}
                   </td>
                   <td
                     className="px-3 py-2 text-right text-gray-700 dark:text-gray-300"
@@ -460,6 +478,9 @@ function DetailView({
                 Status
                 <SortArrow active={sortKey === "eval_status"} dir={sortDir} />
               </th>
+              <th className="px-2 py-1.5 text-center font-medium text-gray-600 dark:text-gray-400">
+                Gate
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -507,6 +528,21 @@ function DetailView({
                   >
                     {p.eval_status}
                   </span>
+                </td>
+                <td className="px-2 py-1.5 text-center">
+                  {p.overall_passed === true && (
+                    <span className="inline-block rounded px-1.5 py-0.5 text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                      PASS
+                    </span>
+                  )}
+                  {p.overall_passed === false && (
+                    <span className="inline-block rounded px-1.5 py-0.5 text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                      FAIL
+                    </span>
+                  )}
+                  {p.overall_passed == null && (
+                    <span className="text-xs text-gray-400">&mdash;</span>
+                  )}
                 </td>
               </tr>
             ))}

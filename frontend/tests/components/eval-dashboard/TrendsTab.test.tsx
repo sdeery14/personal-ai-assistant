@@ -77,11 +77,13 @@ function makeSummary(overrides: Partial<TrendSummary> = {}): TrendSummary {
         error_cases: 0,
         prompt_versions: { system: "1" },
         eval_status: "passed",
+        overall_passed: null,
       },
     ],
     prompt_changes: [],
     pass_rate_description: "% of cases scoring >= 4 on a 1-5 LLM judge scale.",
     average_score_description: "Mean LLM judge score (1-5 scale) across all cases.",
+    latest_overall_passed: null,
     ...overrides,
   };
 }
@@ -226,7 +228,9 @@ describe("TrendsTab", () => {
     // No regression reports
     render(<TrendsTab />);
 
-    expect(screen.getByText("\u2014")).toBeInTheDocument();
+    // Both Gate (null) and Delta (no regression) show dashes
+    const dashes = screen.getAllByText("\u2014");
+    expect(dashes.length).toBeGreaterThanOrEqual(1);
   });
 
   it("detail table defaults to latest-first", () => {
@@ -244,6 +248,7 @@ describe("TrendsTab", () => {
             error_cases: 0,
             prompt_versions: { system: "1" },
             eval_status: "passed",
+            overall_passed: null,
           },
           {
             run_id: "run-mid",
@@ -255,6 +260,7 @@ describe("TrendsTab", () => {
             error_cases: 0,
             prompt_versions: { system: "1" },
             eval_status: "passed",
+            overall_passed: null,
           },
           {
             run_id: "run-new",
@@ -266,6 +272,7 @@ describe("TrendsTab", () => {
             error_cases: 0,
             prompt_versions: { system: "1" },
             eval_status: "passed",
+            overall_passed: null,
           },
         ],
       }),
@@ -296,6 +303,7 @@ describe("TrendsTab", () => {
             error_cases: 0,
             prompt_versions: { system: "1" },
             eval_status: "passed",
+            overall_passed: null,
           },
           {
             run_id: "run-high",
@@ -307,6 +315,7 @@ describe("TrendsTab", () => {
             error_cases: 0,
             prompt_versions: { system: "1" },
             eval_status: "passed",
+            overall_passed: null,
           },
         ],
       }),

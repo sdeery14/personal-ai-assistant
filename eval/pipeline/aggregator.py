@@ -106,6 +106,13 @@ def get_trend_points(
         else:
             eval_status = "complete"
 
+        # Read overall_passed gate metric (logged by eval runners as 0 or 1)
+        overall_passed_col = metric_names.get("overall_passed", "metrics.overall_passed")
+        overall_passed_val = _safe_float(row, overall_passed_col, -1.0) if overall_passed_col else -1.0
+        overall_passed: bool | None = None
+        if overall_passed_val >= 0:
+            overall_passed = overall_passed_val >= 0.5
+
         points.append(
             TrendPoint(
                 run_id=run_id,
@@ -117,6 +124,7 @@ def get_trend_points(
                 total_cases=total_cases,
                 error_cases=error_cases,
                 eval_status=eval_status,
+                overall_passed=overall_passed,
             )
         )
 
@@ -139,6 +147,7 @@ def build_trend_summary(eval_type: str, points: list[TrendPoint]) -> TrendSummar
         )
 
     latest_pass_rate = points[-1].pass_rate
+    latest_overall_passed = points[-1].overall_passed
     trend_direction = _compute_trend_direction(points)
 
     return TrendSummary(
@@ -146,6 +155,7 @@ def build_trend_summary(eval_type: str, points: list[TrendPoint]) -> TrendSummar
         points=points,
         latest_pass_rate=latest_pass_rate,
         trend_direction=trend_direction,
+        latest_overall_passed=latest_overall_passed,
     )
 
 

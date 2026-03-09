@@ -10,6 +10,7 @@ export interface TrendPoint {
   error_cases: number;
   prompt_versions: Record<string, string>;
   eval_status: string;
+  overall_passed: boolean | null;
 }
 
 export interface PromptChange {
@@ -29,6 +30,7 @@ export interface TrendSummary {
   prompt_changes: PromptChange[];
   pass_rate_description: string;
   average_score_description: string;
+  latest_overall_passed: boolean | null;
 }
 
 export interface TrendsResponse {

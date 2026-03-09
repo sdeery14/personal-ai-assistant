@@ -57,6 +57,7 @@ def _trend_point_response(point) -> TrendPointResponse:
         error_cases=point.error_cases,
         prompt_versions={},
         eval_status=point.eval_status,
+        overall_passed=point.overall_passed,
     )
 
 
@@ -73,6 +74,7 @@ def _trend_summary_response(summary) -> TrendSummaryResponse:
         prompt_changes=[],
         pass_rate_description=descs["pass_rate"],
         average_score_description=descs["average_score"],
+        latest_overall_passed=summary.latest_overall_passed,
     )
 
 
