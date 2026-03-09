@@ -1727,13 +1727,13 @@ def run_weather_evaluation(
                 "couldn't find", "check spelling", "try a nearby", "not found",
                 "unable to", "no weather information", "no information available",
                 "not a real", "no data available", "invalid location",
-                "doesn't appear to be",
+                "doesn't appear to be", "not a recognized",
             ]
         ):
             actual_behavior = "error"
         elif any(
             kw in response_lower
-            for kw in ["location", "where", "which city", "specify", "please provide"]
+            for kw in ["location", "where", "which city", "specify", "please provide", "which one"]
         ):
             actual_behavior = "clarification"
         elif any(
@@ -2011,6 +2011,7 @@ def _detect_weather_behavior(response: str, case) -> str:
         "no data available",
         "invalid location",
         "doesn't appear to be",
+        "not a recognized",
     ]
     if any(indicator in response_lower for indicator in error_indicators):
         return "error"
@@ -2022,6 +2023,7 @@ def _detect_weather_behavior(response: str, case) -> str:
         "what location",
         "where would you like",
         "more specific",
+        "which one",
     ]
     if any(indicator in response_lower for indicator in clarification_indicators):
         return "clarification"
