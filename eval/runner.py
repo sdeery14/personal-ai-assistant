@@ -1727,6 +1727,7 @@ def run_weather_evaluation(
                 "couldn't find", "check spelling", "try a nearby", "not found",
                 "unable to", "no weather information", "no information available",
                 "not a real", "no data available", "invalid location",
+                "doesn't appear to be",
             ]
         ):
             actual_behavior = "error"
@@ -2004,6 +2005,12 @@ def _detect_weather_behavior(response: str, case) -> str:
         "not found",
         "try again",
         "failed",
+        "no weather information",
+        "no information available",
+        "not a real",
+        "no data available",
+        "invalid location",
+        "doesn't appear to be",
     ]
     if any(indicator in response_lower for indicator in error_indicators):
         return "error"
@@ -2014,6 +2021,7 @@ def _detect_weather_behavior(response: str, case) -> str:
         "which location",
         "what location",
         "where would you like",
+        "more specific",
     ]
     if any(indicator in response_lower for indicator in clarification_indicators):
         return "clarification"
@@ -2028,6 +2036,15 @@ def _detect_weather_behavior(response: str, case) -> str:
         "weather in",
         "current weather",
         "forecast",
+        "rain",
+        "snow",
+        "cloud",
+        "sunny",
+        "clear",
+        "wind",
+        "storm",
+        "showers",
+        "precipitation",
     ]
     if any(indicator in response_lower for indicator in success_indicators):
         return "success"
