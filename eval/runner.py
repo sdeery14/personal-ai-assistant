@@ -1844,22 +1844,10 @@ def run_weather_evaluation(
             # Process results from mlflow
             results_df = eval_results.tables["eval_results"]
 
-            for idx, (_, row) in enumerate(results_df.iterrows()):
-                case, query, response, latency_ms, error = case_data[idx]
-
-                # Extract scorer result (boolean) - column name is 'weather_behavior_scorer/value'
-                scorer_result = row.get("weather_behavior_scorer/value", None)
-
-                # Scorer returns boolean - True means behavior matched
-                if scorer_result is True or scorer_result == "yes":
-                    behavior_match = True
-                elif scorer_result is False or scorer_result == "no":
-                    behavior_match = False
-                else:
-                    behavior_match = False
-
-                # Detect actual behavior from response for detailed logging
+            for idx, (case, query, response, latency_ms, error) in enumerate(case_data):
+                # Detect actual behavior from response
                 actual_behavior = _detect_weather_behavior(response, case)
+                behavior_match = (actual_behavior == case.expected_behavior)
 
                 # Check for expected fields in response
                 response_lower = response.lower()
